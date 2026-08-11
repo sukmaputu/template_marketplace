@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bell, Menu, MessageCircle, Moon, Sun } from "lucide-react";
+import { Bell, Menu, MessageCircle, Moon, Sun, X } from "lucide-react";
 import { Dropdown } from "@/components/ui/dropdown";
 import { useTheme } from "@/hooks/use-theme";
 import { NotificationList } from "./NotificationMenu";
@@ -23,7 +23,7 @@ export function MobileMenu() {
         </button>
       )}>
       {() => (
-        <div className="py-2">
+        <div className="relative py-2">
           <button
             onClick={toggleTheme}
             className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-sm text-[color:var(--color-text)] hover:bg-[color:var(--color-background)]">
@@ -44,7 +44,7 @@ export function MobileMenu() {
 
           <button
             type="button"
-            onClick={() => setShowNotifications((prev) => !prev)}
+            onClick={() => setShowNotifications(true)}
             className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-sm text-[color:var(--color-text)] hover:bg-[color:var(--color-background)]">
             <span className="flex items-center gap-3">
               <Bell className="h-4 w-4 text-[color:var(--color-text-secondary)]" />
@@ -58,8 +58,23 @@ export function MobileMenu() {
           </button>
 
           {showNotifications ? (
-            <div className="mx-2 mb-2 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)]">
-              <NotificationList />
+            <div className="absolute right-0 top-0 z-50 flex h-fit w-[280px] flex-col rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] shadow-2xl">
+              <div className="flex items-center justify-between border-b border-[color:var(--color-border)] p-3">
+                <span className="text-sm font-bold text-[color:var(--color-text)]">
+                  Notifikasi
+                </span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowNotifications(false);
+                  }}
+                  className="rounded-md p-1 hover:bg-[color:var(--color-background)]">
+                  <X className="h-4 w-4 text-[color:var(--color-text-secondary)]" />
+                </button>
+              </div>
+              <div className="max-h-80 overflow-y-auto p-1">
+                <NotificationList />
+              </div>
             </div>
           ) : null}
 

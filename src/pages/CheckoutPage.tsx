@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { MarketplaceHeader } from "@/components/MarketplaceHeader";
 import { useCart } from "@/components/useCart";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 function formatRupiah(value: number) {
   return `Rp${value.toLocaleString("id-ID")}`;
@@ -15,7 +15,8 @@ function formatRupiah(value: number) {
 
 export default function CheckoutPage() {
   const location = useLocation();
-  const { items } = useCart();
+  const navigate = useNavigate();
+  const { items, clearSelected } = useCart();
 
   const immediateBuy = location.state?.immediateBuy as
     | {
@@ -31,6 +32,7 @@ export default function CheckoutPage() {
           discountPercent?: number;
         };
         quantity: number;
+        variant?: string;
       }
     | undefined;
 
@@ -41,7 +43,7 @@ export default function CheckoutPage() {
           storeId: immediateBuy.product.storeId ?? "store-default",
           storeName: immediateBuy.product.storeName ?? "Toko Default",
           name: immediateBuy.product.name,
-          variant: "Varian standar",
+          variant: immediateBuy.variant ?? "Varian standar",
           image: immediateBuy.product.image,
           price: immediateBuy.product.price,
           originalPrice: immediateBuy.product.originalPrice,
@@ -61,6 +63,28 @@ export default function CheckoutPage() {
   );
   const totalTagihan =
     totalHarga + shippingCost + protectionCost + insuranceCost;
+
+  function handleBayarSekarang() {
+    // TODO: sambungkan ke proses pembayaran/API asli di sini.
+    // Ambil id produk asli (bukan id komposit keranjang) untuk dikecualikan
+    // dari rekomendasi di halaman sukses.
+    const purchasedProductIds = selectedItems.map((item) =>
+      typeof item.id === "string" && item.id.includes("::")
+        ? item.id.split("::")[0]
+        : item.id,
+    );
+
+    if (!immediateBuy) {
+      clearSelected(); // hapus item yang baru saja dibeli dari keranjang
+    }
+
+    navigate("/payment-success", {
+      state: {
+        totalPaid: totalTagihan,
+        itemIds: purchasedProductIds,
+      },
+    });
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -229,7 +253,10 @@ export default function CheckoutPage() {
                 </span>
               </div>
 
-              <button className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3 text-sm font-semibold text-white hover:opacity-90">
+              <button
+                onClick={handleBayarSekarang}
+                disabled={selectedItems.length === 0}
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-40">
                 <ShieldCheck className="h-4 w-4" />
                 Bayar Sekarang
               </button>

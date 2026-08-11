@@ -2,6 +2,9 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { Routes, Route } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { AppLoader } from "@/components/Apploader";
+import { ChatWidget } from "@/components/ChatWidget";
+import SettingsPage from "@/pages/SettingsPage";
+import HelpPage from "@/pages/HelpPage";
 
 const HomePage = lazy(() => import("@/pages/HomePage"));
 const ProfilePage = lazy(() => import("@/pages/ProfilePage"));
@@ -11,6 +14,9 @@ const MessagePage = lazy(() => import("@/pages/MessagePage"));
 const SignInPage = lazy(() => import("@/pages/Signinpage"));
 const SignUpPage = lazy(() => import("@/pages/Signuppage"));
 const CategoryPage = lazy(() => import("@/pages/CategoryPage"));
+const NotFoundPage = lazy(() => import("@/pages/NotFoundPage"));
+
+const PaymentSuccessPage = lazy(() => import("@/pages/Paymentsuccesspage"));
 
 const AdminLoginPage = lazy(() => import("@/admin/AdminLoginPage"));
 const AdminLayout = lazy(() => import("@/admin/AdminLayout"));
@@ -36,8 +42,6 @@ export default function App() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   useEffect(() => {
-    // Ganti dengan kondisi loading asli kalau ada (misal nunggu auth check,
-    // konfigurasi awal, dll). Sekarang cuma simulasi durasi minimum splash.
     const timer = setTimeout(() => setIsInitialLoading(false), 1800);
     return () => clearTimeout(timer);
   }, []);
@@ -67,8 +71,11 @@ export default function App() {
               <Route path="/message" element={<MessagePage />} />
               <Route path="/sign-in" element={<SignInPage />} />
               <Route path="/sign-up" element={<SignUpPage />} />
-              <Route path="/category" element={<CategoryPage />} />
               <Route path="/category/:categoryId" element={<CategoryPage />} />
+              <Route path="/payment-success" element={<PaymentSuccessPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/help" element={<HelpPage />} />
+              <Route path="*" element={<NotFoundPage />} />
 
               {/* Admin */}
               <Route path="/admin/login" element={<AdminLoginPage />} />
@@ -82,6 +89,7 @@ export default function App() {
               </Route>
             </Routes>
           </Suspense>
+          <ChatWidget />
         </motion.div>
       )}
     </AnimatePresence>

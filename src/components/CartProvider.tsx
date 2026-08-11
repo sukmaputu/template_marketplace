@@ -7,12 +7,18 @@ import { CartContext } from "@/components/cartContext";
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
 
-  const addToCart = (product: Product, quantity = 1) => {
+  const addToCart = (product: Product, quantity = 1, variant?: string) => {
+    const resolvedVariant = variant ?? "Varian standar";
+    // id unik per kombinasi produk+variant, supaya baris keranjang untuk
+    // variant berbeda dari produk yang sama tetap bisa dibedakan/diubah
+    // secara independen (quantity, hapus, centang) tanpa saling bentrok.
+    const cartItemId = `${product.id}::${resolvedVariant}`;
+
     setItems((prev) => {
-      const existing = prev.find((item) => item.id === product.id);
+      const existing = prev.find((item) => item.id === cartItemId);
       if (existing) {
         return prev.map((item) =>
-          item.id === product.id
+          item.id === cartItemId
             ? { ...item, quantity: item.quantity + quantity }
             : item,
         );
@@ -22,9 +28,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
         ...prev,
         createCartItem({
           ...product,
+          id: cartItemId,
           quantity,
           selected: true,
-          variant: "Varian standar",
+          variant: resolvedVariant,
         }),
       ];
     });

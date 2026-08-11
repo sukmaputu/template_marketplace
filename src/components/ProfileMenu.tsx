@@ -41,18 +41,19 @@ export function ProfileMenu({ name = "Akun", avatarUrl }: ProfileMenuProps) {
             Profil Saya
           </Link>
           <Link
-            to="/profile"
+            to="/settings"
             onClick={close}
             className="flex items-center gap-3 px-4 py-2.5 text-sm text-text hover:bg-background">
             <Settings className="h-4 w-4 text-text-secondary" />
             Pengaturan
           </Link>
-          <a
-            href="#bantuan"
+          <Link
+            to="/help"
+            onClick={close}
             className="flex items-center gap-3 px-4 py-2.5 text-sm text-text hover:bg-background">
             <HelpCircle className="h-4 w-4 text-text-secondary" />
             Bantuan
-          </a>
+          </Link>
           <div className="my-1 border-t border-border" />
           <a
             href="#keluar"
