@@ -1,0 +1,408 @@
+Enum account_status {
+  active
+  inactive
+  blocked
+}
+
+Enum product_type {
+  physical
+  digital
+  service
+}
+
+Enum product_status {
+  draft
+  published
+  archived
+}
+
+Enum order_status {
+  pending_payment
+  paid
+  processing
+  shipped
+  completed
+  cancelled
+  refunded
+}
+
+Enum payment_status {
+  pending
+  success
+  failed
+  refunded
+  expired
+}
+
+Enum notification_type {
+  order
+  promo
+  announcement
+  system
+}
+
+Enum chat_sender_role {
+  customer
+  agent
+  admin
+  bot
+}
+
+Table users {
+  id varchar [pk]
+  email varchar [unique, not null]
+  username varchar
+  full_name varchar
+  phone varchar
+  avatar_url varchar
+  password_hash varchar
+  status account_status
+  email_verified_at datetime
+  last_login_at datetime
+  last_login_ip varchar
+  created_at datetime
+  updated_at datetime
+  deleted_at datetime
+}
+
+Table user_addresses {
+  id varchar [pk]
+  user_id varchar [not null]
+  label varchar
+  recipient_name varchar [not null]
+  recipient_phone varchar [not null]
+  address_line_1 text [not null]
+  address_line_2 text
+  district varchar
+  city varchar
+  province varchar
+  postal_code varchar
+  country_code varchar
+  is_primary boolean
+  created_at datetime
+  updated_at datetime
+  deleted_at datetime
+}
+
+Table roles {
+  id varchar [pk]
+  name varchar [unique, not null]
+  description text
+  is_active boolean
+  created_at datetime
+  updated_at datetime
+}
+
+Table permissions {
+  id varchar [pk]
+  name varchar [unique, not null]
+  description text
+  is_active boolean
+  created_at datetime
+  updated_at datetime
+}
+
+Table user_roles {
+  id varchar [pk]
+  user_id varchar [not null]
+  role_id varchar [not null]
+  created_at datetime
+  updated_at datetime
+}
+
+Table role_permissions {
+  id varchar [pk]
+  role_id varchar [not null]
+  permission_id varchar [not null]
+  created_at datetime
+  updated_at datetime
+}
+
+Table product_categories {
+  id varchar [pk]
+  parent_id varchar
+  name varchar [not null]
+  slug varchar [unique, not null]
+  description text
+  is_active boolean
+  created_at datetime
+  updated_at datetime
+  deleted_at datetime
+}
+
+Table products {
+  id varchar [pk]
+  category_id varchar [not null]
+  type product_type
+  sku varchar [unique]
+  name varchar [not null]
+  slug varchar [unique]
+  summary text
+  description text
+  cover_image_url varchar
+  base_price decimal [not null]
+  compare_price decimal
+  stock int
+  is_featured boolean
+  status product_status
+  average_rating decimal
+  review_count int
+  published_at datetime
+  created_at datetime
+  updated_at datetime
+  deleted_at datetime
+}
+
+Table product_images {
+  id varchar [pk]
+  product_id varchar [not null]
+  image_url varchar [not null]
+  sort_order int
+  created_at datetime
+}
+
+Table product_specs {
+  id varchar [pk]
+  product_id varchar [not null]
+  spec_name varchar [not null]
+  spec_value varchar [not null]
+  created_at datetime
+  updated_at datetime
+}
+
+Table product_variants {
+  id varchar [pk]
+  product_id varchar [not null]
+  variant_sku varchar [unique]
+  variant_name varchar [not null]
+  price_delta decimal
+  override_price decimal
+  stock int
+  is_active boolean
+  created_at datetime
+  updated_at datetime
+}
+
+Table carts {
+  id varchar [pk]
+  user_id varchar [not null]
+  created_at datetime
+  updated_at datetime
+}
+
+Table cart_items {
+  id varchar [pk]
+  cart_id varchar [not null]
+  product_id varchar [not null]
+  variant_id varchar
+  quantity int [not null]
+  unit_price_snapshot decimal [not null]
+  compare_price_snapshot decimal
+  is_selected boolean
+  created_at datetime
+  updated_at datetime
+}
+
+Table orders {
+  id varchar [pk]
+  order_number varchar [unique, not null]
+  user_id varchar
+  user_address_id varchar
+  recipient_name varchar
+  recipient_phone varchar
+  shipping_address_line_1 text
+  shipping_address_line_2 text
+  shipping_city varchar
+  shipping_province varchar
+  shipping_postal_code varchar
+  shipping_country_code varchar
+  shipping_method varchar
+  tracking_number varchar
+  status order_status
+  currency_code varchar
+  subtotal decimal [not null]
+  discount_total decimal
+  shipping_total decimal
+  service_fee_total decimal
+  tax_total decimal
+  grand_total decimal [not null]
+  paid_at datetime
+  placed_at datetime
+  shipped_at datetime
+  delivered_at datetime
+  cancelled_at datetime
+  notes text
+  created_at datetime
+  updated_at datetime
+}
+
+Table order_items {
+  id varchar [pk]
+  order_id varchar [not null]
+  product_id varchar [not null]
+  variant_id varchar
+  product_name_snapshot varchar [not null]
+  sku_snapshot varchar
+  variant_name_snapshot varchar
+  quantity int [not null]
+  unit_price decimal [not null]
+  discount_total decimal
+  tax_total decimal
+  line_total decimal [not null]
+  created_at datetime
+  updated_at datetime
+}
+
+Table order_item_specs {
+  id varchar [pk]
+  order_item_id varchar [not null]
+  spec_name varchar [not null]
+  spec_value varchar [not null]
+}
+
+Table order_tax_lines {
+  id varchar [pk]
+  order_id varchar
+  order_item_id varchar
+  tax_name varchar [not null]
+  tax_rate decimal
+  tax_amount decimal [not null]
+}
+
+Table payments {
+  id varchar [pk]
+  order_id varchar [not null]
+  payment_method varchar
+  payment_channel varchar
+  payer_name varchar
+  payer_bank varchar
+  reference_number varchar
+  amount decimal [not null]
+  status payment_status
+  payment_proof_url varchar
+  paid_at datetime
+  verified_at datetime
+  created_at datetime
+  updated_at datetime
+}
+
+Table chat_conversations {
+  id varchar [pk]
+  customer_user_id varchar
+  customer_name varchar
+  customer_email varchar
+  status varchar
+  created_at datetime
+  last_activity_at datetime
+  customer_read_at datetime
+  agent_read_at datetime
+  closed_at datetime
+}
+
+Table chat_messages {
+  id varchar [pk]
+  conversation_id varchar [not null]
+  sender_user_id varchar
+  sender_role chat_sender_role
+  message text [not null]
+  is_read boolean
+  created_at datetime
+}
+
+Table product_reviews {
+  id varchar [pk]
+  user_id varchar [not null]
+  product_id varchar [not null]
+  order_item_id varchar
+  rating int [not null]
+  comment text
+  image_urls json
+  created_at datetime
+  updated_at datetime
+  deleted_at datetime
+}
+
+Table announcements {
+  id varchar [pk]
+  created_by_user_id varchar [not null]
+  title varchar [not null]
+  content text [not null]
+  target_scope varchar
+  is_active boolean
+  created_at datetime
+  updated_at datetime
+}
+
+Table notifications {
+  id varchar [pk]
+  user_id varchar
+  type notification_type
+  title varchar [not null]
+  content text [not null]
+  is_read boolean
+  order_id varchar
+  announcement_id varchar
+  created_at datetime
+  read_at datetime
+}
+
+Table app_settings {
+  id varchar [pk]
+  setting_key varchar [unique, not null]
+  setting_name varchar
+  setting_value text
+  created_at datetime
+  updated_at datetime
+}
+
+Table audit_logs {
+  id varchar [pk]
+  user_id varchar
+  entity_name varchar
+  entity_id varchar
+  action varchar
+  payload json
+  created_at datetime
+}
+
+Ref: user_addresses.user_id > users.id
+Ref: user_roles.user_id > users.id
+Ref: user_roles.role_id > roles.id
+Ref: role_permissions.role_id > roles.id
+Ref: role_permissions.permission_id > permissions.id
+
+Ref: product_categories.parent_id > product_categories.id
+Ref: products.category_id > product_categories.id
+Ref: product_images.product_id > products.id
+Ref: product_specs.product_id > products.id
+Ref: product_variants.product_id > products.id
+
+Ref: carts.user_id > users.id
+Ref: cart_items.cart_id > carts.id
+Ref: cart_items.product_id > products.id
+Ref: cart_items.variant_id > product_variants.id
+
+Ref: orders.user_id > users.id
+Ref: orders.user_address_id > user_addresses.id
+Ref: order_items.order_id > orders.id
+Ref: order_items.product_id > products.id
+Ref: order_items.variant_id > product_variants.id
+Ref: order_item_specs.order_item_id > order_items.id
+Ref: order_tax_lines.order_id > orders.id
+Ref: order_tax_lines.order_item_id > order_items.id
+Ref: payments.order_id > orders.id
+
+Ref: chat_conversations.customer_user_id > users.id
+Ref: chat_messages.conversation_id > chat_conversations.id
+Ref: chat_messages.sender_user_id > users.id
+
+Ref: product_reviews.user_id > users.id
+Ref: product_reviews.product_id > products.id
+Ref: product_reviews.order_item_id > order_items.id
+
+Ref: announcements.created_by_user_id > users.id
+Ref: notifications.user_id > users.id
+Ref: notifications.order_id > orders.id
+Ref: notifications.announcement_id > announcements.id
+
+Ref: audit_logs.user_id > users.id
