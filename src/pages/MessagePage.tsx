@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Send, User } from "lucide-react";
-import { MarketplaceHeader } from "@/components/MarketplaceHeader";
+import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 
 interface ChatMessage {
   id: string | number;
-  sender: "customer" | "admin";
+  chat_sender_role: "customer" | "admin";
   text: string;
   time: string;
+  is_read: boolean;
 }
 
 function now() {
@@ -20,21 +21,24 @@ function now() {
 const INITIAL_MESSAGES: ChatMessage[] = [
   {
     id: 1,
-    sender: "admin",
+    chat_sender_role: "admin",
     text: "Halo! Ada yang bisa kami bantu terkait pesanan atau produk kamu?",
     time: "09.12",
+    is_read: true,
   },
   {
     id: 2,
-    sender: "customer",
+    chat_sender_role: "customer",
     text: "Halo, mau tanya apakah kelas gambar teknik ada ?",
     time: "09.14",
+    is_read: true,
   },
   {
     id: 3,
-    sender: "admin",
+    chat_sender_role: "admin",
     text: "Maaf kak, perusahaan kami tidak menyediakan kelas gambar teknik",
     time: "09.15",
+    is_read: false,
   },
 ];
 
@@ -53,7 +57,13 @@ export default function MessagePage() {
 
     setMessages((prev) => [
       ...prev,
-      { id: Date.now(), sender: "customer", text, time: now() },
+      {
+        id: Date.now(),
+        chat_sender_role: "customer",
+        text,
+        time: now(),
+        is_read: false,
+      },
     ]);
     setDraft("");
   }
@@ -96,7 +106,7 @@ export default function MessagePage() {
             ref={scrollRef}
             className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
             {messages.map((msg) => {
-              const isCustomer = msg.sender === "customer";
+              const isCustomer = msg.chat_sender_role === "customer";
               return (
                 <div
                   key={msg.id}

@@ -2,16 +2,13 @@ import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { createCartItem, type CartItem } from "@/lib/cart";
 import type { Product } from "@/lib/products";
-import { CartContext } from "@/components/cartContext";
+import { CartContext } from "@/components/cart/cartContext";
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
 
   const addToCart = (product: Product, quantity = 1, variant?: string) => {
     const resolvedVariant = variant ?? "Varian standar";
-    // id unik per kombinasi produk+variant, supaya baris keranjang untuk
-    // variant berbeda dari produk yang sama tetap bisa dibedakan/diubah
-    // secara independen (quantity, hapus, centang) tanpa saling bentrok.
     const cartItemId = `${product.id}::${resolvedVariant}`;
 
     setItems((prev) => {
@@ -23,17 +20,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
             : item,
         );
       }
-
-      return [
-        ...prev,
-        createCartItem({
-          ...product,
-          id: cartItemId,
-          quantity,
-          selected: true,
-          variant: resolvedVariant,
-        }),
-      ];
+      return [...prev, createCartItem(product, quantity, resolvedVariant)];
     });
   };
 
@@ -70,16 +57,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const toggleSelectStore = (storeId: string) => {
-    setItems((prev) => {
-      const storeItems = prev.filter((item) => item.storeId === storeId);
-      const shouldSelect = storeItems.some((item) => !item.selected);
-      return prev.map((item) =>
-        item.storeId === storeId ? { ...item, selected: shouldSelect } : item,
-      );
-    });
-  };
-
   const itemCount = useMemo(
     () => items.reduce((sum, item) => sum + item.quantity, 0),
     [items],
@@ -94,7 +71,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
       clearSelected,
       toggleSelectItem,
       toggleSelectAll,
-      toggleSelectStore,
       itemCount,
     }),
     [items, itemCount],

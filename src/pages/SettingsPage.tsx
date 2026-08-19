@@ -1,8 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Bell, Eye, EyeOff, Lock, Moon } from "lucide-react";
-import { MarketplaceHeader } from "@/components/MarketplaceHeader";
-import { useTheme } from "@/hooks/use-theme";
+import { ArrowLeft, Bell, Eye, EyeOff, Lock } from "lucide-react";
+import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 
 interface PasswordForm {
   current: string;
@@ -52,9 +51,6 @@ function ToggleRow({
 }
 
 export default function SettingsPage() {
-  const { theme, toggleTheme } = useTheme();
-  const isDark = theme === "dark";
-
   const [passwordForm, setPasswordForm] = useState<PasswordForm>({
     current: "",
     next: "",
@@ -92,7 +88,6 @@ export default function SettingsPage() {
       return;
     }
 
-    // TODO: sambungkan ke API ganti password
     console.log("Ganti password:", passwordForm);
     setPasswordSuccess(true);
     setPasswordForm({ current: "", next: "", confirm: "" });
@@ -115,7 +110,6 @@ export default function SettingsPage() {
           Kelola keamanan akun dan preferensi notifikasi kamu.
         </p>
 
-        {/* Keamanan Akun */}
         <div className="mt-6 rounded-xl border border-border bg-surface p-6">
           <div className="flex items-center gap-2">
             <Lock className="h-4 w-4 text-primary" />
@@ -197,7 +191,6 @@ export default function SettingsPage() {
           </form>
         </div>
 
-        {/* Notifikasi */}
         <div className="mt-4 rounded-xl border border-border bg-surface p-6">
           <div className="flex items-center gap-2">
             <Bell className="h-4 w-4 text-primary" />
@@ -222,25 +215,6 @@ export default function SettingsPage() {
               description="Pengingat sebelum jadwal kelas yang kamu ikuti dimulai."
               checked={notifications.classReminder}
               onChange={() => toggleNotification("classReminder")}
-            />
-          </div>
-        </div>
-
-        {/* Preferensi Tampilan */}
-        <div className="mt-4 rounded-xl border border-border bg-surface p-6">
-          <div className="flex items-center gap-2">
-            <Moon className="h-4 w-4 text-primary" />
-            <h2 className="text-base font-semibold text-text">
-              Preferensi Tampilan
-            </h2>
-          </div>
-
-          <div className="mt-2">
-            <ToggleRow
-              label="Mode Gelap"
-              description="Ganti tampilan website ke mode gelap."
-              checked={isDark}
-              onChange={toggleTheme}
             />
           </div>
         </div>

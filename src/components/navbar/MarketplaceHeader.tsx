@@ -1,14 +1,16 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Search, ShoppingCart } from "lucide-react";
-import { ThemeToggle } from "@/components/Themetoggle";
-import { NotificationMenu } from "@/components/NotificationMenu";
-import { ProfileMenu } from "@/components/ProfileMenu";
-import { MobileMenu } from "@/components/MobileMenu";
-import { useCart } from "@/components/useCart";
+import { ThemeToggle } from "@/components/navbar/Themetoggle";
+import { NotificationMenu } from "@/components/navbar/NotificationMenu";
+import { ProfileMenu } from "@/components/navbar/ProfileMenu";
+import { MobileMenu } from "@/components/navbar/MobileMenu";
+import { useCart } from "@/components/cart/useCart";
+import { useAuth } from "@/components/auth/UseAuth";
 
 export function MarketplaceHeader() {
   const { itemCount } = useCart();
+  const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
@@ -81,7 +83,6 @@ export function MarketplaceHeader() {
 
           <div className="hidden items-center gap-1 sm:gap-2 lg:flex">
             <NotificationMenu />
-
             <ThemeToggle />
           </div>
 
@@ -89,7 +90,22 @@ export function MarketplaceHeader() {
             <MobileMenu />
           </div>
 
-          <ProfileMenu name="I Putu" />
+          {isAuthenticated ? (
+            <ProfileMenu name={user?.full_name || "User"} />
+          ) : (
+            <div className="hidden items-center gap-2 lg:flex">
+              <Link
+                to="/sign-in"
+                className="rounded-lg px-4 py-2 text-sm font-medium text-text hover:bg-border/40 transition-colors">
+                Masuk
+              </Link>
+              <Link
+                to="/sign-up"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 transition-opacity">
+                Daftar
+              </Link>
+            </div>
+          )}
         </div>
       </div>
     </header>

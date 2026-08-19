@@ -10,7 +10,6 @@ export interface CartContextValue {
   clearSelected: () => void;
   toggleSelectItem: (id: CartItem["id"]) => void;
   toggleSelectAll: () => void;
-  toggleSelectStore: (storeId: string) => void;
   itemCount: number;
 }
 

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, ChevronDown, MessageCircle } from "lucide-react";
-import { MarketplaceHeader } from "@/components/MarketplaceHeader";
+import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 
 interface FaqItem {
   question: string;
@@ -143,7 +143,6 @@ export default function HelpPage() {
           ))}
         </div>
 
-        {/* CTA ke chat */}
         <div className="mt-6 flex flex-col items-center gap-3 rounded-xl border border-border bg-surface px-6 py-8 text-center">
           <p className="text-sm text-text-secondary">
             Masih belum ketemu jawabannya?

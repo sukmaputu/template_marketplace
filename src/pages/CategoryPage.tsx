@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
-import { MarketplaceHeader } from "@/components/MarketplaceHeader";
+import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { MarketplaceFooter } from "@/components/MarketplaceFooter";
 import { ProductCard } from "@/components/ProductCard";
 import { CATEGORY_DETAILS, PRODUCTS } from "@/lib/products";
@@ -28,8 +28,10 @@ export default function CategoryPage() {
       (product) => product.categoryId === categoryId,
     );
     const sorted = [...filtered];
-    if (sortBy === "price-asc") sorted.sort((a, b) => a.price - b.price);
-    if (sortBy === "price-desc") sorted.sort((a, b) => b.price - a.price);
+    if (sortBy === "price-asc")
+      sorted.sort((a, b) => a.basePrice - b.basePrice);
+    if (sortBy === "price-desc")
+      sorted.sort((a, b) => b.basePrice - a.basePrice);
     return sorted;
   }, [categoryId, sortBy]);
 

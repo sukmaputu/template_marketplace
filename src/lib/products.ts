@@ -1,23 +1,52 @@
+export type ProductType = "physical" | "digital" | "service";
+
+export interface ProductVariant {
+  id: string | number;
+  variantName: string;
+  stock?: number;
+  overridePrice?: number;
+  priceDelta?: number;
+}
+
 export interface Product {
   id: string | number;
   name: string;
   description?: string;
   image?: string;
-  images?: string[]; // Properti untuk carousel
-  price: number;
-  originalPrice?: number;
-  discountPercent?: number;
+  images?: string[];
+  type: ProductType;
+  basePrice: number;
+  comparePrice?: number;
+  stock?: number;
+  variants?: ProductVariant[];
   rating?: number;
   reviewCount?: number;
-  storeId?: string;
-  storeName?: string;
   categoryId?: string;
-  schedules?: string[]; // Opsional — kalau kosong, pakai DEFAULT_SCHEDULES di modal
-  levels?: string[]; // Opsional — kalau kosong, pakai DEFAULT_LEVELS di modal
+  schedules?: string[];
+  levels?: string[];
+}
+
+export function getVariantPrice(
+  product: Product,
+  variant?: ProductVariant,
+): number {
+  if (!variant) return product.basePrice;
+  if (variant.overridePrice !== undefined) return variant.overridePrice;
+  if (variant.priceDelta !== undefined)
+    return product.basePrice + variant.priceDelta;
+  return product.basePrice;
+}
+
+export function getDiscountPercent(product: Product): number | undefined {
+  if (!product.comparePrice || product.comparePrice <= product.basePrice) {
+    return undefined;
+  }
+  return Math.round(
+    ((product.comparePrice - product.basePrice) / product.comparePrice) * 100,
+  );
 }
 
 export const PRODUCTS: Product[] = [
-  // ===== Teknologi Informasi =====
   {
     id: 1,
     name: "Pelatihan Desain Grafis",
@@ -29,13 +58,11 @@ export const PRODUCTS: Product[] = [
       "/products/data.jpg",
       "/products/desin.jpg",
     ],
-    price: 50000,
-    originalPrice: 100000,
-    discountPercent: 10,
+    type: "digital",
+    basePrice: 50000,
+    comparePrice: 100000,
     rating: 0,
     reviewCount: 0,
-    storeId: "store-digital",
-    storeName: "Studio Digital",
     categoryId: "teknologi-informasi",
   },
   {
@@ -45,11 +72,10 @@ export const PRODUCTS: Product[] = [
       "Kuasai analisis data dan visualisasi dashboard menggunakan Power BI dari dasar sampai studi kasus nyata.",
     image: "/products/data.jpg",
     images: ["/products/data.jpg", "/products/desin.jpg"],
-    price: 100000,
+    type: "digital",
+    basePrice: 100000,
     rating: 0,
     reviewCount: 0,
-    storeId: "store-data",
-    storeName: "Labs Data",
     categoryId: "teknologi-informasi",
   },
   {
@@ -59,13 +85,11 @@ export const PRODUCTS: Product[] = [
       "Bangun design system, wireframe, dan prototipe interaktif untuk produk digital modern.",
     image: "/products/data.jpg",
     images: ["/products/data.jpg", "/products/desin.jpg", "/products/data.jpg"],
-    price: 120000,
-    originalPrice: 150000,
-    discountPercent: 20,
+    type: "digital",
+    basePrice: 120000,
+    comparePrice: 150000,
     rating: 4,
     reviewCount: 14,
-    storeId: "store-creative",
-    storeName: "Creative Hub",
     categoryId: "teknologi-informasi",
   },
 
@@ -76,13 +100,11 @@ export const PRODUCTS: Product[] = [
     description:
       "Pahami dasar perpajakan bisnis, perhitungan, dan pelaporan pajak yang benar sesuai regulasi terbaru.",
     image: "/products/data.jpg",
-    price: 90000,
-    originalPrice: 120000,
-    discountPercent: 25,
+    type: "digital",
+    basePrice: 90000,
+    comparePrice: 120000,
     rating: 0,
     reviewCount: 0,
-    storeId: "store-finance",
-    storeName: "Finance Academy",
     categoryId: "keuangan",
   },
   {
@@ -91,11 +113,10 @@ export const PRODUCTS: Product[] = [
     description:
       "Belajar menyusun rencana anggaran biaya proyek secara akurat, dari estimasi hingga kontrol anggaran.",
     image: "/products/data.jpg",
-    price: 110000,
+    type: "digital",
+    basePrice: 110000,
     rating: 0,
     reviewCount: 0,
-    storeId: "store-finance",
-    storeName: "Finance Academy",
     categoryId: "keuangan",
   },
   {
@@ -104,13 +125,11 @@ export const PRODUCTS: Product[] = [
     description:
       "Kuasai pencatatan transaksi, neraca, dan laporan laba rugi untuk kebutuhan bisnis kecil-menengah.",
     image: "/products/data.jpg",
-    price: 85000,
-    originalPrice: 100000,
-    discountPercent: 15,
+    type: "digital",
+    basePrice: 85000,
+    comparePrice: 100000,
     rating: 0,
     reviewCount: 0,
-    storeId: "store-finance",
-    storeName: "Finance Academy",
     categoryId: "keuangan",
   },
   {
@@ -119,11 +138,10 @@ export const PRODUCTS: Product[] = [
     description:
       "Strategi mengatur pemasukan, tabungan, investasi, dan dana darurat untuk keuangan pribadi yang sehat.",
     image: "/products/data.jpg",
-    price: 75000,
+    type: "digital",
+    basePrice: 75000,
     rating: 0,
     reviewCount: 0,
-    storeId: "store-finance",
-    storeName: "Finance Academy",
     categoryId: "keuangan",
   },
   {
@@ -132,28 +150,24 @@ export const PRODUCTS: Product[] = [
     description:
       "Belajar membaca dan menganalisis laporan keuangan perusahaan untuk pengambilan keputusan bisnis.",
     image: "/products/data.jpg",
-    price: 130000,
-    originalPrice: 160000,
-    discountPercent: 19,
+    type: "digital",
+    basePrice: 130000,
+    comparePrice: 160000,
     rating: 0,
     reviewCount: 0,
-    storeId: "store-finance",
-    storeName: "Finance Academy",
     categoryId: "keuangan",
   },
 
-  // ===== Asuransi =====
   {
     id: 9,
     name: "Manajemen Asuransi",
     description:
       "Pelajari prinsip dasar manajemen risiko dan pengelolaan produk asuransi secara menyeluruh.",
     image: "/products/desin.jpg",
-    price: 95000,
+    type: "digital",
+    basePrice: 95000,
     rating: 0,
     reviewCount: 0,
-    storeId: "store-insurance",
-    storeName: "Insurance Institute",
     categoryId: "asuransi",
   },
   {
@@ -162,13 +176,11 @@ export const PRODUCTS: Product[] = [
     description:
       "Pahami proses penilaian risiko dan penentuan premi dalam industri asuransi.",
     image: "/products/desin.jpg",
-    price: 105000,
-    originalPrice: 130000,
-    discountPercent: 19,
+    type: "digital",
+    basePrice: 105000,
+    comparePrice: 130000,
     rating: 0,
     reviewCount: 0,
-    storeId: "store-insurance",
-    storeName: "Insurance Institute",
     categoryId: "asuransi",
   },
   {
@@ -177,11 +189,10 @@ export const PRODUCTS: Product[] = [
     description:
       "Kuasai alur proses klaim, verifikasi, hingga penyelesaian klaim asuransi secara profesional.",
     image: "/products/desin.jpg",
-    price: 88000,
+    type: "digital",
+    basePrice: 88000,
     rating: 0,
     reviewCount: 0,
-    storeId: "store-insurance",
-    storeName: "Insurance Institute",
     categoryId: "asuransi",
   },
   {
@@ -190,28 +201,24 @@ export const PRODUCTS: Product[] = [
     description:
       "Strategi memilih dan merencanakan proteksi asuransi jiwa dan kesehatan sesuai kebutuhan.",
     image: "/products/desin.jpg",
-    price: 99000,
-    originalPrice: 115000,
-    discountPercent: 14,
+    type: "digital",
+    basePrice: 99000,
+    comparePrice: 115000,
     rating: 0,
     reviewCount: 0,
-    storeId: "store-insurance",
-    storeName: "Insurance Institute",
     categoryId: "asuransi",
   },
 
-  // ===== Teknologi Mesin =====
   {
     id: 13,
     name: "Gambar Teknik",
     description:
       "Belajar membaca dan membuat gambar teknik mesin sesuai standar industri.",
     image: "/products/data.jpg",
-    price: 115000,
+    type: "digital",
+    basePrice: 115000,
     rating: 0,
     reviewCount: 0,
-    storeId: "store-mesin",
-    storeName: "Teknik Mesin Pro",
     categoryId: "teknologi-mesin",
   },
   {
@@ -220,13 +227,11 @@ export const PRODUCTS: Product[] = [
     description:
       "Pahami prinsip kerja mesin, gaya, dan sistem mekanik dasar untuk aplikasi industri.",
     image: "/products/data.jpg",
-    price: 100000,
-    originalPrice: 125000,
-    discountPercent: 20,
+    type: "digital",
+    basePrice: 100000,
+    comparePrice: 125000,
     rating: 0,
     reviewCount: 0,
-    storeId: "store-mesin",
-    storeName: "Teknik Mesin Pro",
     categoryId: "teknologi-mesin",
   },
   {
@@ -235,11 +240,10 @@ export const PRODUCTS: Product[] = [
     description:
       "Pelajari teknik maintenance preventif dan troubleshooting mesin industri.",
     image: "/products/data.jpg",
-    price: 140000,
+    type: "digital",
+    basePrice: 140000,
     rating: 0,
     reviewCount: 0,
-    storeId: "store-mesin",
-    storeName: "Teknik Mesin Pro",
     categoryId: "teknologi-mesin",
   },
   {
@@ -248,18 +252,15 @@ export const PRODUCTS: Product[] = [
     description:
       "Kenali dasar pemrograman dan pengoperasian mesin CNC untuk proses manufaktur modern.",
     image: "/products/data.jpg",
-    price: 150000,
-    originalPrice: 180000,
-    discountPercent: 17,
+    type: "digital",
+    basePrice: 150000,
+    comparePrice: 180000,
     rating: 0,
     reviewCount: 0,
-    storeId: "store-mesin",
-    storeName: "Teknik Mesin Pro",
     categoryId: "teknologi-mesin",
   },
 ];
 
-// Pastikan bagian ini ada agar tidak terjadi error "export named CATEGORY_DETAILS"
 export const CATEGORY_DETAILS = [
   {
     id: "teknologi-informasi",

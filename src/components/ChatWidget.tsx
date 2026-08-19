@@ -3,9 +3,10 @@ import { MessageCircle, X, Send, User, Minus } from "lucide-react";
 
 interface ChatMessage {
   id: string | number;
-  sender: "customer" | "admin";
+  chat_sender_role: "customer" | "admin";
   text: string;
   time: string;
+  is_read: boolean;
 }
 
 function now() {
@@ -18,16 +19,20 @@ function now() {
 const INITIAL_MESSAGES: ChatMessage[] = [
   {
     id: 1,
-    sender: "admin",
+    chat_sender_role: "admin",
     text: "Halo! Ada yang bisa kami bantu terkait pesanan atau produk kamu?",
     time: "09.12",
+    is_read: true,
   },
 ];
+
+const INITIAL_UNREAD = 1;
 
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [draft, setDraft] = useState("");
+  const [unreadCount, setUnreadCount] = useState(INITIAL_UNREAD);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -39,17 +44,52 @@ export function ChatWidget() {
     }
   }, [messages, isOpen]);
 
-  // Memungkinkan tombol di halaman lain (mis. Pusat Bantuan) membuka widget
-  // ini dari luar, tanpa perlu lifting state/context — cukup dispatch:
-  // window.dispatchEvent(new Event("open-chat-widget"))
   useEffect(() => {
     function handleExternalOpen() {
       setIsOpen(true);
+      setUnreadCount(0);
     }
     window.addEventListener("open-chat-widget", handleExternalOpen);
     return () =>
       window.removeEventListener("open-chat-widget", handleExternalOpen);
   }, []);
+
+  function openWidget() {
+    setIsOpen(true);
+    setUnreadCount(0);
+  }
+
+  function closeWidget() {
+    setIsOpen(false);
+  }
+
+  function handleToggle() {
+    if (isOpen) {
+      closeWidget();
+    } else {
+      openWidget();
+    }
+  }
+
+  function addAdminMessage(text: string) {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now() + Math.random(),
+        chat_sender_role: "admin",
+        text,
+        time: now(),
+        is_read: false,
+      },
+    ]);
+
+    setIsOpen((currentlyOpen) => {
+      if (!currentlyOpen) {
+        setUnreadCount((prev) => prev + 1);
+      }
+      return currentlyOpen;
+    });
+  }
 
   function handleSend() {
     const text = draft.trim();
@@ -57,30 +97,25 @@ export function ChatWidget() {
 
     setMessages((prev) => [
       ...prev,
-      { id: Date.now(), sender: "customer", text, time: now() },
+      {
+        id: Date.now(),
+        chat_sender_role: "customer",
+        text,
+        time: now(),
+        is_read: true,
+      },
     ]);
     setDraft("");
 
-    // Simulasi balasan admin otomatis (opsional)
     setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now() + 1,
-          sender: "admin",
-          text: "Terima kasih pesannya, mohon tunggu sebentar ya kak.",
-          time: now(),
-        },
-      ]);
+      addAdminMessage("Terima kasih pesannya, mohon tunggu sebentar ya kak.");
     }, 1500);
   }
 
   return (
     <div className="fixed bottom-6 right-6 z-[100] flex flex-col items-end">
-      {/* Window Chat Pop-up */}
       {isOpen && (
         <div className="mb-4 flex h-[500px] w-[350px] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl animate-in slide-in-from-bottom-5 duration-300 sm:w-[400px]">
-          {/* Header Pop-up (Warna Primary seperti WA) */}
           <div className="flex items-center justify-between bg-primary px-4 py-4 text-white">
             <div className="flex items-center gap-3">
               <div className="relative">
@@ -97,18 +132,17 @@ export function ChatWidget() {
               </div>
             </div>
             <button
-              onClick={() => setIsOpen(false)}
+              onClick={closeWidget}
               className="rounded-full p-1 hover:bg-white/20 transition-colors">
               <Minus className="h-5 w-5" />
             </button>
           </div>
 
-          {/* Area Pesan */}
           <div
             ref={scrollRef}
             className="flex-1 space-y-4 overflow-y-auto bg-[color:var(--color-background)] p-4">
             {messages.map((msg) => {
-              const isCustomer = msg.sender === "customer";
+              const isCustomer = msg.chat_sender_role === "customer";
               return (
                 <div
                   key={msg.id}
@@ -132,7 +166,6 @@ export function ChatWidget() {
             })}
           </div>
 
-          {/* Input Area */}
           <div className="border-t border-border bg-surface p-4">
             <div className="flex items-center gap-2">
               <input
@@ -154,10 +187,9 @@ export function ChatWidget() {
         </div>
       )}
 
-      {/* Button Floating Terapung */}
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        className={`flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all duration-300 hover:scale-110 active:scale-95 ${
+        onClick={handleToggle}
+        className={`relative flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all duration-300 hover:scale-110 active:scale-95 ${
           isOpen ? "bg-red-500 rotate-90" : "bg-primary"
         } text-white`}>
         {isOpen ? (
@@ -165,9 +197,9 @@ export function ChatWidget() {
         ) : (
           <MessageCircle className="h-7 w-7" />
         )}
-        {!isOpen && (
+        {!isOpen && unreadCount > 0 && (
           <span className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[11px] font-bold text-white border-2 border-surface animate-bounce">
-            1
+            {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         )}
       </button>

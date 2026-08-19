@@ -405,4 +405,8 @@ Ref: notifications.user_id > users.id
 Ref: notifications.order_id > orders.id
 Ref: notifications.announcement_id > announcements.id
 
+<<<<<<< HEAD
 Ref: audit_logs.user_id > users.id
+=======
+Ref: audit_logs.user_id > users.id
+>>>>>>> 6169c21 (Feat: update at 19 Agustus)

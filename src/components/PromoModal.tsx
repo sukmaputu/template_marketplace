@@ -19,7 +19,6 @@ export function PromoModal({ onClose }: PromoModalProps) {
         className={`relative w-full max-w-md overflow-hidden border border-border bg-surface p-6 shadow-xl transition-all duration-500 ${
           isAnimate ? "scale-100 opacity-100" : "scale-95 opacity-0"
         }`}>
-        {/* Header Modal - Menggunakan variabel warna project */}
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-bold text-text">
             Promo Spesial <span className="inline-block">🔥</span>
@@ -31,18 +30,12 @@ export function PromoModal({ onClose }: PromoModalProps) {
           </button>
         </div>
 
-        {/* Kotak Abu-abu Pengganti Gambar (Tanpa Rounded) */}
         <div className="relative flex aspect-[4/5] w-full items-center justify-center bg-gray-200 dark:bg-gray-800">
-          <p className="text-sm font-medium text-gray-400 dark:text-gray-600">
-            Tempat Gambar Promo
-          </p>
-
-          {/* Contoh jika nanti ingin pakai <img> tinggal hapus p di atas dan pakai ini: */}
-          {/* <img
-            src="/promo-banner.png"
+          <img
+            src="/banner/promo.jpg"
             alt="Promo"
             className="h-full w-full object-cover"
-          /> */}
+          />
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import type { Product } from "@/lib/products";
+import { getDiscountPercent, type Product } from "@/lib/products";
 
 function formatRupiah(value: number) {
   return `Rp ${value.toLocaleString("id-ID")}`;
@@ -10,7 +10,8 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product, onSelect }: ProductCardProps) {
-  const { name, image, price, originalPrice, discountPercent } = product;
+  const { name, image, basePrice, comparePrice } = product;
+  const discountPercent = getDiscountPercent(product);
 
   return (
     <button
@@ -44,11 +45,11 @@ export function ProductCard({ product, onSelect }: ProductCardProps) {
 
         <div className="flex items-baseline gap-2">
           <span className="text-base font-bold text-primary">
-            {formatRupiah(price)}
+            {formatRupiah(basePrice)}
           </span>
-          {originalPrice && originalPrice > price ? (
+          {comparePrice && comparePrice > basePrice ? (
             <span className="text-sm text-text-secondary line-through">
-              {formatRupiah(originalPrice)}
+              {formatRupiah(comparePrice)}
             </span>
           ) : null}
         </div>

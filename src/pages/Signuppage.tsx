@@ -3,7 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Lock, Mail, MapPin, Phone, User } from "lucide-react";
 
 interface FormValues {
-  name: string;
+  full_name: string; // BE: Ganti dari name
+  username: string; // BE: Tambah username
   phone: string;
   address: string;
   email: string;
@@ -14,11 +15,11 @@ interface FormValues {
 type FormErrors = Partial<Record<keyof FormValues, string>>;
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 const PHONE_REGEX = /^(\+62|62|0)8[1-9][0-9]{7,11}$/;
 
 const INITIAL_VALUES: FormValues = {
-  name: "",
+  full_name: "",
+  username: "",
   phone: "",
   address: "",
   email: "",
@@ -40,27 +41,29 @@ export default function SignUpPage() {
   function validate(): boolean {
     const nextErrors: FormErrors = {};
 
-    if (!values.name.trim()) {
-      nextErrors.name = "Nama wajib diisi.";
+    // full_name wajib
+    if (!values.full_name.trim()) {
+      nextErrors.full_name = "Nama lengkap wajib diisi.";
     }
 
-    if (!values.phone.trim()) {
-      nextErrors.phone = "No. Telepon wajib diisi.";
-    } else if (!PHONE_REGEX.test(values.phone.trim())) {
-      nextErrors.phone =
-        "Format nomor telepon tidak valid. Contoh: 08123456789.";
+    // username opsional, tapi jika diisi kita cek panjangnya
+    if (values.username.trim() && values.username.length < 3) {
+      nextErrors.username = "Username minimal 3 karakter.";
     }
 
-    if (!values.address.trim()) {
-      nextErrors.address = "Alamat rumah wajib diisi.";
+    // phone opsional (BE report), jika diisi baru validasi format
+    if (values.phone.trim() && !PHONE_REGEX.test(values.phone.trim())) {
+      nextErrors.phone = "Format nomor telepon tidak valid.";
     }
 
+    // email wajib
     if (!values.email.trim()) {
       nextErrors.email = "Email wajib diisi.";
     } else if (!EMAIL_REGEX.test(values.email.trim())) {
       nextErrors.email = "Format email tidak valid.";
     }
 
+    // password wajib
     if (!values.password) {
       nextErrors.password = "Password wajib diisi.";
     } else if (values.password.length < 8) {
@@ -81,7 +84,17 @@ export default function SignUpPage() {
     e.preventDefault();
     if (!validate()) return;
 
-    console.log("Sign up:", values);
+    // Mapping ke format yang diminta BE
+    const payload = {
+      full_name: values.full_name,
+      username: values.username || null,
+      email: values.email,
+      password_hash: values.password, // User input password, BE yang akan hash
+      phone: values.phone || null,
+      address: values.address || null,
+    };
+
+    console.log("Sign up Payload:", payload);
     navigate("/sign-in");
   }
 
@@ -95,7 +108,7 @@ export default function SignUpPage() {
       <div className="w-full max-w-md rounded-xl border border-border bg-surface p-8">
         <div className="text-center">
           <img
-            src="/logo.png"
+            src="/logo/logo.png"
             alt="Logo"
             className="mx-auto h-12 w-auto object-contain"
           />
@@ -106,29 +119,57 @@ export default function SignUpPage() {
         </div>
 
         <form onSubmit={handleSubmit} noValidate className="mt-6 space-y-4">
+          {/* Full Name */}
           <div>
-            <label htmlFor="name" className="text-sm font-medium text-text">
-              Nama
+            <label
+              htmlFor="full_name"
+              className="text-sm font-medium text-text">
+              Nama Lengkap
             </label>
             <div className="relative mt-1.5">
               <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
               <input
-                id="name"
+                id="full_name"
                 type="text"
-                value={values.name}
-                onChange={(e) => setField("name", e.target.value)}
+                value={values.full_name}
+                onChange={(e) => setField("full_name", e.target.value)}
                 placeholder="Nama lengkap"
-                className={fieldClass(errors.name).replace("pr-10", "pr-3")}
+                className={fieldClass(errors.full_name).replace(
+                  "pr-10",
+                  "pr-3",
+                )}
               />
             </div>
-            {errors.name ? (
-              <p className="mt-1 text-xs text-red-600">{errors.name}</p>
-            ) : null}
+            {errors.full_name && (
+              <p className="mt-1 text-xs text-red-600">{errors.full_name}</p>
+            )}
           </div>
 
+          {/* Username - NEW FIELD */}
+          <div>
+            <label htmlFor="username" className="text-sm font-medium text-text">
+              Username (Opsional)
+            </label>
+            <div className="relative mt-1.5">
+              <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+              <input
+                id="username"
+                type="text"
+                value={values.username}
+                onChange={(e) => setField("username", e.target.value)}
+                placeholder="Username unik"
+                className={fieldClass(errors.username).replace("pr-10", "pr-3")}
+              />
+            </div>
+            {errors.username && (
+              <p className="mt-1 text-xs text-red-600">{errors.username}</p>
+            )}
+          </div>
+
+          {/* Phone */}
           <div>
             <label htmlFor="phone" className="text-sm font-medium text-text">
-              No. Telepon
+              No. Telepon (Opsional)
             </label>
             <div className="relative mt-1.5">
               <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
@@ -141,14 +182,15 @@ export default function SignUpPage() {
                 className={fieldClass(errors.phone).replace("pr-10", "pr-3")}
               />
             </div>
-            {errors.phone ? (
+            {errors.phone && (
               <p className="mt-1 text-xs text-red-600">{errors.phone}</p>
-            ) : null}
+            )}
           </div>
 
+          {/* Address */}
           <div>
             <label htmlFor="address" className="text-sm font-medium text-text">
-              Alamat Rumah
+              Alamat Rumah (Opsional)
             </label>
             <div className="relative mt-1.5">
               <MapPin className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-text-secondary" />
@@ -157,17 +199,15 @@ export default function SignUpPage() {
                 rows={2}
                 value={values.address}
                 onChange={(e) => setField("address", e.target.value)}
-                placeholder="Nama jalan, kelurahan, kecamatan, kota"
-                className={`w-full resize-none rounded-lg border bg-background py-2.5 pl-10 pr-3 text-sm text-text outline-none placeholder:text-text-secondary focus:border-primary ${
+                placeholder="Alamat lengkap kamu"
+                className={`w-full resize-none rounded-lg border bg-background py-2.5 pl-10 pr-3 text-sm text-text outline-none focus:border-primary ${
                   errors.address ? "border-red-500" : "border-border"
                 }`}
               />
             </div>
-            {errors.address ? (
-              <p className="mt-1 text-xs text-red-600">{errors.address}</p>
-            ) : null}
           </div>
 
+          {/* Email */}
           <div>
             <label htmlFor="email" className="text-sm font-medium text-text">
               Alamat Email
@@ -183,11 +223,12 @@ export default function SignUpPage() {
                 className={fieldClass(errors.email).replace("pr-10", "pr-3")}
               />
             </div>
-            {errors.email ? (
+            {errors.email && (
               <p className="mt-1 text-xs text-red-600">{errors.email}</p>
-            ) : null}
+            )}
           </div>
 
+          {/* Password & Confirm tetap sama */}
           <div>
             <label htmlFor="password" className="text-sm font-medium text-text">
               Password
@@ -205,9 +246,6 @@ export default function SignUpPage() {
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
-                aria-label={
-                  showPassword ? "Sembunyikan password" : "Tampilkan password"
-                }
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text">
                 {showPassword ? (
                   <EyeOff className="h-4 w-4" />
@@ -216,9 +254,9 @@ export default function SignUpPage() {
                 )}
               </button>
             </div>
-            {errors.password ? (
+            {errors.password && (
               <p className="mt-1 text-xs text-red-600">{errors.password}</p>
-            ) : null}
+            )}
           </div>
 
           <div>
@@ -240,11 +278,6 @@ export default function SignUpPage() {
               <button
                 type="button"
                 onClick={() => setShowConfirmPassword((v) => !v)}
-                aria-label={
-                  showConfirmPassword
-                    ? "Sembunyikan password"
-                    : "Tampilkan password"
-                }
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text">
                 {showConfirmPassword ? (
                   <EyeOff className="h-4 w-4" />
@@ -253,11 +286,11 @@ export default function SignUpPage() {
                 )}
               </button>
             </div>
-            {errors.confirmPassword ? (
+            {errors.confirmPassword && (
               <p className="mt-1 text-xs text-red-600">
                 {errors.confirmPassword}
               </p>
-            ) : null}
+            )}
           </div>
 
           <button
@@ -270,7 +303,7 @@ export default function SignUpPage() {
         <p className="mt-6 text-center text-sm text-text-secondary">
           Sudah punya akun?{" "}
           <Link
-            to="/login"
+            to="/sign-in"
             className="font-medium text-primary hover:opacity-80">
             Sign in
           </Link>

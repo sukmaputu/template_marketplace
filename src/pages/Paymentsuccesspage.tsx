@@ -1,18 +1,24 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "motion/react";
-import { ArrowRight } from "lucide-react";
-import { MarketplaceHeader } from "@/components/MarketplaceHeader";
+import { PDFDownloadLink } from "@react-pdf/renderer";
+import { ArrowRight, Download } from "lucide-react";
+import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { MarketplaceFooter } from "@/components/MarketplaceFooter";
 import { ProductCard } from "@/components/ProductCard";
 import { ProductQuickViewModal } from "@/components/Productquickviewmodal";
+import {
+  InvoiceDocument,
+  type InvoiceItem,
+  type InvoiceCustomer,
+} from "@/components/Invoicedocument";
 import { PRODUCTS } from "@/lib/products";
 import type { Product } from "@/lib/products";
 
 const RECOMMENDATION_COUNT = 4;
 
 function formatRupiah(value: number) {
-  return `Rp${value.toLocaleString("id-ID")}`;
+  return `Rp${(value || 0).toLocaleString("id-ID")}`;
 }
 
 function pickRandomProducts(excludeIds: (string | number)[], count: number) {
@@ -27,18 +33,43 @@ export default function PaymentSuccessPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   const orderState = location.state as
-    | { totalPaid?: number; itemIds?: (string | number)[]; orderId?: string }
+    | {
+        totalPaid?: number;
+        itemIds?: (string | number)[];
+        orderId?: string;
+        items?: InvoiceItem[];
+        subtotal?: number;
+        packagingFee?: number;
+        customer?: InvoiceCustomer;
+      }
     | undefined;
 
   const totalPaid = orderState?.totalPaid ?? 0;
+  const invoiceItems = orderState?.items ?? [];
+  const invoiceSubtotal = orderState?.subtotal ?? 0;
+  const invoicePackagingFee = orderState?.packagingFee ?? 0;
 
-  // Math.random() itu impure — jangan dipanggil langsung di body komponen
-  // atau di dalam useMemo. Lazy initializer useState dijamin cuma jalan
-  // sekali saat mount pertama, bukan tiap render, jadi ini caranya yang benar.
+  const extraFees = totalPaid - (invoiceSubtotal + invoicePackagingFee);
+
+  const invoiceCustomer = orderState?.customer ?? {
+    name: "-",
+    email: "-",
+    phone: "-",
+  };
+
   const [orderId] = useState(
-    () =>
-      orderState?.orderId ??
-      `INV-${Math.floor(100000 + Math.random() * 900000)}`,
+    () => orderState?.orderId ?? `INV-M-${Date.now()}`,
+  );
+
+  const [invoiceDate] = useState(() =>
+    new Date().toLocaleString("id-ID", {
+      day: "numeric",
+      month: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }),
   );
 
   const [recommendations] = useState(() =>
@@ -50,9 +81,7 @@ export default function PaymentSuccessPage() {
       <MarketplaceHeader />
 
       <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-8">
-        {/* Kartu sukses */}
         <div className="flex flex-col items-center rounded-xl border border-border bg-surface px-6 py-12 text-center">
-          {/* Checklist beranimasi */}
           <motion.div
             initial={{ scale: 0.5, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -81,7 +110,6 @@ export default function PaymentSuccessPage() {
               />
             </motion.svg>
 
-            {/* Ring pulsa lembut */}
             <motion.span
               className="absolute inset-0 rounded-full border-2 border-secondary"
               initial={{ scale: 1, opacity: 0.6 }}
@@ -127,8 +155,35 @@ export default function PaymentSuccessPage() {
           <motion.div
             initial={{ y: 10, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.65, duration: 0.4 }}
+            className="mt-4">
+            <PDFDownloadLink
+              document={
+                <InvoiceDocument
+                  orderId={orderId}
+                  date={invoiceDate}
+                  customer={invoiceCustomer}
+                  items={invoiceItems}
+                  subtotal={invoiceSubtotal}
+                  packagingFee={invoicePackagingFee + extraFees}
+                />
+              }
+              fileName={`invoice-${orderId}.pdf`}
+              className="flex items-center gap-2 rounded-full border border-border px-5 py-2.5 text-sm font-semibold text-text hover:border-primary">
+              {({ loading }) => (
+                <>
+                  <Download className="h-4 w-4" />
+                  {loading ? "Menyiapkan invoice..." : "Download Invoice"}
+                </>
+              )}
+            </PDFDownloadLink>
+          </motion.div>
+
+          <motion.div
+            initial={{ y: 10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.7, duration: 0.4 }}
-            className="mt-8 flex flex-col gap-3 sm:flex-row">
+            className="mt-6 flex flex-col gap-3 sm:flex-row">
             <Link
               to="/profile"
               className="rounded-full border border-border px-6 py-2.5 text-sm font-semibold text-text hover:border-primary">
@@ -142,7 +197,6 @@ export default function PaymentSuccessPage() {
           </motion.div>
         </div>
 
-        {/* Rekomendasi produk */}
         {recommendations.length > 0 ? (
           <div className="mt-12">
             <div className="flex items-center justify-between">

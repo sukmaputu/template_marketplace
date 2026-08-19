@@ -1,6 +1,7 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { HelpCircle, LogOut, Settings, User } from "lucide-react";
 import { Dropdown } from "@/components/ui/dropdown";
+import { useAuth } from "@/components/auth/UseAuth";
 
 interface ProfileMenuProps {
   name?: string;
@@ -8,6 +9,14 @@ interface ProfileMenuProps {
 }
 
 export function ProfileMenu({ name = "Akun", avatarUrl }: ProfileMenuProps) {
+  const navigate = useNavigate();
+  const { logout } = useAuth();
+
+  function handleLogout() {
+    logout();
+    navigate("/", { replace: true });
+  }
+
   return (
     <Dropdown
       panelClassName="w-56"
@@ -55,12 +64,15 @@ export function ProfileMenu({ name = "Akun", avatarUrl }: ProfileMenuProps) {
             Bantuan
           </Link>
           <div className="my-1 border-t border-border" />
-          <a
-            href="#keluar"
-            className="flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-background">
+          <button
+            onClick={() => {
+              close();
+              handleLogout();
+            }}
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-background">
             <LogOut className="h-4 w-4" />
             Keluar
-          </a>
+          </button>
         </div>
       )}
     </Dropdown>

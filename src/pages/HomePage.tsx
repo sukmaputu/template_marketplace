@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
-import { MarketplaceHeader } from "@/components/MarketplaceHeader";
+import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { MarketplaceFooter } from "@/components/MarketplaceFooter";
 import { ProductCard } from "@/components/ProductCard";
+import { ProductGridSkeleton } from "@/components/skeleton/ProductCardSkeleton";
 import { ProductQuickViewModal } from "@/components/Productquickviewmodal";
 import { PromoBannerSection } from "@/components/PromoBannerSection";
 import { Pagination } from "@/components/ui/pagination";
@@ -30,6 +31,12 @@ export default function HomePage() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState("default");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 900);
+    return () => clearTimeout(timer);
+  }, []);
 
   function toggleCategory(id: string) {
     setSelectedCategories((prev) =>
@@ -55,8 +62,10 @@ export default function HomePage() {
     }
 
     const sorted = [...filtered];
-    if (sortBy === "price-asc") sorted.sort((a, b) => a.price - b.price);
-    if (sortBy === "price-desc") sorted.sort((a, b) => b.price - a.price);
+    if (sortBy === "price-asc")
+      sorted.sort((a, b) => a.basePrice - b.basePrice);
+    if (sortBy === "price-desc")
+      sorted.sort((a, b) => b.basePrice - a.basePrice);
     return sorted;
   }, [selectedCategories, sortBy, searchQuery]);
 
@@ -129,10 +138,8 @@ export default function HomePage() {
             </div>
           </aside>
 
-          {/* Divider (desktop) */}
           <div className="hidden w-px bg-border lg:block" />
 
-          {/* Main content */}
           <div className="flex-1">
             <div className="flex items-center justify-end gap-2">
               <span className="text-sm text-text-secondary">Urutan:</span>
@@ -156,28 +163,36 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
-              {pagedProducts.map((product) => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  onSelect={setSelectedProduct}
-                />
-              ))}
-            </div>
-
-            {products.length === 0 ? (
-              <p className="mt-12 text-center text-sm text-text-secondary">
-                Belum ada produk yang cocok dengan filter/pencarian ini.
-              </p>
-            ) : (
-              <div className="mt-6 overflow-hidden rounded-xl border border-border bg-surface">
-                <Pagination
-                  currentPage={safePage}
-                  totalPages={totalPages}
-                  onPageChange={handlePageChange}
-                />
+            {isLoading ? (
+              <div className="mt-6">
+                <ProductGridSkeleton count={PAGE_SIZE} />
               </div>
+            ) : (
+              <>
+                <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+                  {pagedProducts.map((product) => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      onSelect={setSelectedProduct}
+                    />
+                  ))}
+                </div>
+
+                {products.length === 0 ? (
+                  <p className="mt-12 text-center text-sm text-text-secondary">
+                    Belum ada produk yang cocok dengan filter/pencarian ini.
+                  </p>
+                ) : (
+                  <div className="mt-6 overflow-hidden rounded-xl border border-border bg-surface">
+                    <Pagination
+                      currentPage={safePage}
+                      totalPages={totalPages}
+                      onPageChange={handlePageChange}
+                    />
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

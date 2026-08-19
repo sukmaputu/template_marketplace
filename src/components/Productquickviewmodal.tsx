@@ -8,8 +8,9 @@ import {
   X,
   ZoomIn,
 } from "lucide-react";
-import { useCart } from "@/components/useCart";
+import { useCart } from "@/components/cart/useCart";
 import type { Product } from "@/lib/products";
+import { showToast } from "@/lib/toast";
 
 interface ProductQuickViewModalProps {
   product: Product | null;
@@ -41,14 +42,12 @@ function ProductQuickViewContent({
   const [selectedSchedule, setSelectedSchedule] = useState(schedules[0]);
   const [selectedLevel, setSelectedLevel] = useState(levels[0]);
 
-  // Ambil daftar gambar dari product.images
   const images = product.images?.length
     ? product.images
     : product.image
       ? [product.image]
       : [];
 
-  // Fungsi Navigasi Carousel
   const nextImage = useCallback(() => {
     setCurrentImageIndex((prev) => (prev + 1) % images.length);
   }, [images.length]);
@@ -57,7 +56,6 @@ function ProductQuickViewContent({
     setCurrentImageIndex((prev) => (prev - 1 + images.length) % images.length);
   }, [images.length]);
 
-  // Handle Keyboard (Escape dan Arrow Keys)
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -79,6 +77,7 @@ function ProductQuickViewContent({
 
   function handleKeranjang() {
     addToCart(product, quantity, variantLabel);
+    showToast(`${product.name} added to cart`);
     onClose();
   }
 
@@ -98,7 +97,6 @@ function ProductQuickViewContent({
       <div
         onClick={(e) => e.stopPropagation()}
         className="relative grid w-full max-w-4xl grid-cols-1 overflow-hidden rounded-xl bg-surface shadow-xl sm:grid-cols-2">
-        {/* BAGIAN KIRI: CAROUSEL */}
         <div className="group relative aspect-square bg-background sm:aspect-auto">
           {images.length > 0 ? (
             <>
@@ -118,7 +116,6 @@ function ProductQuickViewContent({
                 </span>
               </button>
 
-              {/* Tombol Navigasi Kiri Kanan (Hanya muncul jika gambar > 1) */}
               {images.length > 1 && (
                 <>
                   <button
@@ -140,7 +137,6 @@ function ProductQuickViewContent({
                     <ChevronRight className="h-5 w-5" />
                   </button>
 
-                  {/* Pagination Garis --- */}
                   <div className="pointer-events-none absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-1.5">
                     {images.map((_, idx) => (
                       <div
@@ -161,17 +157,17 @@ function ProductQuickViewContent({
           )}
         </div>
 
-        {/* BAGIAN KANAN: DESKRIPSI */}
         <div className="flex flex-col p-8">
           <h2 className="text-2xl font-bold text-text">{product.name}</h2>
 
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-xl font-bold text-primary">
-              {formatRupiah(product.price)}
+              {formatRupiah(product.basePrice)}
             </span>
-            {product.originalPrice && product.originalPrice > product.price ? (
+            {product.comparePrice &&
+            product.comparePrice > product.basePrice ? (
               <span className="text-sm text-text-secondary line-through">
-                {formatRupiah(product.originalPrice)}
+                {formatRupiah(product.comparePrice)}
               </span>
             ) : null}
           </div>
@@ -180,7 +176,6 @@ function ProductQuickViewContent({
             {product.description ?? "Belum ada deskripsi untuk produk ini."}
           </p>
 
-          {/* Pilihan Jadwal */}
           <div className="mt-6">
             <span className="text-sm font-semibold text-text">Jadwal</span>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -200,7 +195,6 @@ function ProductQuickViewContent({
             </div>
           </div>
 
-          {/* Pilihan Tingkat */}
           <div className="mt-4">
             <span className="text-sm font-semibold text-text">Tingkat</span>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -264,7 +258,6 @@ function ProductQuickViewContent({
         </div>
       </div>
 
-      {/* Lightbox — preview gambar penuh, tidak menutupi seluruh layar */}
       {isPreviewOpen ? (
         <div
           className="fixed inset-0 z-[95] flex items-center justify-center bg-black/80 p-10"

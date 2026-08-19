@@ -1,55 +1,56 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Mail, MapPin, Package, Phone, User } from "lucide-react";
-import { MarketplaceHeader } from "@/components/MarketplaceHeader";
+import { ArrowLeft, Mail, Package, Phone, User, AtSign } from "lucide-react";
+import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
+import { ProfileSkeleton } from "@/components/skeleton/ProfileSkeleton";
+import { useAuth } from "@/components/auth/UseAuth";
 
 type TabKey = "data-diri" | "riwayat-pembelian";
 
 interface OrderItem {
   id: string | number;
-  productName: string;
-  variant: string;
-  image?: string;
-  price: number;
-  originalPrice?: number;
-  discountPercent?: number;
+  product_name_snapshot: string;
+  variant_name_snapshot: string;
+  unit_price: number;
   quantity: number;
+  image?: string;
 }
 
 interface Order {
   id: string | number;
-  status: "Selesai" | "Dikirim" | "Diproses" | "Dibatalkan";
+  status: "PENDING" | "PAID" | "SHIPPED" | "COMPLETED" | "CANCELLED";
   date: string;
+  grand_total: number;
   items: OrderItem[];
 }
 
 const ORDERS: Order[] = [
   {
     id: "ORD-001",
-    status: "Selesai",
+    status: "COMPLETED",
     date: "12 Juli 2026",
+    grand_total: 170000,
     items: [
       {
         id: 1,
-        productName: "Pelatihan Design Grafis",
-        variant: "Begineer",
-        price: 85000,
-        originalPrice: 169000,
-        discountPercent: 50,
+        product_name_snapshot: "Pelatihan Design Grafis",
+        variant_name_snapshot: "Beginner",
+        unit_price: 85000,
         quantity: 2,
       },
     ],
   },
   {
     id: "ORD-002",
-    status: "Dikirim",
+    status: "SHIPPED",
     date: "20 Juli 2026",
+    grand_total: 250000,
     items: [
       {
         id: 2,
-        productName: "UI/UX Mastery",
-        variant: "Advance",
-        price: 250000,
+        product_name_snapshot: "UI/UX Mastery",
+        variant_name_snapshot: "Advance",
+        unit_price: 250000,
         quantity: 1,
       },
     ],
@@ -62,23 +63,21 @@ function formatRupiah(value: number) {
 
 function statusBadgeClass(status: Order["status"]) {
   switch (status) {
-    case "Selesai":
+    case "COMPLETED":
       return "bg-secondary/15 text-secondary";
-    case "Dikirim":
+    case "SHIPPED":
       return "bg-primary/15 text-primary";
-    case "Diproses":
+    case "PAID":
+    case "PENDING":
       return "bg-accent/15 text-accent";
-    case "Dibatalkan":
+    case "CANCELLED":
       return "bg-red-100 text-red-600";
+    default:
+      return "bg-gray-100 text-gray-600";
   }
 }
 
 function OrderCard({ order }: { order: Order }) {
-  const total = order.items.reduce(
-    (sum, item) => sum + item.price * item.quantity,
-    0,
-  );
-
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-surface">
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
@@ -94,16 +93,11 @@ function OrderCard({ order }: { order: Order }) {
       <div className="divide-y divide-border">
         {order.items.map((item) => (
           <div key={item.id} className="flex items-center gap-4 px-4 py-3">
-            <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-background">
-              {item.discountPercent ? (
-                <span className="absolute left-0 top-0 rounded-br-md bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                  {item.discountPercent}%
-                </span>
-              ) : null}
+            <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-background border border-border">
               {item.image ? (
                 <img
                   src={item.image}
-                  alt={item.productName}
+                  alt={item.product_name_snapshot}
                   className="h-full w-full object-cover"
                 />
               ) : (
@@ -115,22 +109,17 @@ function OrderCard({ order }: { order: Order }) {
 
             <div className="min-w-0 flex-1">
               <p className="line-clamp-2 text-sm font-medium text-text">
-                {item.productName}
+                {item.product_name_snapshot}
               </p>
               <p className="mt-0.5 text-xs text-text-secondary">
-                {item.variant}
+                {item.variant_name_snapshot}
               </p>
             </div>
 
             <div className="shrink-0 text-right">
               <p className="text-sm font-bold text-text">
-                {formatRupiah(item.price)}
+                {formatRupiah(item.unit_price)}
               </p>
-              {item.originalPrice ? (
-                <p className="text-xs text-text-secondary line-through">
-                  {formatRupiah(item.originalPrice)}
-                </p>
-              ) : null}
               <p className="mt-0.5 text-xs text-text-secondary">
                 x{item.quantity}
               </p>
@@ -145,7 +134,7 @@ function OrderCard({ order }: { order: Order }) {
           <span className="text-sm text-text-secondary">
             Total{" "}
             <span className="font-semibold text-text">
-              {formatRupiah(total)}
+              {formatRupiah(order.grand_total)}
             </span>
           </span>
           <button className="rounded-full bg-primary px-4 py-1.5 text-xs font-medium text-white hover:opacity-90">
@@ -158,22 +147,24 @@ function OrderCard({ order }: { order: Order }) {
 }
 
 function DataDiriTab() {
+  const { user } = useAuth();
+
   const fields = [
-    { label: "Nama", value: "I Putu Sukma", icon: User },
-    { label: "No. Telepon", value: "+62 812 3456 7890", icon: Phone },
+    { label: "Nama Lengkap", value: user?.full_name, icon: User },
     {
-      label: "Alamat Rumah",
-      value: "Jl. Contoh Alamat No. 123, Jakarta Selatan",
-      icon: MapPin,
+      label: "Username",
+      value: user?.username || "Belum diatur",
+      icon: AtSign,
     },
-    { label: "Alamat Email", value: "sukma@email.com", icon: Mail },
+    { label: "No. Telepon", value: user?.phone || "Belum diatur", icon: Phone },
+    { label: "Alamat Email", value: user?.email, icon: Mail },
   ];
 
   return (
     <div className="rounded-xl border border-border bg-surface p-6">
       <h2 className="text-base font-semibold text-text">Data Diri</h2>
       <p className="mt-1 text-sm text-text-secondary">
-        Informasi pribadi yang digunakan untuk transaksi dan pengiriman.
+        Informasi pribadi akun Anda sesuai data sistem.
       </p>
 
       <div className="mt-6 space-y-5">
@@ -191,7 +182,7 @@ function DataDiriTab() {
       </div>
 
       <button className="mt-6 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90">
-        Edit Data Diri
+        Edit Profil
       </button>
     </div>
   );
@@ -218,7 +209,14 @@ function RiwayatPembelianTab() {
 }
 
 export default function ProfilePage() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<TabKey>("data-diri");
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 900);
+    return () => clearTimeout(timer);
+  }, []);
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: "data-diri", label: "Data Diri" },
@@ -237,44 +235,48 @@ export default function ProfilePage() {
           Kembali
         </Link>
 
-        <div className="flex flex-col gap-6 lg:flex-row">
-          <aside className="w-full shrink-0 lg:w-64">
-            <div className="flex h-full flex-col rounded-xl border border-border bg-surface p-6">
-              <div className="flex flex-col items-center text-center">
-                <span className="flex h-20 w-20 items-center justify-center rounded-full bg-primary text-white">
-                  <User className="h-8 w-8" />
-                </span>
-                <p className="mt-3 text-sm font-semibold text-text">
-                  I Putu Sukma
-                </p>
-                <p className="text-xs text-text-secondary">sukma@email.com</p>
+        {isLoading ? (
+          <ProfileSkeleton />
+        ) : (
+          <div className="flex flex-col gap-6 lg:flex-row">
+            <aside className="w-full shrink-0 lg:w-64">
+              <div className="flex h-full flex-col rounded-xl border border-border bg-surface p-6">
+                <div className="flex flex-col items-center text-center">
+                  <span className="flex h-20 w-20 items-center justify-center rounded-full bg-primary text-white">
+                    <User className="h-8 w-8" />
+                  </span>
+                  <p className="mt-3 text-sm font-semibold text-text">
+                    {user?.full_name}
+                  </p>
+                  <p className="text-xs text-text-secondary">{user?.email}</p>
+                </div>
+
+                <nav className="mt-6 space-y-1">
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setActiveTab(tab.key)}
+                      className={`w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+                        activeTab === tab.key
+                          ? "bg-primary/10 text-primary"
+                          : "text-text-secondary hover:bg-background"
+                      }`}>
+                      {tab.label}
+                    </button>
+                  ))}
+                </nav>
               </div>
+            </aside>
 
-              <nav className="mt-6 space-y-1">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setActiveTab(tab.key)}
-                    className={`w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
-                      activeTab === tab.key
-                        ? "bg-primary/10 text-primary"
-                        : "text-text-secondary hover:bg-background"
-                    }`}>
-                    {tab.label}
-                  </button>
-                ))}
-              </nav>
+            <div className="flex-1">
+              {activeTab === "data-diri" ? (
+                <DataDiriTab />
+              ) : (
+                <RiwayatPembelianTab />
+              )}
             </div>
-          </aside>
-
-          <div className="flex-1">
-            {activeTab === "data-diri" ? (
-              <DataDiriTab />
-            ) : (
-              <RiwayatPembelianTab />
-            )}
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
