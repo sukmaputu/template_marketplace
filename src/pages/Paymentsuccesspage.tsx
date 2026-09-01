@@ -21,7 +21,7 @@ function formatRupiah(value: number) {
   return `Rp${(value || 0).toLocaleString("id-ID")}`;
 }
 
-function pickRandomProducts(excludeIds: (string | number)[], count: number) {
+function pickRandomProducts(excludeIds: string[], count: number) {
   const pool = PRODUCTS.filter((p) => !excludeIds.includes(p.id));
   const shuffled = [...pool].sort(() => Math.random() - 0.5);
   return shuffled.slice(0, count);
@@ -35,7 +35,7 @@ export default function PaymentSuccessPage() {
   const orderState = location.state as
     | {
         totalPaid?: number;
-        itemIds?: (string | number)[];
+        itemIds?: string[];
         orderId?: string;
         items?: InvoiceItem[];
         subtotal?: number;

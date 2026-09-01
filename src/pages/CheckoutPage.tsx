@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, useEffect } from "react";
 import {
   Building2,
   MapPin,
@@ -6,6 +6,7 @@ import {
   ShieldCheck,
   Truck,
   Zap,
+  Loader2,
 } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { useCart } from "@/components/cart/useCart";
@@ -33,6 +34,18 @@ interface FormErrors {
   city?: string;
 }
 
+interface CheckoutItem {
+  id: string;
+  productId: string;
+  name: string;
+  variant: string;
+  image?: string;
+  basePrice: number;
+  comparePrice?: number;
+  quantity: number;
+  selected: true;
+}
+
 export default function CheckoutPage() {
   const { user } = useAuth();
   const location = useLocation();
@@ -41,9 +54,36 @@ export default function CheckoutPage() {
 
   const [postalCode, setPostalCode] = useState("");
   const [city, setCity] = useState("");
+  const [isSearchingZip, setIsSearchingZip] = useState(false);
   const [shippingMethodId, setShippingMethodId] =
     useState<ShippingMethod["id"]>("standard");
   const [formErrors, setFormErrors] = useState<FormErrors>({});
+
+  useEffect(() => {
+    const fetchCity = async () => {
+      if (/^\d{5}$/.test(postalCode)) {
+        setIsSearchingZip(true);
+        try {
+          const response = await fetch(
+            `https://kodepos.vercel.app/search/?q=${postalCode}`,
+          );
+          const result = await response.json();
+
+          if (result.data && result.data.length > 0) {
+            setCity(result.data[0].regency);
+            setFormErrors((prev) => ({ ...prev, city: undefined }));
+          }
+        } catch (error) {
+          console.error("Gagal mengambil data kode pos:", error);
+        } finally {
+          setIsSearchingZip(false);
+        }
+      }
+    };
+
+    const debounceTimer = setTimeout(fetchCity, 500);
+    return () => clearTimeout(debounceTimer);
+  }, [postalCode]);
 
   const shippingMethod =
     SHIPPING_METHODS.find((m) => m.id === shippingMethodId) ??
@@ -53,7 +93,7 @@ export default function CheckoutPage() {
   const immediateBuy = location.state?.immediateBuy as
     | {
         product: {
-          id: string | number;
+          id: string;
           name: string;
           basePrice: number;
           image?: string;
@@ -65,10 +105,11 @@ export default function CheckoutPage() {
       }
     | undefined;
 
-  const selectedItems = immediateBuy
+  const selectedItems: CheckoutItem[] = immediateBuy
     ? [
         {
           id: immediateBuy.product.id,
+          productId: immediateBuy.product.id,
           name: immediateBuy.product.name,
           variant: immediateBuy.variant ?? "Varian standar",
           image: immediateBuy.product.image,
@@ -78,7 +119,19 @@ export default function CheckoutPage() {
           selected: true,
         },
       ]
-    : items.filter((item) => item.selected);
+    : items
+        .filter((item) => item.selected)
+        .map((item) => ({
+          id: item.id,
+          productId: item.productId,
+          name: item.name,
+          variant: item.variant,
+          image: item.image,
+          basePrice: item.basePrice,
+          comparePrice: item.comparePrice,
+          quantity: item.quantity,
+          selected: true as const,
+        }));
 
   const protectionCost = 8600;
   const insuranceCost = 1100;
@@ -107,11 +160,7 @@ export default function CheckoutPage() {
     e.preventDefault();
     if (!validate()) return;
 
-    const purchasedProductIds = selectedItems.map((item) =>
-      typeof item.id === "string" && item.id.includes("::")
-        ? item.id.split("::")[0]
-        : item.id,
-    );
+    const purchasedProductIds = selectedItems.map((item) => item.productId);
 
     if (!immediateBuy) {
       clearSelected();
@@ -158,6 +207,58 @@ export default function CheckoutPage() {
                 <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <label className="text-sm font-medium text-text">
+                      Kode Pos <span className="text-red-600">*</span>
+                    </label>
+                    <div className="relative mt-1.5">
+                      <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={5}
+                        value={postalCode}
+                        onChange={(e) => setPostalCode(e.target.value)}
+                        placeholder="Contoh: 12210"
+                        className={`w-full rounded-lg border bg-background py-2.5 pl-10 pr-3 text-sm text-text outline-none placeholder:text-text-secondary focus:border-primary ${
+                          formErrors.postalCode
+                            ? "border-red-500"
+                            : "border-border"
+                        }`}
+                      />
+                      {isSearchingZip && (
+                        <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-primary" />
+                      )}
+                    </div>
+                    {formErrors.postalCode && (
+                      <p className="mt-1 text-xs text-red-500">
+                        {formErrors.postalCode}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-text">
+                      Kota <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      placeholder="Terisi otomatis..."
+                      className={`mt-1.5 w-full rounded-lg border bg-background px-3.5 py-2.5 text-sm text-text outline-none placeholder:text-text-secondary focus:border-primary ${
+                        formErrors.city ? "border-red-500" : "border-border"
+                      }`}
+                    />
+                    {formErrors.city && (
+                      <p className="mt-1 text-xs text-red-500">
+                        {formErrors.city}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="text-sm font-medium text-text">
                       Nama Penerima
                     </label>
                     <input
@@ -187,43 +288,6 @@ export default function CheckoutPage() {
                     defaultValue="Jl. Contoh Alamat No. 123, Jakarta Selatan"
                     className="mt-1.5 w-full resize-none rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm text-text outline-none focus:border-primary"
                   />
-                </div>
-
-                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="text-sm font-medium text-text">
-                      Kota <span className="text-red-600">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={city}
-                      onChange={(e) => setCity(e.target.value)}
-                      placeholder="Contoh: Jakarta Selatan"
-                      className={`mt-1.5 w-full rounded-lg border bg-background px-3.5 py-2.5 text-sm text-text outline-none placeholder:text-text-secondary focus:border-primary ${
-                        formErrors.city ? "border-red-500" : "border-border"
-                      }`}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-text">
-                      Kode Pos <span className="text-red-600">*</span>
-                    </label>
-                    <div className="relative mt-1.5">
-                      <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={postalCode}
-                        onChange={(e) => setPostalCode(e.target.value)}
-                        placeholder="Contoh: 12210"
-                        className={`w-full rounded-lg border bg-background py-2.5 pl-10 pr-3 text-sm text-text outline-none placeholder:text-text-secondary focus:border-primary ${
-                          formErrors.postalCode
-                            ? "border-red-500"
-                            : "border-border"
-                        }`}
-                      />
-                    </div>
-                  </div>
                 </div>
               </div>
 
@@ -272,7 +336,6 @@ export default function CheckoutPage() {
                 <div
                   key={item.id}
                   className="rounded-xl border border-border bg-surface p-5">
-                  {/* Bagian Store dihapus sesuai instruksi BE */}
                   <div className="flex gap-4">
                     <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-background border border-border">
                       {item.image ? (

@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
-interface PaginationProps {
+export interface PaginationProps {
   currentPage: number;
   totalPages: number;
   onPageChange: (page: number) => void;
@@ -23,18 +23,20 @@ export function Pagination({
 
       <div className="flex items-center gap-1">
         <button
+          type="button"
           onClick={() => onPageChange(Math.max(1, currentPage - 1))}
           disabled={currentPage === 1}
           aria-label="Halaman sebelumnya"
-          className="rounded-lg p-1.5 text-text hover:bg-background disabled:opacity-40">
+          className="rounded-lg p-1.5 text-text transition-colors hover:bg-background disabled:cursor-not-allowed disabled:opacity-40">
           <ChevronLeft className="h-4 w-4" />
         </button>
 
         {pages.map((page) => (
           <button
+            type="button"
             key={page}
             onClick={() => onPageChange(page)}
-            className={`h-8 w-8 rounded-lg text-sm font-medium ${
+            className={`h-8 w-8 rounded-lg text-sm font-medium transition-colors ${
               page === currentPage
                 ? "bg-primary text-white"
                 : "text-text hover:bg-background"
@@ -44,13 +46,16 @@ export function Pagination({
         ))}
 
         <button
+          type="button"
           onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
           disabled={currentPage === totalPages}
           aria-label="Halaman berikutnya"
-          className="rounded-lg p-1.5 text-text hover:bg-background disabled:opacity-40">
+          className="rounded-lg p-1.5 text-text transition-colors hover:bg-background disabled:cursor-not-allowed disabled:opacity-40">
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>
     </div>
   );
 }
+
+export default Pagination;

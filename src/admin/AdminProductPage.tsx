@@ -1,32 +1,8 @@
 import { useRef, useState, type FormEvent } from "react";
 import { ImagePlus, Package, Plus, X } from "lucide-react";
+import { PRODUCT_ROWS, type ProductRow } from "@/lib/products";
 
-interface AdminProduct {
-  id: number;
-  name: string;
-  description: string;
-  price: number;
-  discountPercent?: number;
-  image?: string;
-}
-
-const INITIAL_PRODUCTS: AdminProduct[] = [
-  {
-    id: 1,
-    name: "Pelatihan Desain Grafis",
-    description:
-      "Belajar dasar hingga mahir desain grafis untuk branding dan promosi.",
-    price: 50000,
-    discountPercent: 10,
-  },
-  {
-    id: 2,
-    name: "Pelatihan Power BI Data Analyst",
-    description:
-      "Kuasai analisis data dan visualisasi dashboard dengan Power BI.",
-    price: 100000,
-  },
-];
+const INITIAL_PRODUCTS = PRODUCT_ROWS.slice(0, 2);
 
 function formatRupiah(value: number) {
   return `Rp ${value.toLocaleString("id-ID")}`;
@@ -49,7 +25,7 @@ const EMPTY_FORM: ProductFormState = {
 };
 
 export default function AdminProductPage() {
-  const [products, setProducts] = useState<AdminProduct[]>(INITIAL_PRODUCTS);
+  const [products, setProducts] = useState<ProductRow[]>(INITIAL_PRODUCTS);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form, setForm] = useState<ProductFormState>(EMPTY_FORM);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -78,15 +54,45 @@ export default function AdminProductPage() {
     e.preventDefault();
     if (!form.name.trim() || !form.price.trim()) return;
 
-    const newProduct: AdminProduct = {
-      id: Date.now(),
+    const productId = String(Date.now());
+    const basePrice = Number(form.price) || 0;
+    const discountPercent = form.discountPercent
+      ? Number(form.discountPercent)
+      : 0;
+    const newProduct: ProductRow = {
+      id: productId,
+      category_id: "teknologi-informasi",
+      type: "digital",
+      sku: `SKU-${productId}`,
       name: form.name.trim(),
+      slug: form.name
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, ""),
+      summary: form.description.trim(),
       description: form.description.trim(),
-      price: Number(form.price) || 0,
-      discountPercent: form.discountPercent
-        ? Number(form.discountPercent)
-        : undefined,
-      image: form.imagePreview ?? undefined,
+      cover_image_url: form.imagePreview,
+      base_price: basePrice,
+      compare_price:
+        discountPercent > 0 && discountPercent < 100
+          ? Math.round(basePrice / (1 - discountPercent / 100))
+          : null,
+      stock: 0,
+      is_featured: false,
+      status: "published",
+      average_rating: 0,
+      review_count: 0,
+      images: form.imagePreview
+        ? [
+            {
+              id: `${productId}-image-1`,
+              product_id: productId,
+              image_url: form.imagePreview,
+              sort_order: 0,
+            },
+          ]
+        : [],
     };
 
     setProducts((prev) => [newProduct, ...prev]);
@@ -116,14 +122,21 @@ export default function AdminProductPage() {
             key={product.id}
             className="rounded-xl border border-border bg-surface p-3">
             <div className="relative aspect-square overflow-hidden rounded-lg bg-background">
-              {product.discountPercent ? (
+              {product.compare_price &&
+              product.compare_price > product.base_price ? (
                 <span className="absolute left-0 top-0 z-10 rounded-br-lg bg-red-600 px-2 py-1 text-xs font-semibold text-white">
-                  -{product.discountPercent}%
+                  -
+                  {Math.round(
+                    ((product.compare_price - product.base_price) /
+                      product.compare_price) *
+                      100,
+                  )}
+                  %
                 </span>
               ) : null}
-              {product.image ? (
+              {product.cover_image_url ? (
                 <img
-                  src={product.image}
+                  src={product.cover_image_url}
                   alt={product.name}
                   className="h-full w-full object-cover"
                 />
@@ -137,7 +150,7 @@ export default function AdminProductPage() {
               {product.name}
             </p>
             <p className="mt-1 text-sm font-bold text-primary">
-              {formatRupiah(product.price)}
+              {formatRupiah(product.base_price)}
             </p>
           </div>
         ))}
@@ -145,7 +158,7 @@ export default function AdminProductPage() {
 
       {isModalOpen ? (
         <div
-          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-90 flex items-center justify-center bg-black/50 p-4"
           onClick={closeModal}>
           <div
             onClick={(e) => e.stopPropagation()}

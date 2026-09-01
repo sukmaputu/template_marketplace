@@ -318,7 +318,7 @@ export function ProductQuickViewModal({
 
   return (
     <ProductQuickViewContent
-      key={product.id ?? product.name ?? "product"}
+      key={product.id ?? "product"}
       product={product}
       onClose={onClose}
     />

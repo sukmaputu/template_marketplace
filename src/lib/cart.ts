@@ -1,7 +1,8 @@
 import type { Product, ProductType } from "./products";
 
 export interface CartItem {
-  id: string | number;
+  id: string;
+  productId: string;
   name: string;
   type: ProductType;
   variant: string;
@@ -28,6 +29,7 @@ export function createCartItem(
 
   return {
     id: cartItemId,
+    productId: product.id,
     name: product.name,
     type: product.type,
     variant: variantName,

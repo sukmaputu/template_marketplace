@@ -3,8 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Lock, Mail, MapPin, Phone, User } from "lucide-react";
 
 interface FormValues {
-  full_name: string; // BE: Ganti dari name
-  username: string; // BE: Tambah username
+  full_name: string;
+  username: string;
   phone: string;
   address: string;
   email: string;
@@ -41,29 +41,24 @@ export default function SignUpPage() {
   function validate(): boolean {
     const nextErrors: FormErrors = {};
 
-    // full_name wajib
     if (!values.full_name.trim()) {
       nextErrors.full_name = "Nama lengkap wajib diisi.";
     }
 
-    // username opsional, tapi jika diisi kita cek panjangnya
     if (values.username.trim() && values.username.length < 3) {
       nextErrors.username = "Username minimal 3 karakter.";
     }
 
-    // phone opsional (BE report), jika diisi baru validasi format
     if (values.phone.trim() && !PHONE_REGEX.test(values.phone.trim())) {
       nextErrors.phone = "Format nomor telepon tidak valid.";
     }
 
-    // email wajib
     if (!values.email.trim()) {
       nextErrors.email = "Email wajib diisi.";
     } else if (!EMAIL_REGEX.test(values.email.trim())) {
       nextErrors.email = "Format email tidak valid.";
     }
 
-    // password wajib
     if (!values.password) {
       nextErrors.password = "Password wajib diisi.";
     } else if (values.password.length < 8) {
@@ -84,12 +79,11 @@ export default function SignUpPage() {
     e.preventDefault();
     if (!validate()) return;
 
-    // Mapping ke format yang diminta BE
     const payload = {
       full_name: values.full_name,
       username: values.username || null,
       email: values.email,
-      password_hash: values.password, // User input password, BE yang akan hash
+      password_hash: values.password,
       phone: values.phone || null,
       address: values.address || null,
     };
@@ -99,198 +93,207 @@ export default function SignUpPage() {
   }
 
   const fieldClass = (hasError?: string) =>
-    `w-full rounded-lg border bg-background py-2.5 pl-10 pr-10 text-sm text-text outline-none placeholder:text-text-secondary focus:border-primary ${
+    `w-full rounded-lg border bg-background py-2 pl-9 pr-9 text-sm text-text outline-none placeholder:text-text-secondary focus:border-primary ${
       hasError ? "border-red-500" : "border-border"
     }`;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
-      <div className="w-full max-w-md rounded-xl border border-border bg-surface p-8">
+    <div className="flex h-screen items-center justify-center overflow-hidden bg-background px-4 py-6">
+      <div className="w-full max-w-3xl rounded-xl border border-border bg-surface p-6 sm:p-8">
         <div className="text-center">
           <img
             src="/logo/logo.png"
             alt="Logo"
-            className="mx-auto h-12 w-auto object-contain"
+            className="mx-auto h-10 w-auto object-contain"
           />
-          <h1 className="mt-4 text-xl font-bold text-text">Buat Akun Baru</h1>
+          <h1 className="mt-3 text-xl font-bold text-text">Buat Akun Baru</h1>
           <p className="mt-1 text-sm text-text-secondary">
             Isi data diri kamu untuk mulai berbelanja.
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} noValidate className="mt-6 space-y-4">
-          {/* Full Name */}
-          <div>
-            <label
-              htmlFor="full_name"
-              className="text-sm font-medium text-text">
-              Nama Lengkap
-            </label>
-            <div className="relative mt-1.5">
-              <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
-              <input
-                id="full_name"
-                type="text"
-                value={values.full_name}
-                onChange={(e) => setField("full_name", e.target.value)}
-                placeholder="Nama lengkap"
-                className={fieldClass(errors.full_name).replace(
-                  "pr-10",
-                  "pr-3",
-                )}
-              />
+        <form onSubmit={handleSubmit} noValidate className="mt-5 space-y-3">
+          {/* Row 1: Nama Lengkap + Username */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label
+                htmlFor="full_name"
+                className="text-sm font-medium text-text">
+                Nama Lengkap
+              </label>
+              <div className="relative mt-1.5">
+                <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                <input
+                  id="full_name"
+                  type="text"
+                  value={values.full_name}
+                  onChange={(e) => setField("full_name", e.target.value)}
+                  placeholder="Nama lengkap"
+                  className={fieldClass(errors.full_name).replace(
+                    "pr-9",
+                    "pr-3",
+                  )}
+                />
+              </div>
+              {errors.full_name && (
+                <p className="mt-1 text-xs text-red-600">{errors.full_name}</p>
+              )}
             </div>
-            {errors.full_name && (
-              <p className="mt-1 text-xs text-red-600">{errors.full_name}</p>
-            )}
+
+            <div>
+              <label
+                htmlFor="username"
+                className="text-sm font-medium text-text">
+                Username (Opsional)
+              </label>
+              <div className="relative mt-1.5">
+                <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                <input
+                  id="username"
+                  type="text"
+                  value={values.username}
+                  onChange={(e) => setField("username", e.target.value)}
+                  placeholder="Username unik"
+                  className={fieldClass(errors.username).replace(
+                    "pr-9",
+                    "pr-3",
+                  )}
+                />
+              </div>
+              {errors.username && (
+                <p className="mt-1 text-xs text-red-600">{errors.username}</p>
+              )}
+            </div>
           </div>
 
-          {/* Username - NEW FIELD */}
-          <div>
-            <label htmlFor="username" className="text-sm font-medium text-text">
-              Username (Opsional)
-            </label>
-            <div className="relative mt-1.5">
-              <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
-              <input
-                id="username"
-                type="text"
-                value={values.username}
-                onChange={(e) => setField("username", e.target.value)}
-                placeholder="Username unik"
-                className={fieldClass(errors.username).replace("pr-10", "pr-3")}
-              />
+          {/* Row 2: Telepon + Email */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label htmlFor="phone" className="text-sm font-medium text-text">
+                No. Telepon (Opsional)
+              </label>
+              <div className="relative mt-1.5">
+                <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                <input
+                  id="phone"
+                  type="tel"
+                  value={values.phone}
+                  onChange={(e) => setField("phone", e.target.value)}
+                  placeholder="08123456789"
+                  className={fieldClass(errors.phone).replace("pr-9", "pr-3")}
+                />
+              </div>
+              {errors.phone && (
+                <p className="mt-1 text-xs text-red-600">{errors.phone}</p>
+              )}
             </div>
-            {errors.username && (
-              <p className="mt-1 text-xs text-red-600">{errors.username}</p>
-            )}
+
+            <div>
+              <label htmlFor="email" className="text-sm font-medium text-text">
+                Alamat Email
+              </label>
+              <div className="relative mt-1.5">
+                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                <input
+                  id="email"
+                  type="email"
+                  value={values.email}
+                  onChange={(e) => setField("email", e.target.value)}
+                  placeholder="nama@email.com"
+                  className={fieldClass(errors.email).replace("pr-9", "pr-3")}
+                />
+              </div>
+              {errors.email && (
+                <p className="mt-1 text-xs text-red-600">{errors.email}</p>
+              )}
+            </div>
           </div>
 
-          {/* Phone */}
-          <div>
-            <label htmlFor="phone" className="text-sm font-medium text-text">
-              No. Telepon (Opsional)
-            </label>
-            <div className="relative mt-1.5">
-              <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
-              <input
-                id="phone"
-                type="tel"
-                value={values.phone}
-                onChange={(e) => setField("phone", e.target.value)}
-                placeholder="08123456789"
-                className={fieldClass(errors.phone).replace("pr-10", "pr-3")}
-              />
+          {/* Row 3: Password + Confirm Password */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label
+                htmlFor="password"
+                className="text-sm font-medium text-text">
+                Password
+              </label>
+              <div className="relative mt-1.5">
+                <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                <input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={values.password}
+                  onChange={(e) => setField("password", e.target.value)}
+                  placeholder="Minimal 8 karakter"
+                  className={fieldClass(errors.password)}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text">
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+              {errors.password && (
+                <p className="mt-1 text-xs text-red-600">{errors.password}</p>
+              )}
             </div>
-            {errors.phone && (
-              <p className="mt-1 text-xs text-red-600">{errors.phone}</p>
-            )}
+
+            <div>
+              <label
+                htmlFor="confirmPassword"
+                className="text-sm font-medium text-text">
+                Konfirmasi Password
+              </label>
+              <div className="relative mt-1.5">
+                <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                <input
+                  id="confirmPassword"
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={values.confirmPassword}
+                  onChange={(e) => setField("confirmPassword", e.target.value)}
+                  placeholder="Ulangi password"
+                  className={fieldClass(errors.confirmPassword)}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text">
+                  {showConfirmPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+              {errors.confirmPassword && (
+                <p className="mt-1 text-xs text-red-600">
+                  {errors.confirmPassword}
+                </p>
+              )}
+            </div>
           </div>
 
-          {/* Address */}
+          {/* Row 4: Alamat (full width, 1 baris) */}
           <div>
             <label htmlFor="address" className="text-sm font-medium text-text">
               Alamat Rumah (Opsional)
             </label>
             <div className="relative mt-1.5">
-              <MapPin className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-text-secondary" />
-              <textarea
+              <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+              <input
                 id="address"
-                rows={2}
+                type="text"
                 value={values.address}
                 onChange={(e) => setField("address", e.target.value)}
                 placeholder="Alamat lengkap kamu"
-                className={`w-full resize-none rounded-lg border bg-background py-2.5 pl-10 pr-3 text-sm text-text outline-none focus:border-primary ${
-                  errors.address ? "border-red-500" : "border-border"
-                }`}
+                className={fieldClass(undefined).replace("pr-9", "pr-3")}
               />
             </div>
-          </div>
-
-          {/* Email */}
-          <div>
-            <label htmlFor="email" className="text-sm font-medium text-text">
-              Alamat Email
-            </label>
-            <div className="relative mt-1.5">
-              <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
-              <input
-                id="email"
-                type="email"
-                value={values.email}
-                onChange={(e) => setField("email", e.target.value)}
-                placeholder="nama@email.com"
-                className={fieldClass(errors.email).replace("pr-10", "pr-3")}
-              />
-            </div>
-            {errors.email && (
-              <p className="mt-1 text-xs text-red-600">{errors.email}</p>
-            )}
-          </div>
-
-          {/* Password & Confirm tetap sama */}
-          <div>
-            <label htmlFor="password" className="text-sm font-medium text-text">
-              Password
-            </label>
-            <div className="relative mt-1.5">
-              <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
-              <input
-                id="password"
-                type={showPassword ? "text" : "password"}
-                value={values.password}
-                onChange={(e) => setField("password", e.target.value)}
-                placeholder="Minimal 8 karakter"
-                className={fieldClass(errors.password)}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text">
-                {showPassword ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
-              </button>
-            </div>
-            {errors.password && (
-              <p className="mt-1 text-xs text-red-600">{errors.password}</p>
-            )}
-          </div>
-
-          <div>
-            <label
-              htmlFor="confirmPassword"
-              className="text-sm font-medium text-text">
-              Konfirmasi Password
-            </label>
-            <div className="relative mt-1.5">
-              <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
-              <input
-                id="confirmPassword"
-                type={showConfirmPassword ? "text" : "password"}
-                value={values.confirmPassword}
-                onChange={(e) => setField("confirmPassword", e.target.value)}
-                placeholder="Ulangi password"
-                className={fieldClass(errors.confirmPassword)}
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirmPassword((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text">
-                {showConfirmPassword ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
-              </button>
-            </div>
-            {errors.confirmPassword && (
-              <p className="mt-1 text-xs text-red-600">
-                {errors.confirmPassword}
-              </p>
-            )}
           </div>
 
           <button
@@ -300,7 +303,7 @@ export default function SignUpPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-text-secondary">
+        <p className="mt-4 text-center text-sm text-text-secondary">
           Sudah punya akun?{" "}
           <Link
             to="/sign-in"
