@@ -7,6 +7,7 @@ import { ProfileMenu } from "@/components/navbar/ProfileMenu";
 import { MobileMenu } from "@/components/navbar/MobileMenu";
 import { useCart } from "@/components/cart/useCart";
 import { useAuth } from "@/components/auth/UseAuth";
+import { CurrencySwitcher } from "@/components/navbar/CurrencySwitcher";
 
 const CATEGORY_OPTIONS = [
   { value: "all", label: "Semua Kategori" },
@@ -70,7 +71,7 @@ export function MarketplaceHeader() {
       <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6 lg:px-8">
         <Link to="/" className="shrink-0">
           <img
-            src="/logo/logo.png"
+            src="/logo/logo_nadrical.png"
             alt="Logo"
             className="h-10 w-auto object-contain"
           />
@@ -124,6 +125,7 @@ export function MarketplaceHeader() {
           <div className="hidden items-center gap-1 sm:gap-2 lg:flex">
             <NotificationMenu />
             <ThemeToggle />
+            <CurrencySwitcher />
           </div>
 
           <div className="lg:hidden">

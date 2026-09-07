@@ -11,10 +11,7 @@ import { useNavigate } from "react-router-dom";
 import { useCart } from "@/components/cart/useCart";
 import { calculateCartSummary } from "@/lib/cart";
 import { getDiscountPercent } from "@/lib/products";
-
-function formatRupiah(value: number) {
-  return `Rp${value.toLocaleString("id-ID")}`;
-}
+import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 
 export default function CartPage() {
   const navigate = useNavigate();
@@ -26,6 +23,7 @@ export default function CartPage() {
     toggleSelectAll,
     toggleSelectItem,
   } = useCart();
+  const { formatPrice } = useCurrency();
 
   const allSelected = items.length > 0 && items.every((item) => item.selected);
   const selectedItems = items.filter((item) => item.selected);
@@ -127,12 +125,12 @@ export default function CartPage() {
                             </div>
                             <div className="shrink-0 text-left sm:text-right">
                               <p className="text-base font-bold text-text">
-                                {formatRupiah(item.basePrice)}
+                                {formatPrice(item.basePrice)}
                               </p>
                               {item.comparePrice &&
                               item.comparePrice > item.basePrice ? (
                                 <p className="text-sm text-text-secondary line-through">
-                                  {formatRupiah(item.comparePrice)}
+                                  {formatPrice(item.comparePrice)}
                                 </p>
                               ) : null}
                             </div>
@@ -187,7 +185,7 @@ export default function CartPage() {
               <div className="mt-4 flex items-center justify-between text-sm">
                 <span className="text-text-secondary">Total Tagihan</span>
                 <span className="text-lg font-bold text-primary">
-                  {formatRupiah(summary.totalPrice)}
+                  {formatPrice(summary.totalPrice)}
                 </span>
               </div>
 

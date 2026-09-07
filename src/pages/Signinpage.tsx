@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { useAuth } from "@/components/auth/UseAuth";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { AppleSignInButton } from "@/components/AppleSignInButton";
 
 interface FormErrors {
   email?: string;
@@ -72,6 +73,11 @@ export default function SignInPage() {
   function handleGoogleSignIn() {
     console.log("TODO: integrasikan Google OAuth di sini");
     setErrors({ general: "Login dengan Google belum tersedia." });
+  }
+
+  function handleAppleSignIn() {
+    console.log("TODO: integrasikan Apple Sign In di sini");
+    setErrors({ general: "Login dengan Apple belum tersedia." });
   }
 
   return (
@@ -178,7 +184,10 @@ export default function SignInPage() {
           </div>
         </div>
 
-        <GoogleSignInButton onClick={handleGoogleSignIn} />
+        <div className="space-y-3">
+          <GoogleSignInButton onClick={handleGoogleSignIn} />
+          <AppleSignInButton onClick={handleAppleSignIn} />
+        </div>
 
         <p className="mt-6 text-center text-sm text-text-secondary">
           Belum punya akun?{" "}

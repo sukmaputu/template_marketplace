@@ -96,6 +96,111 @@ export interface Product {
   levels?: string[];
 }
 
+export interface ProductReview {
+  id: string;
+  productId: string;
+  userName: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
+}
+
+const PRODUCT_REVIEW_STORAGE_KEY = "marketplace-product-reviews";
+
+const MOCK_PRODUCT_REVIEWS: ProductReview[] = [
+  {
+    id: "mock-review-1",
+    productId: "3",
+    userName: "Nadia",
+    rating: 5,
+    comment: "Materi jelas, tutor responsif, dan gampang dipahami.",
+    createdAt: "2026-08-10T09:00:00.000Z",
+  },
+  {
+    id: "mock-review-2",
+    productId: "3",
+    userName: "Andre",
+    rating: 4,
+    comment: "Kontennya cukup lengkap untuk pemula, cocok untuk belajar dasar.",
+    createdAt: "2026-08-12T12:30:00.000Z",
+  },
+  {
+    id: "mock-review-3",
+    productId: "1",
+    userName: "Rina",
+    rating: 5,
+    comment:
+      "Desainnya menarik dan praktiknya sangat membantu untuk proyek saya.",
+    createdAt: "2026-08-15T08:20:00.000Z",
+  },
+  {
+    id: "mock-review-4",
+    productId: "2",
+    userName: "Bima",
+    rating: 4,
+    comment:
+      "Dashboard Power BI yang diajarkan cukup aplikatif dan masuk akal.",
+    createdAt: "2026-08-18T11:45:00.000Z",
+  },
+];
+
+export function getStoredProductReviews(): ProductReview[] {
+  if (typeof window === "undefined") return MOCK_PRODUCT_REVIEWS;
+
+  try {
+    const raw = window.localStorage.getItem(PRODUCT_REVIEW_STORAGE_KEY);
+    if (!raw) return MOCK_PRODUCT_REVIEWS;
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return MOCK_PRODUCT_REVIEWS;
+
+    return parsed as ProductReview[];
+  } catch {
+    return MOCK_PRODUCT_REVIEWS;
+  }
+}
+
+export function saveProductReview(review: ProductReview) {
+  if (typeof window === "undefined") return;
+
+  const reviews = getStoredProductReviews();
+  const nextReviews = [
+    review,
+    ...reviews.filter((item) => item.id !== review.id),
+  ];
+  window.localStorage.setItem(
+    PRODUCT_REVIEW_STORAGE_KEY,
+    JSON.stringify(nextReviews),
+  );
+  window.dispatchEvent(new Event("product-reviews-updated"));
+}
+
+export function getProductReviews(productId: string): ProductReview[] {
+  return getStoredProductReviews().filter(
+    (review) => review.productId === productId,
+  );
+}
+
+export function getProductRatingStats(productId: string) {
+  const reviews = getProductReviews(productId);
+
+  if (!reviews.length) {
+    const fallbackProduct = PRODUCTS.find(
+      (product) => product.id === productId,
+    );
+    return {
+      rating: fallbackProduct?.rating ?? 0,
+      reviewCount: fallbackProduct?.reviewCount ?? 0,
+    };
+  }
+
+  const total = reviews.reduce((sum, review) => sum + review.rating, 0);
+  return {
+    rating: Number((total / reviews.length).toFixed(1)),
+    reviewCount: reviews.length,
+  };
+}
+
 export function mapProductRow(row: ProductRow): Product {
   return {
     id: row.id,

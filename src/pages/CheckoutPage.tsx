@@ -1,21 +1,28 @@
 import { useState, type FormEvent, useEffect } from "react";
 import {
   Building2,
+  CalendarClock,
+  Clock,
   MapPin,
   Package,
   ShieldCheck,
+  Star,
   Truck,
   Zap,
   Loader2,
+  Ticket,
+  ChevronRight,
 } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { useCart } from "@/components/cart/useCart";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/components/auth/UseAuth";
-
-function formatRupiah(value: number) {
-  return `Rp${(value || 0).toLocaleString("id-ID")}`;
-}
+import { useCurrency } from "@/components/navbar/CurrencySwitcher";
+import type { Voucher } from "@/components/profile/types"; // Import type voucher
+import {
+  LOYALTY_REWARD_THRESHOLD,
+  LOYALTY_REWARD_VOUCHER,
+} from "@/lib/vouchers";
 
 interface ShippingMethod {
   id: "standard" | "express";
@@ -28,6 +35,65 @@ const SHIPPING_METHODS: ShippingMethod[] = [
   { id: "standard", label: "Standard", eta: "3-5 hari kerja", cost: 8000 },
   { id: "express", label: "Express", eta: "1-2 hari kerja", cost: 25000 },
 ];
+
+// Dummy Data Voucher untuk pilihan
+const DUMMY_VOUCHERS: Voucher[] = [
+  {
+    id: "1",
+    code: "NEWUSER20",
+    title: "Diskon Pengguna Baru",
+    discount_label: "20% OFF",
+    min_purchase_amount: 100000,
+    min_purchase: "Min. belanja Rp 100.000",
+    expires_at: "31 Des 2026",
+    status: "aktif",
+  },
+  {
+    id: "2",
+    code: "ONGKIR0",
+    title: "Gratis Ongkir",
+    discount_label: "Rp 15.000",
+    discount_amount: 15000,
+    min_purchase_amount: 50000,
+    min_purchase: "Min. belanja Rp 50.000",
+    expires_at: "15 Sep 2026",
+    status: "aktif",
+  },
+];
+
+const LOYALTY_POINTS_PER_TRANSACTION = 10;
+
+function parseEtaDays(eta: string): { min: number; max: number } {
+  const match = eta.match(/(\d+)(?:-(\d+))?/);
+  if (!match) return { min: 1, max: 1 };
+  const min = Number(match[1]);
+  const max = match[2] ? Number(match[2]) : min;
+  return { min, max };
+}
+
+function addDays(date: Date, days: number) {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
+function formatShortDate(date: Date) {
+  return date.toLocaleDateString("id-ID", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
+
+function getEstimatedDeliveryLabel(eta: string) {
+  const { min, max } = parseEtaDays(eta);
+  const today = new Date();
+  const from = addDays(today, min);
+  const to = addDays(today, max);
+  return min === max
+    ? formatShortDate(from)
+    : `${formatShortDate(from)} - ${formatShortDate(to)}`;
+}
 
 interface FormErrors {
   postalCode?: string;
@@ -48,16 +114,28 @@ interface CheckoutItem {
 
 export default function CheckoutPage() {
   const { user } = useAuth();
+  const { formatPrice } = useCurrency();
   const location = useLocation();
   const navigate = useNavigate();
   const { items, clearSelected } = useCart();
 
   const [postalCode, setPostalCode] = useState("");
   const [city, setCity] = useState("");
+  const [address, setAddress] = useState(
+    "Jl. Contoh Alamat No. 123, Jakarta Selatan",
+  );
   const [isSearchingZip, setIsSearchingZip] = useState(false);
   const [shippingMethodId, setShippingMethodId] =
     useState<ShippingMethod["id"]>("standard");
   const [formErrors, setFormErrors] = useState<FormErrors>({});
+
+  const [selectedVoucher, setSelectedVoucher] = useState<Voucher | null>(null);
+  const [showVoucherList, setShowVoucherList] = useState(false);
+
+  const availableVouchers =
+    (user?.loyalty_points ?? 0) >= LOYALTY_REWARD_THRESHOLD
+      ? [...DUMMY_VOUCHERS, LOYALTY_REWARD_VOUCHER]
+      : DUMMY_VOUCHERS;
 
   useEffect(() => {
     const fetchCity = async () => {
@@ -89,6 +167,7 @@ export default function CheckoutPage() {
     SHIPPING_METHODS.find((m) => m.id === shippingMethodId) ??
     SHIPPING_METHODS[0];
   const shippingCost = shippingMethod.cost;
+  const estimatedDeliveryLabel = getEstimatedDeliveryLabel(shippingMethod.eta);
 
   const immediateBuy = location.state?.immediateBuy as
     | {
@@ -141,8 +220,20 @@ export default function CheckoutPage() {
     0,
   );
 
+  const discountAmount = selectedVoucher
+    ? selectedVoucher.code === "NEWUSER20"
+      ? totalHarga * 0.2
+      : (selectedVoucher.discount_amount ?? 0)
+    : 0;
+
   const totalTagihan =
-    totalHarga + shippingCost + protectionCost + insuranceCost;
+    totalHarga + shippingCost + protectionCost + insuranceCost - discountAmount;
+
+  const loyaltyPointsEarned = LOYALTY_POINTS_PER_TRANSACTION;
+
+  const deliverToLabel = [address.trim(), city.trim(), postalCode.trim()]
+    .filter(Boolean)
+    .join(", ");
 
   function validate(): boolean {
     const nextErrors: FormErrors = {};
@@ -171,12 +262,19 @@ export default function CheckoutPage() {
         totalPaid: totalTagihan,
         itemIds: purchasedProductIds,
         items: selectedItems.map((item) => ({
+          productId: item.productId,
           name: item.name,
+          variant: item.variant,
           quantity: item.quantity,
           price: item.basePrice,
+          image: item.image,
         })),
         subtotal: totalHarga,
         packagingFee: shippingCost,
+        discountAmount,
+        voucherCode: selectedVoucher?.code,
+        loyaltyPointsEarned,
+        estimatedDeliveryLabel,
         customer: {
           name: user?.full_name || "Pelanggan",
           email: user?.email || "",
@@ -285,9 +383,91 @@ export default function CheckoutPage() {
                   </label>
                   <textarea
                     rows={2}
-                    defaultValue="Jl. Contoh Alamat No. 123, Jakarta Selatan"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
                     className="mt-1.5 w-full resize-none rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm text-text outline-none focus:border-primary"
                   />
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border bg-surface p-5">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                  Voucher
+                </h2>
+                <div className="mt-3">
+                  {!showVoucherList ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowVoucherList(true)}
+                      className="flex w-full items-center justify-between rounded-lg border border-border bg-background p-4 text-left transition-colors hover:border-primary/50">
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                          <Ticket className="h-4 w-4" />
+                        </span>
+                        <div>
+                          <p className="text-sm font-semibold text-text">
+                            {selectedVoucher
+                              ? selectedVoucher.title
+                              : "Gunakan Voucher"}
+                          </p>
+                          <p className="text-xs text-text-secondary">
+                            {selectedVoucher
+                              ? `Hemat ${
+                                  selectedVoucher.discount_amount !== undefined
+                                    ? formatPrice(
+                                        selectedVoucher.discount_amount,
+                                      )
+                                    : selectedVoucher.discount_label
+                                }`
+                              : "Makin hemat pakai promo"}
+                          </p>
+                        </div>
+                      </div>
+                      <ChevronRight className="h-5 w-5 text-text-secondary" />
+                    </button>
+                  ) : (
+                    <div className="space-y-3">
+                      {availableVouchers
+                        .filter((v) => v.status === "aktif")
+                        .map((v) => (
+                          <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedVoucher(v);
+                              setShowVoucherList(false);
+                            }}
+                            className={`flex w-full items-start gap-3 rounded-lg border p-4 text-left transition-colors ${
+                              selectedVoucher?.id === v.id
+                                ? "border-primary bg-primary/5"
+                                : "border-border"
+                            }`}>
+                            <Ticket className="mt-1 h-4 w-4 text-primary" />
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-text">
+                                {v.title}
+                              </p>
+                              <p className="text-xs text-primary font-bold">
+                                {v.discount_amount !== undefined
+                                  ? formatPrice(v.discount_amount)
+                                  : v.discount_label}
+                              </p>
+                              <p className="text-[10px] text-text-secondary">
+                                {v.min_purchase_amount !== undefined
+                                  ? `Min. belanja ${formatPrice(v.min_purchase_amount)}`
+                                  : v.min_purchase}
+                              </p>
+                            </div>
+                          </button>
+                        ))}
+                      <button
+                        type="button"
+                        onClick={() => setShowVoucherList(false)}
+                        className="w-full py-2 text-xs font-medium text-text-secondary hover:text-primary">
+                        Batal
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -319,7 +499,7 @@ export default function CheckoutPage() {
                               {method.label}
                             </span>
                             <span className="text-sm font-semibold text-text">
-                              {formatRupiah(method.cost)}
+                              {formatPrice(method.cost)}
                             </span>
                           </span>
                           <span className="mt-0.5 block text-xs text-text-secondary">
@@ -329,6 +509,62 @@ export default function CheckoutPage() {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border bg-surface p-5">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                  Detail Pengiriman
+                </h2>
+
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-background border border-border">
+                      <MapPin className="h-4 w-4 text-text-secondary" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xs text-text-secondary">Dikirim ke</p>
+                      <p className="text-sm font-medium text-text">
+                        {deliverToLabel || "Lengkapi alamat di atas"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-background border border-border">
+                      <CalendarClock className="h-4 w-4 text-text-secondary" />
+                    </span>
+                    <div>
+                      <p className="text-xs text-text-secondary">
+                        Estimasi Tiba
+                      </p>
+                      <p className="text-sm font-medium text-text">
+                        {estimatedDeliveryLabel}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-background border border-border">
+                      <Star className="h-4 w-4 text-text-secondary" />
+                    </span>
+                    <div>
+                      <p className="text-xs text-text-secondary">
+                        Poin Loyalti yang Didapat
+                      </p>
+                      <p className="text-sm font-medium text-text">
+                        +{loyaltyPointsEarned.toLocaleString("id-ID")} poin
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 rounded-lg bg-background p-3">
+                    <Clock className="mt-0.5 h-4 w-4 shrink-0 text-text-secondary" />
+                    <p className="text-xs text-text-secondary">
+                      Pesanan dikirim dalam 24 jam setelah pembayaran
+                      dikonfirmasi.
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -358,20 +594,18 @@ export default function CheckoutPage() {
                         </p>
                       </div>
                       <span className="shrink-0 text-sm font-semibold text-text">
-                        {item.quantity} x {formatRupiah(item.basePrice)}
+                        {item.quantity} x {formatPrice(item.basePrice)}
                       </span>
                     </div>
                   </div>
                   <div className="mt-4 rounded-lg border border-border p-4 text-sm text-text-secondary">
                     <div className="flex items-center justify-between">
                       <span>Pengiriman {shippingMethod.label}</span>
-                      <span>{formatRupiah(shippingCost)}</span>
+                      <span>{formatPrice(shippingCost)}</span>
                     </div>
                     <div className="mt-2 flex items-center justify-between">
                       <span>Proteksi & Asuransi</span>
-                      <span>
-                        {formatRupiah(protectionCost + insuranceCost)}
-                      </span>
+                      <span>{formatPrice(protectionCost + insuranceCost)}</span>
                     </div>
                   </div>
                 </div>
@@ -423,23 +657,29 @@ export default function CheckoutPage() {
                 <div className="mt-3 space-y-2 text-sm text-text-secondary">
                   <div className="flex items-center justify-between">
                     <span>Total Harga ({selectedItems.length} Barang)</span>
-                    <span>{formatRupiah(totalHarga)}</span>
+                    <span>{formatPrice(totalHarga)}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Ongkos Kirim</span>
-                    <span>{formatRupiah(shippingCost)}</span>
+                    <span>{formatPrice(shippingCost)}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Proteksi & Asuransi</span>
-                    <span>{formatRupiah(protectionCost + insuranceCost)}</span>
+                    <span>{formatPrice(protectionCost + insuranceCost)}</span>
                   </div>
+                  {selectedVoucher && (
+                    <div className="flex items-center justify-between text-primary font-medium">
+                      <span>Diskon Voucher</span>
+                      <span>-{formatPrice(discountAmount)}</span>
+                    </div>
+                  )}
                 </div>
                 <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
                   <span className="text-sm font-medium text-text">
                     Total Tagihan
                   </span>
                   <span className="text-lg font-bold text-text">
-                    {formatRupiah(totalTagihan)}
+                    {formatPrice(totalTagihan)}
                   </span>
                 </div>
                 <button

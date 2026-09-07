@@ -153,7 +153,7 @@ export default function SignUpPage() {
                   type="text"
                   value={values.username}
                   onChange={(e) => setField("username", e.target.value)}
-                  placeholder="Username unik"
+                  placeholder="Username"
                   className={fieldClass(errors.username).replace(
                     "pr-9",
                     "pr-3",
@@ -166,7 +166,6 @@ export default function SignUpPage() {
             </div>
           </div>
 
-          {/* Row 2: Telepon + Email */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label htmlFor="phone" className="text-sm font-medium text-text">

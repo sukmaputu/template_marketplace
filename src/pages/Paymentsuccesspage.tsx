@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "motion/react";
 import { PDFDownloadLink } from "@react-pdf/renderer";
@@ -6,14 +6,21 @@ import { ArrowRight, Download } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { MarketplaceFooter } from "@/components/MarketplaceFooter";
 import { ProductCard } from "@/components/ProductCard";
-import { ProductQuickViewModal } from "@/components/Productquickviewmodal";
 import {
   InvoiceDocument,
   type InvoiceItem,
   type InvoiceCustomer,
 } from "@/components/Invoicedocument";
 import { PRODUCTS } from "@/lib/products";
-import type { Product } from "@/lib/products";
+import { saveOrder } from "@/lib/orderHistory";
+import type { Order } from "@/components/profile/types";
+import { useAuth } from "@/components/auth/UseAuth";
+
+type PurchasedItem = InvoiceItem & {
+  productId: string;
+  variant: string;
+  image?: string;
+};
 
 const RECOMMENDATION_COUNT = 4;
 
@@ -30,17 +37,24 @@ function pickRandomProducts(excludeIds: string[], count: number) {
 export default function PaymentSuccessPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const { user, addLoyaltyPoints } = useAuth();
+
+  useLayoutEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
 
   const orderState = location.state as
     | {
         totalPaid?: number;
         itemIds?: string[];
         orderId?: string;
-        items?: InvoiceItem[];
+        items?: PurchasedItem[];
         subtotal?: number;
         packagingFee?: number;
+        discountAmount?: number;
+        voucherCode?: string;
         customer?: InvoiceCustomer;
+        loyaltyPointsEarned?: number;
       }
     | undefined;
 
@@ -48,7 +62,7 @@ export default function PaymentSuccessPage() {
   const invoiceItems = orderState?.items ?? [];
   const invoiceSubtotal = orderState?.subtotal ?? 0;
   const invoicePackagingFee = orderState?.packagingFee ?? 0;
-
+  const discountAmount = orderState?.discountAmount ?? 0;
   const extraFees = totalPaid - (invoiceSubtotal + invoicePackagingFee);
 
   const invoiceCustomer = orderState?.customer ?? {
@@ -60,6 +74,47 @@ export default function PaymentSuccessPage() {
   const [orderId] = useState(
     () => orderState?.orderId ?? `INV-M-${Date.now()}`,
   );
+  const rewardAppliedRef = useRef(false);
+
+  useEffect(() => {
+    if (!orderState?.items?.length) return;
+
+    if (user && orderState.loyaltyPointsEarned && !rewardAppliedRef.current) {
+      addLoyaltyPoints(orderState.loyaltyPointsEarned);
+      rewardAppliedRef.current = true;
+    }
+
+    const order: Order = {
+      id: orderId,
+      status: "processing",
+      cancelDeadline: new Date(Date.now() + 1000 * 60 * 74).toISOString(),
+      date: new Date().toLocaleString("id-ID", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      grand_total: totalPaid,
+      items: orderState.items.map((item, index) => ({
+        id: `${orderId}-item-${index + 1}`,
+        product_name_snapshot: item.name,
+        variant_name_snapshot: item.variant,
+        unit_price: item.price,
+        quantity: item.quantity,
+        image: item.image,
+      })),
+    };
+
+    saveOrder(order);
+  }, [
+    orderId,
+    orderState?.items,
+    orderState?.loyaltyPointsEarned,
+    totalPaid,
+    user,
+    addLoyaltyPoints,
+  ]);
 
   const [invoiceDate] = useState(() =>
     new Date().toLocaleString("id-ID", {
@@ -165,7 +220,11 @@ export default function PaymentSuccessPage() {
                   customer={invoiceCustomer}
                   items={invoiceItems}
                   subtotal={invoiceSubtotal}
-                  packagingFee={invoicePackagingFee + extraFees}
+                  packagingFee={
+                    invoicePackagingFee + extraFees + discountAmount
+                  }
+                  discountAmount={discountAmount}
+                  voucherCode={orderState?.voucherCode}
                 />
               }
               fileName={`invoice-${orderId}.pdf`}
@@ -211,11 +270,7 @@ export default function PaymentSuccessPage() {
 
             <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
               {recommendations.map((product) => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  onSelect={setSelectedProduct}
-                />
+                <ProductCard key={product.id} product={product} />
               ))}
             </div>
           </div>
@@ -223,11 +278,6 @@ export default function PaymentSuccessPage() {
       </div>
 
       <MarketplaceFooter />
-
-      <ProductQuickViewModal
-        product={selectedProduct}
-        onClose={() => setSelectedProduct(null)}
-      />
     </div>
   );
 }

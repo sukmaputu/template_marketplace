@@ -55,7 +55,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       normalizedEmail === DEMO_ACCOUNT.email &&
       password === DEMO_ACCOUNT.password
     ) {
-      // Konstruksi nextUser menggunakan full_name
       const nextUser: AuthUser = {
         full_name: DEMO_ACCOUNT.full_name,
         email: DEMO_ACCOUNT.email,
@@ -75,12 +74,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(STORAGE_KEY);
   }
 
+  function addLoyaltyPoints(points: number) {
+    if (!points || points <= 0) return;
+
+    setUser((prev) => {
+      if (!prev) return prev;
+
+      const nextUser: AuthUser = {
+        ...prev,
+        loyalty_points: (prev.loyalty_points ?? 0) + points,
+      };
+
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
+      return nextUser;
+    });
+  }
+
   const value = useMemo(
     () => ({
       user,
       isAuthenticated: user !== null,
       login,
       logout,
+      addLoyaltyPoints,
     }),
     [user],
   );

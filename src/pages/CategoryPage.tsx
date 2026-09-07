@@ -5,8 +5,6 @@ import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { MarketplaceFooter } from "@/components/MarketplaceFooter";
 import { ProductCard } from "@/components/ProductCard";
 import { CATEGORY_DETAILS, PRODUCTS } from "@/lib/products";
-import { ProductQuickViewModal } from "@/components/Productquickviewmodal";
-import type { Product } from "@/lib/products";
 
 const SORT_OPTIONS = [
   { value: "default", label: "Bawaan" },
@@ -19,7 +17,6 @@ export default function CategoryPage() {
   const params = useParams();
   const categoryId = params.categoryId ?? "teknologi-informasi";
   const [sortBy, setSortBy] = useState("default");
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   const category = CATEGORY_DETAILS.find((item) => item.id === categoryId);
 
@@ -80,11 +77,7 @@ export default function CategoryPage() {
 
         <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
           {products.map((product) => (
-            <ProductCard
-              key={product.id}
-              product={product}
-              onSelect={setSelectedProduct}
-            />
+            <ProductCard key={product.id} product={product} />
           ))}
         </div>
 
@@ -96,10 +89,6 @@ export default function CategoryPage() {
       </div>
 
       <MarketplaceFooter />
-      <ProductQuickViewModal
-        product={selectedProduct}
-        onClose={() => setSelectedProduct(null)}
-      />
     </div>
   );
 }

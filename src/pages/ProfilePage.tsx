@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Camera, User } from "lucide-react";
+import { ArrowLeft, Calendar, Camera, Star, User } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { ProfileSkeleton } from "@/components/skeleton/ProfileSkeleton";
 import { useAuth } from "@/components/auth/UseAuth";
 import type { TabKey } from "@/components/profile/types";
 import { DataDiriTab } from "@/components/profile/DataDiriTab";
 import { RiwayatPembelianTab } from "@/components/profile/RiwayatPembelianTab";
+import { VoucherTab } from "@/components/profile/VoucherTab";
+import { WishlistTab } from "@/components/profile/WishlistTab";
 
 export default function ProfilePage() {
   const { user } = useAuth();
@@ -35,10 +37,19 @@ export default function ProfilePage() {
     };
     reader.readAsDataURL(file);
   }
+  const joinedSince = user?.created_at
+    ? new Date(user.created_at).toLocaleDateString("id-ID", {
+        month: "long",
+        year: "numeric",
+      })
+    : "29 Agustus 2026";
+  const loyaltyPoints = user?.loyalty_points ?? 0;
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: "data-diri", label: "Data Diri" },
     { key: "riwayat-pembelian", label: "Riwayat Pembelian" },
+    { key: "voucher", label: "Voucher" },
+    { key: "wishlist", label: "Wishlist" },
   ];
 
   return (
@@ -93,6 +104,27 @@ export default function ProfilePage() {
                   <p className="text-xs text-text-secondary">{user?.email}</p>
                 </div>
 
+                <div className="mt-5 grid grid-cols-2 gap-2 border-t border-border pt-5">
+                  <div className="flex flex-col items-center gap-1 rounded-lg bg-background px-2 py-3 text-center">
+                    <Calendar className="h-4 w-4 text-text-secondary" />
+                    <p className="text-[11px] text-text-secondary">
+                      Bergabung sejak
+                    </p>
+                    <p className="text-xs font-semibold text-text">
+                      {joinedSince}
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-center gap-1 rounded-lg bg-background px-2 py-3 text-center">
+                    <Star className="h-4 w-4 text-text-secondary" />
+                    <p className="text-[11px] text-text-secondary">
+                      Poin Loyalti
+                    </p>
+                    <p className="text-xs font-semibold text-text">
+                      {loyaltyPoints.toLocaleString("id-ID")}
+                    </p>
+                  </div>
+                </div>
+
                 <nav className="mt-6 space-y-1">
                   {tabs.map((tab) => (
                     <button
@@ -111,11 +143,10 @@ export default function ProfilePage() {
             </aside>
 
             <div className="w-full flex-1">
-              {activeTab === "data-diri" ? (
-                <DataDiriTab />
-              ) : (
-                <RiwayatPembelianTab />
-              )}
+              {activeTab === "data-diri" && <DataDiriTab />}
+              {activeTab === "riwayat-pembelian" && <RiwayatPembelianTab />}
+              {activeTab === "voucher" && <VoucherTab />}
+              {activeTab === "wishlist" && <WishlistTab />}
             </div>
           </div>
         )}

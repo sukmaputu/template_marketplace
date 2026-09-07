@@ -1,25 +1,17 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  Bell,
-  Menu,
-  MessageCircle,
-  Moon,
-  Sun,
-  X,
-  User,
-  LogIn,
-  UserPlus,
-} from "lucide-react";
+import { Bell, Menu, Moon, Sun, X, User, LogIn, UserPlus } from "lucide-react";
 import { Dropdown } from "@/components/ui/dropdown";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/components/auth/UseAuth";
+import { CURRENCIES, useCurrency } from "@/components/navbar/CurrencySwitcher";
 import { NotificationList } from "./NotificationMenu";
 import { NOTIFICATIONS } from "./notifications-data";
 
 export function MobileMenu() {
   const { theme, toggleTheme } = useTheme();
   const { isAuthenticated, user } = useAuth();
+  const { currency, setCurrency } = useCurrency();
   const isDark = theme === "dark";
   const [showNotifications, setShowNotifications] = useState(false);
   const unreadCount = NOTIFICATIONS.filter((item) => !item.is_read).length;
@@ -64,6 +56,30 @@ export function MobileMenu() {
             </span>
           </button>
 
+          <div className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-[color:var(--color-text)]">
+            <span className="flex items-center gap-3">
+              <span className="text-base leading-none">
+                {CURRENCIES.find((c) => c.code === currency)?.flag}
+              </span>
+              Mata Uang
+            </span>
+            <div className="flex overflow-hidden rounded-md border border-[color:var(--color-border)]">
+              {CURRENCIES.map((c) => (
+                <button
+                  key={c.code}
+                  type="button"
+                  onClick={() => setCurrency(c.code)}
+                  className={`px-2 py-1 text-xs font-medium transition-colors ${
+                    currency === c.code
+                      ? "bg-[color:var(--color-primary)] text-white"
+                      : "text-[color:var(--color-text-secondary)] hover:bg-[color:var(--color-background)]"
+                  }`}>
+                  {c.code}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="my-1 border-t border-[color:var(--color-border)]" />
 
           {isAuthenticated ? (
@@ -91,13 +107,6 @@ export function MobileMenu() {
                   </span>
                 )}
               </button>
-
-              <Link
-                to="/message"
-                className="flex items-center gap-3 px-4 py-2.5 text-sm text-[color:var(--color-text)] hover:bg-[color:var(--color-background)]">
-                <MessageCircle className="h-4 w-4 text-[color:var(--color-text-secondary)]" />
-                Chat
-              </Link>
             </>
           ) : (
             <>

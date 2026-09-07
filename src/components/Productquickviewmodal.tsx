@@ -11,6 +11,7 @@ import {
 import { useCart } from "@/components/cart/useCart";
 import type { Product } from "@/lib/products";
 import { showToast } from "@/lib/toast";
+import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 
 interface ProductQuickViewModalProps {
   product: Product | null;
@@ -20,16 +21,13 @@ interface ProductQuickViewModalProps {
 const DEFAULT_SCHEDULES = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat"];
 const DEFAULT_LEVELS = ["Pemula", "Menengah", "Tingkat Lanjut"];
 
-function formatRupiah(value: number) {
-  return `Rp ${value.toLocaleString("id-ID")}`;
-}
-
 function ProductQuickViewContent({
   product,
   onClose,
 }: ProductQuickViewModalProps & { product: Product }) {
   const navigate = useNavigate();
   const { addToCart } = useCart();
+  const { formatPrice } = useCurrency();
   const [quantity, setQuantity] = useState(1);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -162,12 +160,12 @@ function ProductQuickViewContent({
 
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-xl font-bold text-primary">
-              {formatRupiah(product.basePrice)}
+              {formatPrice(product.basePrice)}
             </span>
             {product.comparePrice &&
             product.comparePrice > product.basePrice ? (
               <span className="text-sm text-text-secondary line-through">
-                {formatRupiah(product.comparePrice)}
+                {formatPrice(product.comparePrice)}
               </span>
             ) : null}
           </div>

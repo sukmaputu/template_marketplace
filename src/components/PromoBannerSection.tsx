@@ -7,8 +7,15 @@ const SLIDE_IMAGES = [
   "/banner/slide3.jpg",
 ];
 
-export function PromoBannerSection() {
-  const slideCount = SLIDE_IMAGES.length;
+type PromoBannerSectionProps = {
+  images?: string[];
+};
+
+export function PromoBannerSection({
+  images = SLIDE_IMAGES,
+}: PromoBannerSectionProps) {
+  const bannerImages = images.length > 0 ? images : SLIDE_IMAGES;
+  const slideCount = bannerImages.length;
   const isSlideshow = slideCount > 1;
   const [index, setIndex] = useState(0);
 
@@ -34,13 +41,13 @@ export function PromoBannerSection() {
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <div className="group relative aspect-[3/1] w-full overflow-hidden rounded-xl bg-neutral-200 dark:bg-neutral-700">
+      <div className="group relative aspect-3/1 w-full overflow-hidden rounded-xl bg-neutral-200 dark:bg-neutral-700">
         <div
           className="flex h-full transition-transform duration-500 ease-out"
           style={{
             transform: isSlideshow ? `translateX(-${index * 100}%)` : "none",
           }}>
-          {SLIDE_IMAGES.map((src, i) => (
+          {bannerImages.map((src, i) => (
             <div
               key={src}
               className="flex h-full w-full shrink-0 items-center justify-center bg-neutral-200 dark:bg-neutral-700">
@@ -69,7 +76,7 @@ export function PromoBannerSection() {
             </button>
 
             <div className="absolute bottom-2.5 left-1/2 flex -translate-x-1/2 gap-1.5">
-              {SLIDE_IMAGES.map((src, i) => (
+              {bannerImages.map((src, i) => (
                 <button
                   key={src}
                   onClick={() => goTo(i)}

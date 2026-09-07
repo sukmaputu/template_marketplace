@@ -1,8 +1,10 @@
 import { Link } from "react-router-dom";
-import { Package, RotateCcw, Truck } from "lucide-react";
-import type { Order, OrderStatus } from "./types";
-import { formatRupiah, isRefundEligible } from "./utils";
+import { MapPin, Package, RotateCcw, Truck } from "lucide-react";
+import type { Order } from "./types";
+import { ORDER_STATUS_CONFIG } from "./types";
+import { isRefundEligible } from "./utils";
 import { CountdownTimer } from "./CountdownTimer";
+import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 
 export function OrderCard({
   order,
@@ -10,59 +12,26 @@ export function OrderCard({
   onMarkReceived,
   onCancelClick,
   onRefundClick,
+  onReviewClick,
 }: {
   order: Order;
   onTrackClick: (order: Order) => void;
   onMarkReceived: (orderId: string) => void;
   onCancelClick: (order: Order) => void;
   onRefundClick: (order: Order) => void;
+  onReviewClick?: (order: Order) => void;
 }) {
-  const getStatusBadge = (status: OrderStatus) => {
-    switch (status) {
-      case "completed":
-        return {
-          label: "Selesai",
-          className: "bg-secondary/15 text-secondary",
-        };
-      case "shipped":
-        return {
-          label: "Sedang Dikirim",
-          className: "bg-primary/15 text-primary",
-        };
-      case "processing":
-        return {
-          label: "Perlu Dikirim",
-          className: "bg-accent/15 text-accent",
-        };
-      case "paid":
-        return {
-          label: "Sudah Dibayar",
-          className: "bg-secondary/15 text-secondary",
-        };
-      case "pending_payment":
-        return {
-          label: "Belum Bayar",
-          className: "bg-destructive/15 text-destructive",
-        };
-      case "cancelled":
-        return {
-          label: "Dibatalkan",
-          className: "bg-destructive/10 text-destructive",
-        };
-      case "refunded":
-        return {
-          label: "Dikembalikan",
-          className: "bg-destructive/10 text-destructive",
-        };
-    }
-  };
-
-  const statusInfo = getStatusBadge(order.status);
+  const { formatPrice } = useCurrency();
+  const statusInfo = ORDER_STATUS_CONFIG[order.status];
   const isInProgress =
     order.status === "processing" ||
-    order.status === "shipped" ||
+    order.status === "shipping" ||
     order.status === "pending_payment" ||
     order.status === "paid";
+
+  const showShippingSummary =
+    (order.status === "processing" || order.status === "shipping") &&
+    (order.shippingAddress || order.courierName);
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-surface">
@@ -82,7 +51,7 @@ export function OrderCard({
             <CountdownTimer deadlineIso={order.cancelDeadline} />
           )}
           <span
-            className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusInfo.className}`}>
+            className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusInfo.badgeClassName}`}>
             {statusInfo.label}
           </span>
         </div>
@@ -124,7 +93,7 @@ export function OrderCard({
               </span>
               <div className="shrink-0 text-right">
                 <p className="text-sm font-bold text-text">
-                  {formatRupiah(item.unit_price)}
+                  {formatPrice(item.unit_price)}
                 </p>
                 <p className="mt-0.5 text-xs text-text-secondary">
                   x{item.quantity}
@@ -135,11 +104,37 @@ export function OrderCard({
         ))}
       </div>
 
+      {showShippingSummary && (
+        <button
+          onClick={() => onTrackClick(order)}
+          className="flex w-full items-center gap-2 border-t border-border bg-background/40 px-3 py-2.5 text-left hover:bg-background sm:px-4">
+          <Truck className="h-3.5 w-3.5 shrink-0 text-text-secondary" />
+          <span className="min-w-0 flex-1 truncate text-xs text-text-secondary">
+            {order.courierName ? (
+              <span className="font-medium text-text">{order.courierName}</span>
+            ) : null}
+            {order.trackingNumber ? (
+              <span> • No. Resi {order.trackingNumber}</span>
+            ) : null}
+            {order.shippingAddress ? (
+              <span className="inline-flex items-center gap-1">
+                {" "}
+                <MapPin className="hidden h-3 w-3 sm:inline" />
+                Tujuan {order.shippingAddress.city}
+              </span>
+            ) : null}
+            {order.estimatedDelivery ? (
+              <span> • Estimasi tiba {order.estimatedDelivery}</span>
+            ) : null}
+          </span>
+        </button>
+      )}
+
       <div className="flex flex-col gap-3 border-t border-border bg-surface px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
         <div className="text-sm text-text-secondary">
           Total Pesanan:{" "}
           <span className="text-base font-bold text-text">
-            {formatRupiah(order.grand_total)}
+            {formatPrice(order.grand_total)}
           </span>
         </div>
 
@@ -166,7 +161,7 @@ export function OrderCard({
             </button>
           )}
 
-          {order.status === "shipped" && (
+          {order.status === "shipping" && (
             <>
               <button
                 onClick={() => onTrackClick(order)}
@@ -184,6 +179,14 @@ export function OrderCard({
 
           {order.status === "completed" && (
             <>
+              {onReviewClick && (
+                <button
+                  type="button"
+                  onClick={() => onReviewClick(order)}
+                  className="rounded-lg border border-border px-3.5 py-1.5 text-xs font-medium text-text hover:bg-background">
+                  Beri Ulasan
+                </button>
+              )}
               <Link
                 to="/"
                 className="inline-block rounded-lg bg-primary px-4 py-1.5 text-center text-xs font-medium text-white hover:opacity-90">

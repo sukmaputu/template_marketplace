@@ -199,12 +199,6 @@ export default function SettingsPage() {
 
           <div className="mt-2 divide-y divide-border">
             <ToggleRow
-              label="Promo & Penawaran Email"
-              description="Dapatkan info diskon dan promo kelas terbaru lewat email."
-              checked={notifications.emailPromo}
-              onChange={() => toggleNotification("emailPromo")}
-            />
-            <ToggleRow
               label="Update Pesanan"
               description="Notifikasi status pesanan: diproses, dikonfirmasi, selesai."
               checked={notifications.orderUpdates}

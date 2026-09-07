@@ -5,6 +5,8 @@ export interface AuthUser {
   email: string;
   phone?: string;
   username?: string;
+  created_at?: string;
+  loyalty_points?: number;
 }
 
 export interface AuthContextValue {
@@ -12,6 +14,7 @@ export interface AuthContextValue {
   isAuthenticated: boolean;
   login: (email: string, password: string) => boolean;
   logout: () => void;
+  addLoyaltyPoints: (points: number) => void;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);

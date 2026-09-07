@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageCircle, X, Send, User, Minus } from "lucide-react";
+import { useAuth } from "@/components/auth/UseAuth";
 
 type ChatSenderRole = "customer" | "agent" | "admin" | "bot";
 
@@ -18,6 +19,7 @@ interface ChatConversation {
   customer_user_id: string | null;
   customer_name: string | null;
   customer_email: string | null;
+  customer_phone: string | null;
   status: string;
   created_at: string;
   last_activity_at: string;
@@ -25,6 +27,13 @@ interface ChatConversation {
   agent_read_at: string | null;
   closed_at: string | null;
 }
+
+interface GuestIdentity {
+  name: string;
+  phone: string;
+}
+
+const GUEST_STORAGE_KEY = "chat_guest_identity";
 
 function nowIso() {
   return new Date().toISOString();
@@ -43,11 +52,32 @@ function isStaffMessage(role: ChatSenderRole) {
   return STAFF_ROLES.includes(role);
 }
 
+function getStoredGuestIdentity(): GuestIdentity | null {
+  try {
+    const raw = localStorage.getItem(GUEST_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed?.name && parsed?.phone) return parsed;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function saveGuestIdentity(identity: GuestIdentity) {
+  try {
+    localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(identity));
+  } catch {
+    // ignore storage errors (private mode, dsb.)
+  }
+}
+
 const INITIAL_CONVERSATION: ChatConversation = {
   id: null,
   customer_user_id: null,
   customer_name: null,
   customer_email: null,
+  customer_phone: null,
   status: "open",
   created_at: nowIso(),
   last_activity_at: nowIso(),
@@ -71,6 +101,8 @@ const INITIAL_MESSAGES: ChatMessage[] = [
 const INITIAL_UNREAD = 1;
 
 export function ChatWidget() {
+  const { user, isAuthenticated } = useAuth();
+
   const [isOpen, setIsOpen] = useState(false);
   const [conversation, setConversation] =
     useState<ChatConversation>(INITIAL_CONVERSATION);
@@ -78,6 +110,44 @@ export function ChatWidget() {
   const [draft, setDraft] = useState("");
   const [unreadCount, setUnreadCount] = useState(INITIAL_UNREAD);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Identitas guest (belum login)
+  const [guestIdentity, setGuestIdentity] = useState<GuestIdentity | null>(() =>
+    getStoredGuestIdentity(),
+  );
+  const [guestNameInput, setGuestNameInput] = useState("");
+  const [guestPhoneInput, setGuestPhoneInput] = useState("");
+  const [guestFormError, setGuestFormError] = useState<string | null>(null);
+
+  // Sudah "teridentifikasi" kalau: login, ATAU guest yang sudah isi form
+  const isIdentified = isAuthenticated || !!guestIdentity;
+  const needsGuestForm = !isAuthenticated && !guestIdentity;
+
+  // Derived, bukan state — dihitung ulang tiap render, tanpa effect
+  function getCustomerIdentity() {
+    if (isAuthenticated && user) {
+      return {
+        customer_user_id: null,
+        customer_name: user.full_name,
+        customer_email: user.email ?? null,
+        customer_phone: null,
+      };
+    }
+    if (guestIdentity) {
+      return {
+        customer_user_id: null,
+        customer_name: guestIdentity.name,
+        customer_email: null,
+        customer_phone: guestIdentity.phone,
+      };
+    }
+    return {
+      customer_user_id: null,
+      customer_name: null,
+      customer_email: null,
+      customer_phone: null,
+    };
+  }
 
   useEffect(() => {
     if (isOpen && scrollRef.current) {
@@ -98,10 +168,15 @@ export function ChatWidget() {
   }, []);
 
   useEffect(() => {
-    function handleExternalOpen() {
+    function handleExternalOpen(e: Event) {
       setIsOpen(true);
       markConversationReadByCustomer();
       setUnreadCount(0);
+
+      const detail = (e as CustomEvent<{ message?: string }>).detail;
+      if (detail?.message) {
+        setDraft(detail.message);
+      }
     }
     window.addEventListener("open-chat-widget", handleExternalOpen);
     return () =>
@@ -110,8 +185,10 @@ export function ChatWidget() {
 
   function openWidget() {
     setIsOpen(true);
-    markConversationReadByCustomer();
-    setUnreadCount(0);
+    if (isIdentified) {
+      markConversationReadByCustomer();
+      setUnreadCount(0);
+    }
   }
 
   function closeWidget() {
@@ -124,6 +201,29 @@ export function ChatWidget() {
     } else {
       openWidget();
     }
+  }
+
+  function handleGuestFormSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const name = guestNameInput.trim();
+    const phone = guestPhoneInput.trim();
+
+    if (!name) {
+      setGuestFormError("Nama wajib diisi.");
+      return;
+    }
+    if (!phone || !/^[0-9+ -]{8,15}$/.test(phone)) {
+      setGuestFormError("Nomor telepon tidak valid.");
+      return;
+    }
+
+    setGuestFormError(null);
+    const identity: GuestIdentity = { name, phone };
+    setGuestIdentity(identity);
+    saveGuestIdentity(identity);
+
+    markConversationReadByCustomer();
+    setUnreadCount(0);
   }
 
   function addStaffMessage(text: string, role: ChatSenderRole = "admin") {
@@ -155,16 +255,17 @@ export function ChatWidget() {
 
   function handleSend() {
     const text = draft.trim();
-    if (!text) return;
+    if (!text || !isIdentified) return;
 
     const createdAt = nowIso();
+    const identity = getCustomerIdentity();
 
     setMessages((prev) => [
       ...prev,
       {
         id: Date.now(),
         conversation_id: conversation.id,
-        sender_user_id: conversation.customer_user_id,
+        sender_user_id: identity.customer_user_id,
         sender_role: "customer",
         message: text,
         is_read: true,
@@ -173,6 +274,7 @@ export function ChatWidget() {
     ]);
     setConversation((prev) => ({
       ...prev,
+      ...identity,
       last_activity_at: createdAt,
       agent_read_at: null,
     }));
@@ -187,9 +289,9 @@ export function ChatWidget() {
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-[100] flex flex-col items-end">
+    <div className="fixed bottom-6 right-6 z-100 flex flex-col items-end">
       {isOpen && (
-        <div className="mb-4 flex h-[500px] w-[350px] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl animate-in slide-in-from-bottom-5 duration-300 sm:w-[400px]">
+        <div className="mb-4 flex h-125 w-87.5 flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl animate-in slide-in-from-bottom-5 duration-300 sm:w-100">
           <div className="flex items-center justify-between bg-primary px-4 py-4 text-white">
             <div className="flex items-center gap-3">
               <div className="relative">
@@ -212,52 +314,105 @@ export function ChatWidget() {
             </button>
           </div>
 
-          <div
-            ref={scrollRef}
-            className="flex-1 space-y-4 overflow-y-auto bg-[color:var(--color-background)] p-4">
-            {messages.map((msg) => {
-              const isCustomer = msg.sender_role === "customer";
-              return (
-                <div
-                  key={msg.id}
-                  className={`flex ${isCustomer ? "justify-end" : "justify-start"}`}>
-                  <div
-                    className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
-                      isCustomer
-                        ? "rounded-br-sm bg-primary text-white"
-                        : "rounded-bl-sm border border-border bg-surface text-text"
-                    }`}>
-                    <p>{msg.message}</p>
-                    <p
-                      className={`mt-1 text-right text-[10px] ${
-                        isCustomer ? "text-white/70" : "text-text-secondary"
-                      }`}>
-                      {formatTime(msg.created_at)}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          {needsGuestForm ? (
+            <form
+              onSubmit={handleGuestFormSubmit}
+              className="flex flex-1 flex-col justify-center gap-3 bg-background p-5">
+              <div>
+                <p className="text-sm font-semibold text-text">
+                  Sebelum mulai chat, isi dulu ya
+                </p>
+                <p className="mt-1 text-xs text-text-secondary">
+                  Supaya admin bisa menghubungi kamu kembali kalau perlu.
+                </p>
+              </div>
 
-          <div className="border-t border-border bg-surface p-4">
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                placeholder="Tulis pesan..."
-                className="flex-1 rounded-full border border-border bg-[color:var(--color-background)] px-4 py-2.5 text-sm text-text outline-none focus:border-primary"
-              />
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-text-secondary">
+                  Nama
+                </label>
+                <input
+                  type="text"
+                  value={guestNameInput}
+                  onChange={(e) => setGuestNameInput(e.target.value)}
+                  placeholder="Nama kamu"
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-text outline-none focus:border-primary"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-text-secondary">
+                  No. Telepon
+                </label>
+                <input
+                  type="tel"
+                  value={guestPhoneInput}
+                  onChange={(e) => setGuestPhoneInput(e.target.value)}
+                  placeholder="08xxxxxxxxxx"
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-text outline-none focus:border-primary"
+                />
+              </div>
+
+              {guestFormError && (
+                <p className="text-xs text-red-500">{guestFormError}</p>
+              )}
+
               <button
-                onClick={handleSend}
-                disabled={!draft.trim()}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-white transition-transform hover:scale-105 disabled:opacity-40">
-                <Send className="h-4 w-4" />
+                type="submit"
+                className="mt-1 w-full rounded-full bg-primary py-2.5 text-sm font-semibold text-white transition-transform hover:scale-[1.02] active:scale-95">
+                Mulai Chat
               </button>
-            </div>
-          </div>
+            </form>
+          ) : (
+            <>
+              <div
+                ref={scrollRef}
+                className="flex-1 space-y-4 overflow-y-auto bg-background p-4">
+                {messages.map((msg) => {
+                  const isCustomer = msg.sender_role === "customer";
+                  return (
+                    <div
+                      key={msg.id}
+                      className={`flex ${isCustomer ? "justify-end" : "justify-start"}`}>
+                      <div
+                        className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
+                          isCustomer
+                            ? "rounded-br-sm bg-primary text-white"
+                            : "rounded-bl-sm border border-border bg-surface text-text"
+                        }`}>
+                        <p>{msg.message}</p>
+                        <p
+                          className={`mt-1 text-right text-[10px] ${
+                            isCustomer ? "text-white/70" : "text-text-secondary"
+                          }`}>
+                          {formatTime(msg.created_at)}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="border-t border-border bg-surface p-4">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSend()}
+                    placeholder="Tulis pesan..."
+                    className="flex-1 rounded-full border border-border bg-background px-4 py-2.5 text-sm text-text outline-none focus:border-primary"
+                  />
+                  <button
+                    onClick={handleSend}
+                    disabled={!draft.trim()}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-white transition-transform hover:scale-105 disabled:opacity-40">
+                    <Send className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 

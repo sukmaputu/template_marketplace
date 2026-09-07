@@ -1,4 +1,4 @@
-import { Truck, X } from "lucide-react";
+import { MapPin, Truck, X } from "lucide-react";
 import type { Order } from "./types";
 
 export function TrackingModal({
@@ -8,9 +8,11 @@ export function TrackingModal({
   order: Order;
   onClose: () => void;
 }) {
+  const address = order.shippingAddress;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-lg rounded-xl border border-border bg-surface p-6 shadow-sm">
+      <div className="w-full max-w-lg rounded-xl border border-border bg-surface p-6 shadow-sm max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-border pb-4">
           <div className="flex items-center gap-2">
             <Truck className="h-5 w-5 text-primary" />
@@ -38,7 +40,36 @@ export function TrackingModal({
               {order.trackingNumber || "-"}
             </span>
           </div>
+          {order.estimatedDelivery && (
+            <div className="mt-1.5 flex items-center justify-between text-xs">
+              <span className="text-text-secondary">Estimasi Tiba:</span>
+              <span className="font-semibold text-text">
+                {order.estimatedDelivery}
+              </span>
+            </div>
+          )}
         </div>
+
+        {address && (
+          <div className="mt-4 rounded-lg border border-border bg-background p-3.5">
+            <div className="flex items-center gap-1.5 mb-2">
+              <MapPin className="h-3.5 w-3.5 text-text-secondary" />
+              <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+                Alamat Tujuan
+              </p>
+            </div>
+            <p className="text-xs font-semibold text-text">
+              {address.recipientName}{" "}
+              <span className="font-normal text-text-secondary">
+                • {address.phone}
+              </span>
+            </p>
+            <p className="mt-1 text-xs text-text-secondary leading-relaxed">
+              {address.addressLine}, {address.city}, {address.province}{" "}
+              {address.postalCode}
+            </p>
+          </div>
+        )}
 
         <div className="mt-6">
           <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-4">

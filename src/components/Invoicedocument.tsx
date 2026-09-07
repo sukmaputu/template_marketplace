@@ -26,6 +26,8 @@ export interface InvoiceDocumentProps {
   items: InvoiceItem[];
   subtotal: number;
   packagingFee: number;
+  discountAmount?: number;
+  voucherCode?: string;
 }
 
 function formatRupiah(value: number) {
@@ -157,8 +159,10 @@ export function InvoiceDocument({
   items,
   subtotal,
   packagingFee,
+  discountAmount = 0,
+  voucherCode,
 }: InvoiceDocumentProps) {
-  const grandTotal = subtotal + packagingFee;
+  const grandTotal = subtotal + packagingFee - discountAmount;
 
   return (
     <Document>
@@ -224,6 +228,16 @@ export function InvoiceDocument({
               {formatRupiah(packagingFee)}
             </Text>
           </View>
+          {discountAmount > 0 && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>
+                Diskon Voucher{voucherCode ? ` (${voucherCode})` : ""}
+              </Text>
+              <Text style={styles.summaryValue}>
+                -{formatRupiah(discountAmount)}
+              </Text>
+            </View>
+          )}
           <View style={[styles.summaryRow, styles.totalDivider]}>
             <Text style={{ fontWeight: 700 }}>Total</Text>
             <Text style={{ fontWeight: 700 }}>{formatRupiah(grandTotal)}</Text>

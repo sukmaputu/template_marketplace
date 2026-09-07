@@ -1,8 +1,11 @@
-import { getDiscountPercent, type Product } from "@/lib/products";
-
-function formatRupiah(value: number) {
-  return `Rp ${value.toLocaleString("id-ID")}`;
-}
+import { Star } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import {
+  getDiscountPercent,
+  getProductRatingStats,
+  type Product,
+} from "@/lib/products";
+import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 
 interface ProductCardProps {
   product: Product;
@@ -10,13 +13,22 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product, onSelect }: ProductCardProps) {
-  const { name, image, basePrice, comparePrice } = product;
+  const navigate = useNavigate();
+  const { formatPrice } = useCurrency();
+  const { id, name, image, basePrice, comparePrice } = product;
   const discountPercent = getDiscountPercent(product);
+  const ratingStats = getProductRatingStats(id);
 
   return (
     <button
       type="button"
-      onClick={() => onSelect?.(product)}
+      onClick={() => {
+        if (onSelect) {
+          onSelect(product);
+          return;
+        }
+        navigate(`/product/${id}`);
+      }}
       className="group block w-full rounded-xl border border-border bg-surface p-3 text-left transition-shadow hover:shadow-md">
       <div className="relative aspect-square overflow-hidden rounded-lg bg-background">
         {discountPercent ? (
@@ -43,13 +55,23 @@ export function ProductCard({ product, onSelect }: ProductCardProps) {
       <div className="mt-3 space-y-1.5">
         <h3 className="line-clamp-2 text-sm font-semibold text-text">{name}</h3>
 
+        <div className="flex items-center gap-1 text-[11px] text-amber-500">
+          <Star className="h-3.5 w-3.5 fill-current" />
+          <span className="font-medium text-text">
+            {ratingStats.rating > 0 ? ratingStats.rating.toFixed(1) : "Baru"}
+          </span>
+          <span className="text-text-secondary">
+            ({ratingStats.reviewCount})
+          </span>
+        </div>
+
         <div className="flex items-baseline gap-2">
           <span className="text-base font-bold text-primary">
-            {formatRupiah(basePrice)}
+            {formatPrice(basePrice)}
           </span>
           {comparePrice && comparePrice > basePrice ? (
             <span className="text-sm text-text-secondary line-through">
-              {formatRupiah(comparePrice)}
+              {formatPrice(comparePrice)}
             </span>
           ) : null}
         </div>

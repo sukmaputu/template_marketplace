@@ -1,15 +1,23 @@
-import { useState } from "react";
-import { ChevronLeft, ChevronRight, Package } from "lucide-react";
-import type { Order } from "./types";
+import { useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight, Package, Star, X } from "lucide-react";
+import type { Order, OrderStatus } from "./types";
+import { ORDER_STATUS_CONFIG } from "./types";
 import { MOCK_ORDERS } from "./MockData";
 import { OrderCard } from "./OrderCard";
 import { TrackingModal } from "./TrackingModal";
 import { RefundModal } from "./RefundModal";
 import { ConfirmModal } from "./ConfirmModal";
+import { getStoredOrders } from "@/lib/orderHistory";
+import { showToast } from "@/lib/toast";
+
+type FilterKey = "ALL" | OrderStatus;
 
 export function RiwayatPembelianTab() {
-  const [orders, setOrders] = useState<Order[]>(MOCK_ORDERS);
-  const [selectedStatus, setSelectedStatus] = useState<string>("ALL");
+  const [orders, setOrders] = useState<Order[]>(() => [
+    ...getStoredOrders(),
+    ...MOCK_ORDERS,
+  ]);
+  const [selectedStatus, setSelectedStatus] = useState<FilterKey>("ALL");
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [selectedOrderForTracking, setSelectedOrderForTracking] =
     useState<Order | null>(null);
@@ -17,17 +25,36 @@ export function RiwayatPembelianTab() {
     useState<Order | null>(null);
   const [selectedOrderForCancel, setSelectedOrderForCancel] =
     useState<Order | null>(null);
+  const [selectedOrderForReview, setSelectedOrderForReview] =
+    useState<Order | null>(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
 
   const ITEMS_PER_PAGE = 10;
 
-  const filterTabs = [
+  useEffect(() => {
+    const refreshOrders = () => {
+      setOrders([...getStoredOrders(), ...MOCK_ORDERS]);
+    };
+
+    window.addEventListener("order-history-updated", refreshOrders);
+    return () =>
+      window.removeEventListener("order-history-updated", refreshOrders);
+  }, []);
+
+  const filterTabs: { key: FilterKey; label: string }[] = [
     { key: "ALL", label: "Semua" },
-    { key: "pending_payment", label: "Belum Bayar" },
-    { key: "processing", label: "Diproses" },
-    { key: "shipped", label: "Dikirim" },
-    { key: "completed", label: "Selesai" },
-    { key: "cancelled", label: "Dibatalkan" },
-    { key: "refunded", label: "Refund" },
+    ...(
+      Object.entries(ORDER_STATUS_CONFIG) as [
+        OrderStatus,
+        (typeof ORDER_STATUS_CONFIG)[OrderStatus],
+      ][]
+    )
+      .filter(([, config]) => config.showInFilter !== false)
+      .map(([status, config]) => ({
+        key: status,
+        label: config.filterLabel,
+      })),
   ];
 
   const filteredOrders = orders.filter((order) => {
@@ -42,7 +69,7 @@ export function RiwayatPembelianTab() {
     startIndex + ITEMS_PER_PAGE,
   );
 
-  const handleFilterChange = (status: string) => {
+  const handleFilterChange = (status: FilterKey) => {
     setSelectedStatus(status);
     setCurrentPage(1);
   };
@@ -67,11 +94,57 @@ export function RiwayatPembelianTab() {
   ) => {
     setOrders((prev) =>
       prev.map((o) =>
-        o.id === orderId
-          ? { ...o, status: "refunded", refundReason: reason, refundNote: note }
-          : o,
+        o.id === orderId ? { ...o, refundReason: reason, refundNote: note } : o,
       ),
     );
+  };
+
+  const handleSubmitReview = () => {
+    if (!selectedOrderForReview) return;
+
+    const orderItems = selectedOrderForReview.items ?? [];
+    const validItems = orderItems.filter(
+      (item) => item.productId || item.product_name_snapshot,
+    );
+
+    if (!validItems.length) return;
+
+    const productId =
+      validItems[0].productId ?? validItems[0].product_name_snapshot;
+    const reviewPayload = {
+      id: `review-${selectedOrderForReview.id}-${Date.now()}`,
+      productId: String(productId),
+      userName: "Anda",
+      rating: reviewRating,
+      comment: reviewComment.trim() || "Produk sangat bagus.",
+      createdAt: new Date().toISOString(),
+    };
+
+    const existing = JSON.parse(
+      window.localStorage.getItem("marketplace-product-reviews") ?? "[]",
+    ) as Array<Record<string, unknown>>;
+
+    const nextReviews = [
+      reviewPayload,
+      ...existing.filter((item) => {
+        const itemProductId = String(item.productId ?? "");
+        return (
+          itemProductId !== String(reviewPayload.productId) ||
+          item.userName !== "Anda"
+        );
+      }),
+    ];
+
+    window.localStorage.setItem(
+      "marketplace-product-reviews",
+      JSON.stringify(nextReviews),
+    );
+    window.dispatchEvent(new Event("product-reviews-updated"));
+    showToast("Ulasan berhasil dikirim");
+
+    setSelectedOrderForReview(null);
+    setReviewComment("");
+    setReviewRating(5);
   };
 
   return (
@@ -109,6 +182,7 @@ export function RiwayatPembelianTab() {
               onMarkReceived={handleMarkReceived}
               onCancelClick={(ord) => setSelectedOrderForCancel(ord)}
               onRefundClick={(ord) => setSelectedOrderForRefund(ord)}
+              onReviewClick={(ord) => setSelectedOrderForReview(ord)}
             />
           ))}
         </div>
@@ -186,6 +260,80 @@ export function RiwayatPembelianTab() {
           onClose={() => setSelectedOrderForCancel(null)}
           onConfirm={() => handleCancelOrder(selectedOrderForCancel.id)}
         />
+      )}
+
+      {selectedOrderForReview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-xl border border-border bg-surface p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold text-text">
+                Beri Ulasan Produk
+              </h3>
+              <button
+                type="button"
+                onClick={() => setSelectedOrderForReview(null)}
+                className="rounded-lg p-1 text-text-secondary hover:bg-background hover:text-text">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-4">
+              <p className="text-sm text-text-secondary">Produk</p>
+              <p className="mt-1 text-sm font-medium text-text">
+                {selectedOrderForReview.items?.[0]?.product_name_snapshot ??
+                  "Produk pesanan"}
+              </p>
+            </div>
+
+            <div className="mt-4">
+              <p className="text-sm text-text-secondary">Rating</p>
+              <div className="mt-2 flex items-center gap-1.5">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setReviewRating(star)}
+                    aria-label={`Beri rating ${star}`}
+                    className="text-2xl transition-transform hover:scale-110">
+                    <Star
+                      className={`h-7 w-7 ${
+                        star <= reviewRating
+                          ? "fill-amber-400 text-amber-400"
+                          : "text-muted-foreground"
+                      }`}
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <label className="text-sm text-text-secondary">Review</label>
+              <textarea
+                value={reviewComment}
+                onChange={(e) => setReviewComment(e.target.value)}
+                rows={4}
+                className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text outline-none focus:border-primary"
+                placeholder="Ceritakan pengalaman kamu membeli produk ini..."
+              />
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedOrderForReview(null)}
+                className="rounded-lg border border-border bg-surface px-4 py-2 text-xs font-medium text-text hover:bg-background">
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitReview}
+                className="rounded-lg bg-primary px-4 py-2 text-xs font-medium text-white hover:opacity-90">
+                Simpan Ulasan
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

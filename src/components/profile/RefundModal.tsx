@@ -2,6 +2,7 @@ import { useState } from "react";
 import { RotateCcw, X } from "lucide-react";
 import type { Order } from "./types";
 import { REFUND_REASONS } from "./types";
+import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 
 export function RefundModal({
   order,
@@ -12,6 +13,7 @@ export function RefundModal({
   onClose: () => void;
   onSubmit: (orderId: string, reason: string, note: string) => void;
 }) {
+  const { formatPrice } = useCurrency();
   const [reason, setReason] = useState<string>(REFUND_REASONS[0]);
   const [note, setNote] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -44,7 +46,7 @@ export function RefundModal({
               Pengajuan refund untuk pesanan #{order.id} berhasil dikirim.
             </p>
             <p className="mt-1.5 text-xs text-text-secondary">
-              Kamu bisa melihat statusnya di tab "Refund".
+              Pengajuan akan diproses oleh admin terlebih dahulu.
             </p>
             <button
               onClick={onClose}
@@ -62,7 +64,7 @@ export function RefundModal({
               <div className="mt-1.5 flex items-center justify-between text-xs">
                 <span className="text-text-secondary">Total:</span>
                 <span className="font-semibold text-text">
-                  Rp {order.grand_total.toLocaleString("id-ID")}
+                  {formatPrice(order.grand_total)}
                 </span>
               </div>
             </div>

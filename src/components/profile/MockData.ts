@@ -1,4 +1,19 @@
 import type { Order, OrderStatus } from "./types";
+import { PRODUCTS, type Product } from "@/lib/products";
+
+const DEFAULT_SCHEDULES = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat"];
+const DEFAULT_LEVELS = ["Pemula", "Menengah", "Tingkat Lanjut"];
+
+function createOrderItem(orderId: string, product: Product, variant: string) {
+  return {
+    id: `${orderId}-item-1`,
+    product_name_snapshot: product.name,
+    variant_name_snapshot: variant,
+    unit_price: product.basePrice,
+    quantity: 1,
+    image: product.image,
+  };
+}
 
 export const MOCK_ORDERS: Order[] = [
   {
@@ -9,14 +24,21 @@ export const MOCK_ORDERS: Order[] = [
     cancelDeadline: new Date(Date.now() + 1000 * 60 * 74).toISOString(),
     courierName: "SPX Express Standard",
     trackingNumber: "SPXID09823411",
+    estimatedDelivery: "23-25 Agu 2026",
+    shippingAddress: {
+      recipientName: "Budi Santoso",
+      phone: "0812-3456-7890",
+      addressLine: "Jl. Merdeka No. 12, RT 03/RW 05",
+      city: "Jakarta Selatan",
+      province: "DKI Jakarta",
+      postalCode: "12345",
+    },
     items: [
-      {
-        id: "ORD-2026-001-item-1",
-        product_name_snapshot: "Pelatihan Desain Grafis",
-        variant_name_snapshot: "Full Course Access",
-        unit_price: 50000,
-        quantity: 1,
-      },
+      createOrderItem(
+        "ORD-2026-001",
+        PRODUCTS[0],
+        `${DEFAULT_SCHEDULES[0]} • ${DEFAULT_LEVELS[0]}`,
+      ),
     ],
     trackingTimeline: [
       {
@@ -35,31 +57,38 @@ export const MOCK_ORDERS: Order[] = [
   },
   {
     id: "ORD-2026-002",
-    status: "shipped",
+    status: "shipping",
     date: "20 Agu 2026 09:12",
     grand_total: 120000,
     courierName: "J&T Regular",
     trackingNumber: "JT8829103948",
+    estimatedDelivery: "22 Agu 2026",
+    shippingAddress: {
+      recipientName: "Siti Aminah",
+      phone: "0821-9988-7766",
+      addressLine: "Jl. Kebon Jeruk No. 45",
+      city: "Jakarta Barat",
+      province: "DKI Jakarta",
+      postalCode: "11530",
+    },
     items: [
-      {
-        id: "ORD-2026-002-item-1",
-        product_name_snapshot: "Kelas UI/UX Design Sprint",
-        variant_name_snapshot: "Pro Plan",
-        unit_price: 120000,
-        quantity: 1,
-      },
+      createOrderItem(
+        "ORD-2026-002",
+        PRODUCTS[2],
+        `${DEFAULT_SCHEDULES[1]} • ${DEFAULT_LEVELS[1]}`,
+      ),
     ],
     trackingTimeline: [
       {
         title: "Paket Sedang Diantar",
         description:
-          "Kurir sedang menuju alamat penerima (Budi - Jakarta Selatan)",
+          "Kurir sedang menuju alamat penerima (Siti - Jakarta Barat)",
         time: "21 Agu 2026 08:30",
         completed: true,
       },
       {
         title: "Paket Telah Diterima di Hub Transit",
-        description: "Jakarta Selatan Distribution Center",
+        description: "Jakarta Barat Distribution Center",
         time: "20 Agu 2026 21:00",
         completed: true,
       },
@@ -78,43 +107,41 @@ export const MOCK_ORDERS: Order[] = [
     grand_total: 100000,
     cancelDeadline: new Date(Date.now() + 1000 * 60 * 1).toISOString(),
     items: [
-      {
-        id: "ORD-2026-003-item-1",
-        product_name_snapshot: "Pelatihan Power BI Data Analyst",
-        variant_name_snapshot: "Video Mentoring",
-        unit_price: 100000,
-        quantity: 1,
-      },
+      createOrderItem(
+        "ORD-2026-003",
+        PRODUCTS[1],
+        `${DEFAULT_SCHEDULES[2]} • ${DEFAULT_LEVELS[2]}`,
+      ),
     ],
   },
   ...[
-    { name: "Manajemen Pajak", price: 90000 },
-    { name: "RAB (Rencana Anggaran Biaya)", price: 110000 },
-    { name: "Akuntansi Dasar untuk Bisnis", price: 85000 },
-    { name: "Perencanaan Keuangan Pribadi", price: 75000 },
-    { name: "Analisis Laporan Keuangan", price: 130000 },
-    { name: "Manajemen Asuransi", price: 95000 },
-    { name: "Gambar Teknik", price: 115000 },
-    { name: "Dasar Mekanika Mesin", price: 100000 },
-    { name: "Pengantar CNC dan Manufaktur", price: 150000 },
-  ].map((prod, idx) => {
+    PRODUCTS[3],
+    PRODUCTS[4],
+    PRODUCTS[5],
+    PRODUCTS[6],
+    PRODUCTS[7],
+    PRODUCTS[8],
+    PRODUCTS[12],
+    PRODUCTS[13],
+    PRODUCTS[15],
+  ].map((product, idx) => {
     const orderId = `ORD-2026-00${idx + 4}`;
     return {
       id: orderId,
       status: "completed" as OrderStatus,
       date: `${10 - idx} Agu 2026`,
-      grand_total: prod.price,
+      grand_total: product.basePrice,
       refundDeadline: new Date(
         Date.now() + 1000 * 60 * 60 * 24 * (idx < 2 ? 1 : -1),
       ).toISOString(),
       items: [
-        {
-          id: `${orderId}-item-1`,
-          product_name_snapshot: prod.name,
-          variant_name_snapshot: "Digital License",
-          unit_price: prod.price,
-          quantity: 1,
-        },
+        createOrderItem(
+          orderId,
+          product,
+          `${DEFAULT_SCHEDULES[idx % DEFAULT_SCHEDULES.length]} • ${
+            DEFAULT_LEVELS[idx % DEFAULT_LEVELS.length]
+          }`,
+        ),
       ],
     };
   }),
