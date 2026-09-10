@@ -41,7 +41,7 @@ export function PromoBannerSection({
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <div className="group relative aspect-3/1 w-full overflow-hidden rounded-xl bg-neutral-200 dark:bg-neutral-700">
+      <div className="group relative aspect-16/9 w-full overflow-hidden rounded-xl bg-neutral-200 dark:bg-neutral-700">
         <div
           className="flex h-full transition-transform duration-500 ease-out"
           style={{

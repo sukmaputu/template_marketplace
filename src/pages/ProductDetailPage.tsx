@@ -8,7 +8,6 @@ import {
   X,
   ZoomIn,
   MessageCircle,
-  Heart,
   Star,
 } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
@@ -64,6 +63,7 @@ export default function ProductDetailPage() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isWishlistModalOpen, setIsWishlistModalOpen] = useState(false);
+  const [wishlistVersion, setWishlistVersion] = useState(0);
   const [reviewRefreshKey, setReviewRefreshKey] = useState(0);
 
   const ratingStats = useMemo(() => {
@@ -77,9 +77,10 @@ export default function ProductDetailPage() {
   }, [product, reviewRefreshKey]);
 
   const isInWishlist = useMemo(() => {
+    void wishlistVersion;
     if (!product) return false;
     return getWishlistItems().some((item) => item.product.id === product.id);
-  }, [product]);
+  }, [product, wishlistVersion]);
 
   const schedules = product?.schedules?.length
     ? product.schedules
@@ -205,7 +206,11 @@ export default function ProductDetailPage() {
     );
 
     if (alreadyExists) {
-      showToast(`${product.name} sudah ada di wishlist`);
+      setWishlistItems(
+        existingItems.filter((item) => item.product.id !== product.id),
+      );
+      setWishlistVersion((version) => version + 1);
+      showToast(`${product.name} dihapus dari wishlist`);
       setIsWishlistModalOpen(false);
       return;
     }
@@ -220,6 +225,7 @@ export default function ProductDetailPage() {
     ];
 
     setWishlistItems(nextItems);
+    setWishlistVersion((version) => version + 1);
     showToast(`${product.name} ditambahkan ke wishlist`);
     setIsWishlistModalOpen(false);
   }
@@ -316,7 +322,6 @@ export default function ProductDetailPage() {
                     ? "border-primary bg-primary/10 text-primary"
                     : "border-border text-text hover:border-primary hover:text-primary"
                 }`}>
-                <Heart className="h-4 w-4" />
                 {isInWishlist ? "Sudah di Wishlist" : "Add to Wishlist"}
               </button>
             </div>
@@ -569,17 +574,16 @@ export default function ProductDetailPage() {
             aria-modal="true"
             aria-labelledby="wishlist-modal-title"
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm rounded-2xl bg-background p-6 text-center shadow-xl">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-              <Heart className="h-6 w-6 text-primary" />
-            </div>
+            className="w-full max-w-sm -rounded-2xl bg-background p-6 text-center shadow-xl">
             <h2
               id="wishlist-modal-title"
               className="text-base font-bold text-text">
-              Tambahkan ke wishlist?
+              {isInWishlist ? "Hapus dari wishlist?" : "Tambahkan ke wishlist?"}
             </h2>
             <p className="mt-1.5 text-sm text-text-secondary">
-              {product.name} akan disimpan ke daftar wishlist kamu.
+              {isInWishlist
+                ? `${product.name} akan dihapus dari daftar wishlist kamu.`
+                : `${product.name} akan disimpan ke daftar wishlist kamu.`}
             </p>
 
             <div className="mt-6 flex gap-3">
@@ -592,7 +596,9 @@ export default function ProductDetailPage() {
               <button
                 type="button"
                 onClick={confirmWishlist}
-                className="flex-1 rounded-full bg-primary py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90">
+                className={`flex-1 rounded-full py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90 ${
+                  isInWishlist ? "bg-red-600" : "bg-primary"
+                }`}>
                 Ya
               </button>
             </div>

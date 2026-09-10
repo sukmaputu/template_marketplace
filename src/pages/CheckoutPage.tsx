@@ -131,11 +131,32 @@ export default function CheckoutPage() {
 
   const [selectedVoucher, setSelectedVoucher] = useState<Voucher | null>(null);
   const [showVoucherList, setShowVoucherList] = useState(false);
+  const [voucherCodeInput, setVoucherCodeInput] = useState("");
+  const [voucherError, setVoucherError] = useState("");
 
   const availableVouchers =
     (user?.loyalty_points ?? 0) >= LOYALTY_REWARD_THRESHOLD
       ? [...DUMMY_VOUCHERS, LOYALTY_REWARD_VOUCHER]
       : DUMMY_VOUCHERS;
+
+  function applyVoucherCode() {
+    const code = voucherCodeInput.trim().toUpperCase();
+    if (!code) {
+      setVoucherError("Masukkan kode voucher.");
+      return;
+    }
+    const found = availableVouchers.find(
+      (v) => v.code.toUpperCase() === code && v.status === "aktif",
+    );
+    if (!found) {
+      setVoucherError("Kode voucher tidak valid atau sudah kedaluwarsa.");
+      return;
+    }
+    setSelectedVoucher(found);
+    setVoucherError("");
+    setVoucherCodeInput("");
+    setShowVoucherList(false);
+  }
 
   useEffect(() => {
     const fetchCity = async () => {
@@ -427,6 +448,40 @@ export default function CheckoutPage() {
                     </button>
                   ) : (
                     <div className="space-y-3">
+                      <div>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={voucherCodeInput}
+                            onChange={(e) => {
+                              setVoucherCodeInput(e.target.value);
+                              if (voucherError) setVoucherError("");
+                            }}
+                            placeholder="Masukkan kode voucher"
+                            className={`flex-1 rounded-lg border bg-background px-3.5 py-2.5 text-sm text-text outline-none placeholder:text-text-secondary focus:border-primary ${
+                              voucherError ? "border-red-500" : "border-border"
+                            }`}
+                          />
+                          <button
+                            type="button"
+                            onClick={applyVoucherCode}
+                            className="shrink-0 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90">
+                            Pakai
+                          </button>
+                        </div>
+                        {voucherError && (
+                          <p className="mt-1 text-xs text-red-500">
+                            {voucherError}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 text-xs text-text-secondary">
+                        <div className="h-px flex-1 bg-border" />
+                        <span>atau pilih voucher</span>
+                        <div className="h-px flex-1 bg-border" />
+                      </div>
+
                       {availableVouchers
                         .filter((v) => v.status === "aktif")
                         .map((v) => (
@@ -462,7 +517,11 @@ export default function CheckoutPage() {
                         ))}
                       <button
                         type="button"
-                        onClick={() => setShowVoucherList(false)}
+                        onClick={() => {
+                          setShowVoucherList(false);
+                          setVoucherError("");
+                          setVoucherCodeInput("");
+                        }}
                         className="w-full py-2 text-xs font-medium text-text-secondary hover:text-primary">
                         Batal
                       </button>
