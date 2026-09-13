@@ -1,28 +1,22 @@
 import { useEffect, useState } from "react";
 import { Heart, ShoppingCart, Trash2 } from "lucide-react";
 import type { WishlistItem } from "@/components/profile/types";
-import { PRODUCTS, getDiscountPercent } from "@/lib/products";
+import { getDiscountPercent } from "@/lib/products";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 
 const WISHLIST_STORAGE_KEY = "marketplace-wishlist";
 
-const DUMMY_WISHLIST: WishlistItem[] = [
-  { id: "w1", product: PRODUCTS[0] },
-  { id: "w2", product: PRODUCTS[2] },
-  { id: "w3", product: PRODUCTS[8] },
-];
-
 function getStoredWishlist(): WishlistItem[] {
-  if (typeof window === "undefined") return DUMMY_WISHLIST;
+  if (typeof window === "undefined") return [];
 
   try {
     const saved = window.localStorage.getItem(WISHLIST_STORAGE_KEY);
-    if (!saved) return DUMMY_WISHLIST;
+    if (!saved) return [];
 
     const parsed = JSON.parse(saved) as WishlistItem[];
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DUMMY_WISHLIST;
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    return DUMMY_WISHLIST;
+    return [];
   }
 }
 

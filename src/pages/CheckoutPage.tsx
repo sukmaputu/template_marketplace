@@ -1,4 +1,4 @@
-import { useState, type FormEvent, useEffect } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   Building2,
   CalendarClock,
@@ -9,16 +9,25 @@ import {
   Star,
   Truck,
   Zap,
-  Loader2,
   Ticket,
   ChevronRight,
+  Loader2,
+  Plus,
+  X,
 } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { useCart } from "@/components/cart/useCart";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/components/auth/UseAuth";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
-import type { Voucher } from "@/components/profile/types"; // Import type voucher
+import type { Voucher } from "@/components/profile/types";
+import {
+  createAddressId,
+  getSavedAddresses,
+  saveSavedAddresses,
+  type SavedAddress,
+} from "@/lib/addresses";
+import { lookupPostalCode } from "@/lib/postalCode";
 import {
   LOYALTY_REWARD_THRESHOLD,
   LOYALTY_REWARD_VOUCHER,
@@ -119,12 +128,33 @@ export default function CheckoutPage() {
   const navigate = useNavigate();
   const { items, clearSelected } = useCart();
 
-  const [postalCode, setPostalCode] = useState("");
-  const [city, setCity] = useState("");
-  const [address, setAddress] = useState(
-    "Jl. Contoh Alamat No. 123, Jakarta Selatan",
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>(() =>
+    getSavedAddresses(user?.email, user ?? undefined),
   );
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
+    () =>
+      getSavedAddresses(user?.email, user ?? undefined).find(
+        (savedAddress) => savedAddress.isDefault,
+      )?.id ?? null,
+  );
+  const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
+  const [showAddressList, setShowAddressList] = useState(false);
+  const [quickAddress, setQuickAddress] = useState({
+    label: "Rumah",
+    recipientName: user?.full_name ?? "",
+    phone: user?.phone ?? "",
+    addressLine: "",
+    city: "",
+    province: "",
+    postalCode: "",
+  });
   const [isSearchingZip, setIsSearchingZip] = useState(false);
+  const selectedAddress = savedAddresses.find(
+    (savedAddress) => savedAddress.id === selectedAddressId,
+  );
+  const postalCode = selectedAddress?.postalCode ?? "";
+  const city = selectedAddress?.city ?? "";
+  const address = selectedAddress?.addressLine ?? "";
   const [shippingMethodId, setShippingMethodId] =
     useState<ShippingMethod["id"]>("standard");
   const [formErrors, setFormErrors] = useState<FormErrors>({});
@@ -133,6 +163,59 @@ export default function CheckoutPage() {
   const [showVoucherList, setShowVoucherList] = useState(false);
   const [voucherCodeInput, setVoucherCodeInput] = useState("");
   const [voucherError, setVoucherError] = useState("");
+
+  function selectAddress(addressToSelect: SavedAddress) {
+    setSelectedAddressId(addressToSelect.id);
+    setShowAddressList(false);
+  }
+
+  function updateQuickAddress(field: keyof typeof quickAddress, value: string) {
+    setQuickAddress((previous) => ({ ...previous, [field]: value }));
+  }
+
+  useEffect(() => {
+    if (!isAddressModalOpen || !/^\d{5}$/.test(quickAddress.postalCode)) {
+      return;
+    }
+
+    let isCurrent = true;
+    const timer = window.setTimeout(async () => {
+      setIsSearchingZip(true);
+      try {
+        const location = await lookupPostalCode(quickAddress.postalCode);
+        if (!isCurrent || !location) return;
+        setQuickAddress((previous) => ({
+          ...previous,
+          city: location.city || previous.city,
+          province: location.province || previous.province,
+        }));
+      } catch {
+        // Keep manually entered city and province when lookup is unavailable.
+      } finally {
+        if (isCurrent) setIsSearchingZip(false);
+      }
+    }, 400);
+
+    return () => {
+      isCurrent = false;
+      window.clearTimeout(timer);
+    };
+  }, [isAddressModalOpen, quickAddress.postalCode]);
+
+  function saveQuickAddress() {
+    if (Object.values(quickAddress).some((value) => !value.trim())) return;
+
+    const nextAddress: SavedAddress = {
+      ...quickAddress,
+      id: createAddressId(),
+      isDefault: savedAddresses.length === 0,
+    };
+    const nextAddresses = [...savedAddresses, nextAddress];
+    setSavedAddresses(nextAddresses);
+    saveSavedAddresses(nextAddresses, user?.email);
+    setSelectedAddressId(nextAddress.id);
+    setIsAddressModalOpen(false);
+  }
 
   const availableVouchers =
     (user?.loyalty_points ?? 0) >= LOYALTY_REWARD_THRESHOLD
@@ -157,32 +240,6 @@ export default function CheckoutPage() {
     setVoucherCodeInput("");
     setShowVoucherList(false);
   }
-
-  useEffect(() => {
-    const fetchCity = async () => {
-      if (/^\d{5}$/.test(postalCode)) {
-        setIsSearchingZip(true);
-        try {
-          const response = await fetch(
-            `https://kodepos.vercel.app/search/?q=${postalCode}`,
-          );
-          const result = await response.json();
-
-          if (result.data && result.data.length > 0) {
-            setCity(result.data[0].regency);
-            setFormErrors((prev) => ({ ...prev, city: undefined }));
-          }
-        } catch (error) {
-          console.error("Gagal mengambil data kode pos:", error);
-        } finally {
-          setIsSearchingZip(false);
-        }
-      }
-    };
-
-    const debounceTimer = setTimeout(fetchCity, 500);
-    return () => clearTimeout(debounceTimer);
-  }, [postalCode]);
 
   const shippingMethod =
     SHIPPING_METHODS.find((m) => m.id === shippingMethodId) ??
@@ -316,100 +373,170 @@ export default function CheckoutPage() {
           <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
             <div className="space-y-4 lg:col-span-2">
               <div className="rounded-xl border border-border bg-surface p-5">
-                <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-                  Alamat Pengiriman
-                </h2>
-                <p className="mt-1 text-xs text-text-secondary">
-                  Nama, no. telepon, dan alamat otomatis terisi dari akun kamu.
-                </p>
-
-                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="flex items-center justify-between gap-3">
                   <div>
-                    <label className="text-sm font-medium text-text">
-                      Kode Pos <span className="text-red-600">*</span>
-                    </label>
-                    <div className="relative mt-1.5">
-                      <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={5}
-                        value={postalCode}
-                        onChange={(e) => setPostalCode(e.target.value)}
-                        placeholder="Contoh: 12210"
-                        className={`w-full rounded-lg border bg-background py-2.5 pl-10 pr-3 text-sm text-text outline-none placeholder:text-text-secondary focus:border-primary ${
-                          formErrors.postalCode
-                            ? "border-red-500"
-                            : "border-border"
-                        }`}
-                      />
-                      {isSearchingZip && (
-                        <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-primary" />
-                      )}
+                    <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                      Alamat Pengiriman
+                    </h2>
+                    <p className="mt-1 text-xs text-text-secondary">
+                      Pilih alamat tersimpan atau tambahkan alamat baru.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddressModalOpen(true)}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-primary px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/5">
+                    <Plus className="h-4 w-4" />
+                    Tambah
+                  </button>
+                </div>
+
+                {selectedAddress ? (
+                  <div className="mt-4 rounded-lg border border-primary/40 bg-primary/5 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 gap-3">
+                        <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-text">
+                            {selectedAddress.label}
+                          </p>
+                          <p className="mt-1 text-sm font-medium text-text">
+                            {selectedAddress.recipientName} ·{" "}
+                            {selectedAddress.phone}
+                          </p>
+                          <p className="mt-1 text-sm text-text-secondary">
+                            {selectedAddress.addressLine},{" "}
+                            {selectedAddress.city}, {selectedAddress.province}{" "}
+                            {selectedAddress.postalCode}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowAddressList((visible) => !visible)
+                        }
+                        className="shrink-0 text-xs font-semibold text-primary hover:underline">
+                        Ganti
+                      </button>
                     </div>
-                    {formErrors.postalCode && (
-                      <p className="mt-1 text-xs text-red-500">
-                        {formErrors.postalCode}
-                      </p>
-                    )}
                   </div>
+                ) : (
+                  <div className="mt-4 rounded-lg border border-dashed border-border p-5 text-center">
+                    <p className="text-sm text-text-secondary">
+                      Belum ada alamat tersimpan.
+                    </p>
+                  </div>
+                )}
 
-                  <div>
-                    <label className="text-sm font-medium text-text">
-                      Kota <span className="text-red-600">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={city}
-                      onChange={(e) => setCity(e.target.value)}
-                      placeholder="Terisi otomatis..."
-                      className={`mt-1.5 w-full rounded-lg border bg-background px-3.5 py-2.5 text-sm text-text outline-none placeholder:text-text-secondary focus:border-primary ${
-                        formErrors.city ? "border-red-500" : "border-border"
-                      }`}
-                    />
-                    {formErrors.city && (
-                      <p className="mt-1 text-xs text-red-500">
-                        {formErrors.city}
-                      </p>
-                    )}
+                {showAddressList && savedAddresses.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {savedAddresses.map((savedAddress) => (
+                      <button
+                        key={savedAddress.id}
+                        type="button"
+                        onClick={() => selectAddress(savedAddress)}
+                        className={`w-full rounded-lg border p-3 text-left ${selectedAddressId === savedAddress.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}>
+                        <p className="text-sm font-semibold text-text">
+                          {savedAddress.label}
+                        </p>
+                        <p className="mt-1 text-xs text-text-secondary">
+                          {savedAddress.recipientName} ·{" "}
+                          {savedAddress.addressLine}, {savedAddress.city}
+                        </p>
+                      </button>
+                    ))}
                   </div>
-                </div>
+                )}
 
-                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="text-sm font-medium text-text">
-                      Nama Penerima
-                    </label>
-                    <input
-                      type="text"
-                      defaultValue={user?.full_name}
-                      className="mt-1.5 w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm text-text outline-none focus:border-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-text">
-                      No. Telepon
-                    </label>
-                    <input
-                      type="tel"
-                      defaultValue="+62 812 3456 7890"
-                      className="mt-1.5 w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm text-text outline-none focus:border-primary"
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <label className="text-sm font-medium text-text">
-                    Alamat Rumah
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    className="mt-1.5 w-full resize-none rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm text-text outline-none focus:border-primary"
-                  />
-                </div>
+                {(formErrors.city || formErrors.postalCode) && (
+                  <p className="mt-3 text-xs text-red-500">
+                    Lengkapi alamat pengiriman sebelum melanjutkan.
+                  </p>
+                )}
               </div>
+
+              {isAddressModalOpen && (
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="quick-address-title">
+                  <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-surface p-6 shadow-xl">
+                    <div className="flex items-center justify-between">
+                      <h2
+                        id="quick-address-title"
+                        className="text-lg font-semibold text-text">
+                        Tambah Alamat
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={() => setIsAddressModalOpen(false)}
+                        aria-label="Tutup"
+                        className="rounded-md p-1 text-text-secondary hover:bg-background">
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+                    <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      {(
+                        [
+                          ["label", "Label alamat", "Rumah, Kantor"],
+                          ["recipientName", "Nama penerima", "Nama lengkap"],
+                          ["phone", "No. telepon", "08xxxxxxxxxx"],
+                          ["postalCode", "Kode pos", "12210"],
+                          ["city", "Kota", "Jakarta Selatan"],
+                          ["province", "Provinsi", "DKI Jakarta"],
+                        ] as const
+                      ).map(([field, label, placeholder]) => (
+                        <label
+                          key={field}
+                          className="text-sm font-medium text-text">
+                          {label}
+                          <input
+                            required
+                            value={quickAddress[field]}
+                            onChange={(e) =>
+                              updateQuickAddress(field, e.target.value)
+                            }
+                            placeholder={placeholder}
+                            className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text outline-none focus:border-primary"
+                          />
+                          {field === "postalCode" && isSearchingZip && (
+                            <Loader2 className="mt-1.5 h-4 w-4 animate-spin text-primary" />
+                          )}
+                        </label>
+                      ))}
+                      <label className="text-sm font-medium text-text sm:col-span-2">
+                        Alamat lengkap
+                        <textarea
+                          required
+                          rows={3}
+                          value={quickAddress.addressLine}
+                          onChange={(e) =>
+                            updateQuickAddress("addressLine", e.target.value)
+                          }
+                          placeholder="Nama jalan, nomor rumah, RT/RW"
+                          className="mt-1.5 w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text outline-none focus:border-primary"
+                        />
+                      </label>
+                    </div>
+                    <div className="mt-6 flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsAddressModalOpen(false)}
+                        className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:bg-background">
+                        Batal
+                      </button>
+                      <button
+                        type="button"
+                        onClick={saveQuickAddress}
+                        className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+                        Simpan & Pilih
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="rounded-xl border border-border bg-surface p-5">
                 <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">

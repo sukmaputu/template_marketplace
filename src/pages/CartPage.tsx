@@ -19,7 +19,6 @@ export default function CartPage() {
     items,
     updateQuantity,
     removeItem,
-    clearSelected,
     toggleSelectAll,
     toggleSelectItem,
   } = useCart();
@@ -28,10 +27,6 @@ export default function CartPage() {
   const allSelected = items.length > 0 && items.every((item) => item.selected);
   const selectedItems = items.filter((item) => item.selected);
   const summary = calculateCartSummary(items);
-
-  function removeSelected() {
-    clearSelected();
-  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -73,12 +68,6 @@ export default function CartPage() {
                     Pilih Semua{" "}
                     <span className="text-text-primary">({items.length})</span>
                   </label>
-                  <button
-                    onClick={removeSelected}
-                    disabled={selectedItems.length === 0}
-                    className="text-sm font-medium text-primary hover:opacity-80 disabled:opacity-40">
-                    Hapus
-                  </button>
                 </div>
 
                 <div className="divide-y divide-border">

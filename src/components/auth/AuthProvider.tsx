@@ -7,6 +7,7 @@ const DEMO_ACCOUNT = {
   password: "sukma123",
   full_name: "I Putu Sukma",
   phone: "+62 812 3456 7890",
+  address: "Jl. Contoh Alamat No. 123, Jakarta Selatan",
   username: "sukmasukma",
 };
 

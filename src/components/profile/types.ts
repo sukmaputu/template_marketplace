@@ -114,7 +114,12 @@ export const REFUND_REASONS = [
   "Alasan lainnya",
 ] as const;
 
-export type TabKey = "data-diri" | "riwayat-pembelian" | "voucher" | "wishlist";
+export type TabKey =
+  | "data-diri"
+  | "alamat"
+  | "riwayat-pembelian"
+  | "voucher"
+  | "wishlist";
 
 export type VoucherStatus = "aktif" | "terpakai" | "kadaluarsa";
 

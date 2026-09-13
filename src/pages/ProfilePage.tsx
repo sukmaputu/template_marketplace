@@ -6,6 +6,7 @@ import { ProfileSkeleton } from "@/components/skeleton/ProfileSkeleton";
 import { useAuth } from "@/components/auth/UseAuth";
 import type { TabKey } from "@/components/profile/types";
 import { DataDiriTab } from "@/components/profile/DataDiriTab";
+import { AddressTab } from "@/components/profile/AddressTab";
 import { RiwayatPembelianTab } from "@/components/profile/RiwayatPembelianTab";
 import { VoucherTab } from "@/components/profile/VoucherTab";
 import { WishlistTab } from "@/components/profile/WishlistTab";
@@ -47,6 +48,7 @@ export default function ProfilePage() {
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: "data-diri", label: "Data Diri" },
+    { key: "alamat", label: "Alamat" },
     { key: "riwayat-pembelian", label: "Riwayat Pembelian" },
     { key: "voucher", label: "Voucher" },
     { key: "wishlist", label: "Wishlist" },
@@ -144,6 +146,7 @@ export default function ProfilePage() {
 
             <div className="w-full flex-1">
               {activeTab === "data-diri" && <DataDiriTab />}
+              {activeTab === "alamat" && <AddressTab />}
               {activeTab === "riwayat-pembelian" && <RiwayatPembelianTab />}
               {activeTab === "voucher" && <VoucherTab />}
               {activeTab === "wishlist" && <WishlistTab />}

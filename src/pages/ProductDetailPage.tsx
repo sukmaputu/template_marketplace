@@ -13,16 +13,18 @@ import {
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { MarketplaceFooter } from "@/components/MarketplaceFooter";
 import { useCart } from "@/components/cart/useCart";
-import { PRODUCTS } from "@/lib/products";
+import { PRODUCTS, CATEGORY_DETAILS } from "@/lib/products";
 import { showToast } from "@/lib/toast";
 import { ProductCard } from "@/components/ProductCard";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 import type { WishlistItem } from "@/components/profile/types";
 import { getProductRatingStats, getProductReviews } from "@/lib/products";
+import { useAuth } from "@/components/auth/AuthContext";
 
 const DEFAULT_SCHEDULES = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat"];
 const DEFAULT_LEVELS = ["Pemula", "Menengah", "Tingkat Lanjut"];
 const WISHLIST_STORAGE_KEY = "marketplace-wishlist";
+const LOW_STOCK_THRESHOLD = 5;
 
 function getWishlistItems(): WishlistItem[] {
   if (typeof window === "undefined") return [];
@@ -48,6 +50,8 @@ export default function ProductDetailPage() {
   const navigate = useNavigate();
   const { addToCart } = useCart();
   const { formatPrice } = useCurrency();
+  const { isAuthenticated } = useAuth();
+  const [isLoginRequiredOpen, setIsLoginRequiredOpen] = useState(false);
 
   const product = useMemo(
     () => PRODUCTS.find((p) => String(p.id) === productId),
@@ -100,6 +104,13 @@ export default function ProductDetailPage() {
       (_, index) => pool[(startIndex + index) % pool.length],
     );
   }, [product]);
+
+  const categoryLabel = useMemo(() => {
+    return CATEGORY_DETAILS.find((c) => c.id === product?.categoryId)?.label;
+  }, [product?.categoryId]);
+
+  const isLowStock =
+    product?.stock !== undefined && product.stock <= LOW_STOCK_THRESHOLD;
 
   const nextImage = useCallback(() => {
     if (!images.length) return;
@@ -188,12 +199,22 @@ export default function ProductDetailPage() {
       new CustomEvent("open-chat-widget", {
         detail: {
           message: `Halo, saya ingin bertanya tentang produk "${product.name}".`,
+          product: {
+            id: product.id,
+            name: product.name,
+            image: images[0],
+            priceLabel: formatPrice(product.basePrice),
+          },
         },
       }),
     );
   }
 
   function handleWishlistClick() {
+    if (!isAuthenticated) {
+      setIsLoginRequiredOpen(true);
+      return;
+    }
     setIsWishlistModalOpen(true);
   }
 
@@ -311,6 +332,20 @@ export default function ProductDetailPage() {
           </div>
 
           <div className="flex flex-col">
+            {(categoryLabel || isLowStock) && (
+              <div className="mb-1 flex items-center gap-2">
+                {categoryLabel ? (
+                  <span className="text-xs font-semibold uppercase tracking-wide text-primary">
+                    {categoryLabel}
+                  </span>
+                ) : null}
+                {isLowStock ? (
+                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-600">
+                    Stok Menipis
+                  </span>
+                ) : null}
+              </div>
+            )}
             <div className="flex items-start justify-between gap-3">
               <h1 className="text-2xl font-bold text-text">{product.name}</h1>
               <button
@@ -600,6 +635,44 @@ export default function ProductDetailPage() {
                   isInWishlist ? "bg-red-600" : "bg-primary"
                 }`}>
                 Ya
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isLoginRequiredOpen ? (
+        <div
+          className="fixed inset-0 z-100 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setIsLoginRequiredOpen(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="login-required-modal-title"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm -rounded-2xl bg-background p-6 text-center shadow-xl">
+            <h2
+              id="login-required-modal-title"
+              className="text-base font-bold text-text">
+              Anda harus login terlebih dahulu
+            </h2>
+            <p className="mt-1.5 text-sm text-text-secondary">
+              Silakan masuk ke akun Anda untuk menambahkan produk ini ke
+              wishlist.
+            </p>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setIsLoginRequiredOpen(false)}
+                className="flex-1 rounded-full border border-border py-2.5 text-sm font-bold text-text transition-colors hover:bg-surface">
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/sign-in")}
+                className="flex-1 rounded-full bg-primary py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90">
+                Login
               </button>
             </div>
           </div>

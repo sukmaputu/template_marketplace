@@ -33,6 +33,13 @@ interface GuestIdentity {
   phone: string;
 }
 
+interface AttachedProductInfo {
+  id: string;
+  name: string;
+  image?: string;
+  priceLabel?: string;
+}
+
 const GUEST_STORAGE_KEY = "chat_guest_identity";
 
 function nowIso() {
@@ -111,6 +118,10 @@ export function ChatWidget() {
   const [unreadCount, setUnreadCount] = useState(INITIAL_UNREAD);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Produk yang sedang ditanyakan (attachment di atas input), diisi lewat event open-chat-widget
+  const [attachedProduct, setAttachedProduct] =
+    useState<AttachedProductInfo | null>(null);
+
   // Identitas guest (belum login)
   const [guestIdentity, setGuestIdentity] = useState<GuestIdentity | null>(() =>
     getStoredGuestIdentity(),
@@ -173,9 +184,14 @@ export function ChatWidget() {
       markConversationReadByCustomer();
       setUnreadCount(0);
 
-      const detail = (e as CustomEvent<{ message?: string }>).detail;
+      const detail = (
+        e as CustomEvent<{ message?: string; product?: AttachedProductInfo }>
+      ).detail;
       if (detail?.message) {
         setDraft(detail.message);
+      }
+      if (detail?.product) {
+        setAttachedProduct(detail.product);
       }
     }
     window.addEventListener("open-chat-widget", handleExternalOpen);
@@ -201,6 +217,10 @@ export function ChatWidget() {
     } else {
       openWidget();
     }
+  }
+
+  function clearAttachedProduct() {
+    setAttachedProduct(null);
   }
 
   function handleGuestFormSubmit(e: React.FormEvent) {
@@ -327,6 +347,42 @@ export function ChatWidget() {
                 </p>
               </div>
 
+              {attachedProduct ? (
+                <div className="rounded-xl border border-border bg-surface p-3">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <p className="text-[11px] text-text-secondary">
+                      Kamu menanyakan tentang produk ini.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={clearAttachedProduct}
+                      aria-label="Hapus produk"
+                      className="rounded-full p-1 text-text-secondary hover:bg-background hover:text-text">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2 rounded-lg border border-border bg-background p-2">
+                    {attachedProduct.image ? (
+                      <img
+                        src={attachedProduct.image}
+                        alt={attachedProduct.name}
+                        className="h-10 w-10 shrink-0 rounded-lg object-cover"
+                      />
+                    ) : null}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium text-text">
+                        {attachedProduct.name}
+                      </p>
+                      {attachedProduct.priceLabel ? (
+                        <p className="text-xs font-semibold text-primary">
+                          {attachedProduct.priceLabel}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="space-y-1">
                 <label className="text-xs font-medium text-text-secondary">
                   Nama
@@ -394,6 +450,42 @@ export function ChatWidget() {
               </div>
 
               <div className="border-t border-border bg-surface p-4">
+                {attachedProduct ? (
+                  <div className="mb-3">
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <p className="text-[11px] text-text-secondary">
+                        Kamu menanyakan tentang produk ini.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={clearAttachedProduct}
+                        aria-label="Hapus produk"
+                        className="rounded-full p-1 text-text-secondary hover:bg-background hover:text-text">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-xl border border-border bg-background p-2">
+                      {attachedProduct.image ? (
+                        <img
+                          src={attachedProduct.image}
+                          alt={attachedProduct.name}
+                          className="h-10 w-10 shrink-0 rounded-lg object-cover"
+                        />
+                      ) : null}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium text-text">
+                          {attachedProduct.name}
+                        </p>
+                        {attachedProduct.priceLabel ? (
+                          <p className="text-xs font-semibold text-primary">
+                            {attachedProduct.priceLabel}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="flex items-center gap-2">
                   <input
                     type="text"

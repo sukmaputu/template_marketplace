@@ -265,6 +265,7 @@ const PRODUCT_SEEDS: Product[] = [
     type: "digital",
     basePrice: 50000,
     comparePrice: 100000,
+    stock: 18,
     rating: 0,
     reviewCount: 0,
     categoryId: "teknologi-informasi",
@@ -278,6 +279,7 @@ const PRODUCT_SEEDS: Product[] = [
     images: ["/products/data.jpg", "/products/desin.jpg"],
     type: "digital",
     basePrice: 100000,
+    stock: 24,
     rating: 0,
     reviewCount: 0,
     categoryId: "teknologi-informasi",
@@ -292,6 +294,7 @@ const PRODUCT_SEEDS: Product[] = [
     type: "digital",
     basePrice: 120000,
     comparePrice: 150000,
+    stock: 4,
     rating: 4,
     reviewCount: 14,
     categoryId: "teknologi-informasi",
@@ -306,6 +309,7 @@ const PRODUCT_SEEDS: Product[] = [
     type: "digital",
     basePrice: 90000,
     comparePrice: 120000,
+    stock: 32,
     rating: 0,
     reviewCount: 0,
     categoryId: "keuangan",
@@ -318,6 +322,7 @@ const PRODUCT_SEEDS: Product[] = [
     image: "/products/data.jpg",
     type: "digital",
     basePrice: 110000,
+    stock: 3,
     rating: 0,
     reviewCount: 0,
     categoryId: "keuangan",
@@ -331,6 +336,7 @@ const PRODUCT_SEEDS: Product[] = [
     type: "digital",
     basePrice: 85000,
     comparePrice: 100000,
+    stock: 27,
     rating: 0,
     reviewCount: 0,
     categoryId: "keuangan",
@@ -343,6 +349,7 @@ const PRODUCT_SEEDS: Product[] = [
     image: "/products/data.jpg",
     type: "digital",
     basePrice: 75000,
+    stock: 2,
     rating: 0,
     reviewCount: 0,
     categoryId: "keuangan",
@@ -356,6 +363,7 @@ const PRODUCT_SEEDS: Product[] = [
     type: "digital",
     basePrice: 130000,
     comparePrice: 160000,
+    stock: 40,
     rating: 0,
     reviewCount: 0,
     categoryId: "keuangan",
@@ -369,6 +377,7 @@ const PRODUCT_SEEDS: Product[] = [
     image: "/products/desin.jpg",
     type: "digital",
     basePrice: 95000,
+    stock: 5,
     rating: 0,
     reviewCount: 0,
     categoryId: "asuransi",
@@ -382,6 +391,7 @@ const PRODUCT_SEEDS: Product[] = [
     type: "digital",
     basePrice: 105000,
     comparePrice: 130000,
+    stock: 21,
     rating: 0,
     reviewCount: 0,
     categoryId: "asuransi",
@@ -394,6 +404,7 @@ const PRODUCT_SEEDS: Product[] = [
     image: "/products/desin.jpg",
     type: "digital",
     basePrice: 88000,
+    stock: 4,
     rating: 0,
     reviewCount: 0,
     categoryId: "asuransi",
@@ -407,6 +418,7 @@ const PRODUCT_SEEDS: Product[] = [
     type: "digital",
     basePrice: 99000,
     comparePrice: 115000,
+    stock: 16,
     rating: 0,
     reviewCount: 0,
     categoryId: "asuransi",
@@ -420,6 +432,7 @@ const PRODUCT_SEEDS: Product[] = [
     image: "/products/data.jpg",
     type: "digital",
     basePrice: 115000,
+    stock: 1,
     rating: 0,
     reviewCount: 0,
     categoryId: "teknologi-mesin",
@@ -433,6 +446,7 @@ const PRODUCT_SEEDS: Product[] = [
     type: "digital",
     basePrice: 100000,
     comparePrice: 125000,
+    stock: 29,
     rating: 0,
     reviewCount: 0,
     categoryId: "teknologi-mesin",
@@ -445,6 +459,7 @@ const PRODUCT_SEEDS: Product[] = [
     image: "/products/data.jpg",
     type: "digital",
     basePrice: 140000,
+    stock: 5,
     rating: 0,
     reviewCount: 0,
     categoryId: "teknologi-mesin",
@@ -458,6 +473,7 @@ const PRODUCT_SEEDS: Product[] = [
     type: "digital",
     basePrice: 150000,
     comparePrice: 180000,
+    stock: 33,
     rating: 0,
     reviewCount: 0,
     categoryId: "teknologi-mesin",
@@ -535,3 +551,48 @@ export const CATEGORY_DETAILS = [
       "Kelas teknik mesin, gambar teknik, hingga manufaktur dan CNC.",
   },
 ];
+
+export const POPULAR_SEARCH_TERMS = [
+  "desain grafis",
+  "power bi",
+  "ui/ux",
+  "pajak",
+  "asuransi",
+  "cnc",
+  "akuntansi",
+];
+
+const RECENTLY_VIEWED_STORAGE_KEY = "marketplace-recently-viewed";
+const MAX_RECENTLY_VIEWED = 4;
+
+export function getRecentlyViewedIds(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(RECENTLY_VIEWED_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function addRecentlyViewedProduct(productId: string) {
+  if (typeof window === "undefined") return;
+  const ids = getRecentlyViewedIds().filter((id) => id !== productId);
+  ids.unshift(productId);
+  window.localStorage.setItem(
+    RECENTLY_VIEWED_STORAGE_KEY,
+    JSON.stringify(ids.slice(0, MAX_RECENTLY_VIEWED)),
+  );
+  window.dispatchEvent(new Event("recently-viewed-updated"));
+}
+
+export function getRecentlyViewedProducts(
+  limit = MAX_RECENTLY_VIEWED,
+): Product[] {
+  return getRecentlyViewedIds()
+    .map((id) => PRODUCTS.find((product) => product.id === id))
+    .filter((product): product is Product => Boolean(product))
+    .slice(0, limit);
+}
