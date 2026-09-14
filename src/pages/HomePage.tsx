@@ -7,7 +7,11 @@ import { ProductCard } from "@/components/ProductCard";
 import { ProductGridSkeleton } from "@/components/skeleton/ProductCardSkeleton";
 import { PromoBannerSection } from "@/components/PromoBannerSection";
 import { Pagination } from "@/components/ui/pagination";
-import { CATEGORY_DETAILS, PRODUCTS, getDiscountPercent } from "@/lib/products";
+import {
+  CATEGORY_DETAILS,
+  useMarketplaceProducts,
+  getDiscountPercent,
+} from "@/lib/products";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 // import { PromoModal } from "@/components/PromoModal";
 
@@ -48,24 +52,27 @@ export default function HomePage() {
   const page =
     Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
 
+  const { products: marketplaceProducts } = useMarketplaceProducts();
+
   const convertPriceToCurrentCurrency = useCallback(
     (value: number) => (currency === "USD" && rate ? value * rate : value),
     [currency, rate],
   );
 
   const priceRangeDefaults = useMemo(() => {
+    if (!marketplaceProducts.length) return [0, 1000000] as [number, number];
     const convertedMin = Math.min(
-      ...PRODUCTS.map((product) =>
+      ...marketplaceProducts.map((product) =>
         convertPriceToCurrentCurrency(product.basePrice),
       ),
     );
     const convertedMax = Math.max(
-      ...PRODUCTS.map((product) =>
+      ...marketplaceProducts.map((product) =>
         convertPriceToCurrentCurrency(product.basePrice),
       ),
     );
     return [convertedMin, convertedMax] as [number, number];
-  }, [convertPriceToCurrentCurrency]);
+  }, [convertPriceToCurrentCurrency, marketplaceProducts]);
 
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [priceRange, setPriceRange] = useState<[number, number]>([
@@ -159,10 +166,10 @@ export default function HomePage() {
 
   const products = useMemo(() => {
     let filtered = selectedCategories.length
-      ? PRODUCTS.filter((product) =>
+      ? marketplaceProducts.filter((product) =>
           selectedCategories.includes(product.categoryId ?? ""),
         )
-      : PRODUCTS;
+      : marketplaceProducts;
 
     if (searchQuery) {
       filtered = filtered.filter((product) =>
@@ -212,6 +219,7 @@ export default function HomePage() {
     maxPriceInput,
     minPriceInput,
     priceRangeDefaults,
+    marketplaceProducts,
   ]);
 
   const totalPages = Math.max(1, Math.ceil(products.length / PAGE_SIZE));

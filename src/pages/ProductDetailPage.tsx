@@ -9,11 +9,19 @@ import {
   ZoomIn,
   MessageCircle,
   Star,
+  Loader2,
 } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { MarketplaceFooter } from "@/components/MarketplaceFooter";
 import { useCart } from "@/components/cart/useCart";
-import { PRODUCTS, CATEGORY_DETAILS } from "@/lib/products";
+import {
+  PRODUCTS,
+  CATEGORY_DETAILS,
+  mapBackendToProduct,
+  useMarketplaceProducts,
+  type Product,
+} from "@/lib/products";
+import { api } from "@/lib/api";
 import { showToast } from "@/lib/toast";
 import { ProductCard } from "@/components/ProductCard";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
@@ -53,22 +61,77 @@ export default function ProductDetailPage() {
   const { isAuthenticated } = useAuth();
   const [isLoginRequiredOpen, setIsLoginRequiredOpen] = useState(false);
 
-  const product = useMemo(
-    () => PRODUCTS.find((p) => String(p.id) === productId),
-    [productId],
-  );
+  const { products: allProducts, loading: isMarketplaceLoading } =
+    useMarketplaceProducts();
+
+  const [backendProduct, setBackendProduct] = useState<Product | null>(null);
+  const [isFetchingDetail, setIsFetchingDetail] = useState(false);
+
+  const foundProduct = useMemo(() => {
+    if (!productId) return null;
+    return (
+      allProducts.find((p) => String(p.id) === String(productId)) ||
+      PRODUCTS.find((p) => String(p.id) === String(productId)) ||
+      null
+    );
+  }, [allProducts, productId]);
+
+  useEffect(() => {
+    if (!productId || foundProduct) {
+      return;
+    }
+
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsFetchingDetail(true);
+    api
+      .get(`/ecommerce/products/${productId}`)
+      .then((res) => {
+        const data = res.data?.data;
+        if (data && !cancelled) {
+          setBackendProduct(mapBackendToProduct(data));
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) {
+          setIsFetchingDetail(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [productId, foundProduct]);
+
+  const product =
+    foundProduct || (backendProduct?.id === productId ? backendProduct : null);
+  const isLoading =
+    (isMarketplaceLoading && !product) || (isFetchingDetail && !product);
 
   const images = useMemo(() => {
     if (product?.images?.length) return product.images;
     if (product?.image) return [product.image];
     return [];
   }, [product]);
+
   const [quantity, setQuantity] = useState(1);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isWishlistModalOpen, setIsWishlistModalOpen] = useState(false);
   const [wishlistVersion, setWishlistVersion] = useState(0);
   const [reviewRefreshKey, setReviewRefreshKey] = useState(0);
+  const [manualSchedule, setManualSchedule] = useState<string | null>(null);
+  const [manualLevel, setManualLevel] = useState<string | null>(null);
+
+  const [prevProductId, setPrevProductId] = useState(productId);
+  if (productId !== prevProductId) {
+    setPrevProductId(productId);
+    setQuantity(1);
+    setCurrentImageIndex(0);
+    setManualSchedule(null);
+    setManualLevel(null);
+  }
 
   const ratingStats = useMemo(() => {
     void reviewRefreshKey;
@@ -91,26 +154,38 @@ export default function ProductDetailPage() {
     : DEFAULT_SCHEDULES;
   const levels = product?.levels?.length ? product.levels : DEFAULT_LEVELS;
 
-  const [selectedSchedule, setSelectedSchedule] = useState(schedules[0]);
-  const [selectedLevel, setSelectedLevel] = useState(levels[0]);
+  const selectedSchedule =
+    manualSchedule && schedules.includes(manualSchedule)
+      ? manualSchedule
+      : schedules[0];
+
+  const selectedLevel =
+    manualLevel && levels.includes(manualLevel) ? manualLevel : levels[0];
 
   const recommendations = useMemo(() => {
     if (!product) return [];
-    const pool = PRODUCTS.filter((p) => p.id !== product.id);
-    const startIndex =
-      PRODUCTS.findIndex((p) => p.id === product.id) % pool.length;
+    const sourcePool = allProducts.length > 0 ? allProducts : PRODUCTS;
+    const pool = sourcePool.filter((p) => p && p.id && p.id !== product.id);
+    if (pool.length === 0) return [];
+
+    const rawIndex = sourcePool.findIndex((p) => p && p.id === product.id);
+    const startIndex = rawIndex >= 0 ? rawIndex % pool.length : 0;
+
     return Array.from(
       { length: Math.min(4, pool.length) },
       (_, index) => pool[(startIndex + index) % pool.length],
-    );
-  }, [product]);
+    ).filter((p): p is Product => Boolean(p && p.id));
+  }, [product, allProducts]);
 
   const categoryLabel = useMemo(() => {
     return CATEGORY_DETAILS.find((c) => c.id === product?.categoryId)?.label;
   }, [product?.categoryId]);
 
+  const isOutOfStock = product?.stock !== undefined && product.stock <= 0;
   const isLowStock =
-    product?.stock !== undefined && product.stock <= LOW_STOCK_THRESHOLD;
+    !isOutOfStock &&
+    product?.stock !== undefined &&
+    product.stock <= LOW_STOCK_THRESHOLD;
 
   const nextImage = useCallback(() => {
     if (!images.length) return;
@@ -156,6 +231,21 @@ export default function ProductDetailPage() {
       window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     }
   }, [productId]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <MarketplaceHeader />
+        <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm font-medium text-text-secondary">
+            Memuat produk...
+          </p>
+        </div>
+        <MarketplaceFooter />
+      </div>
+    );
+  }
 
   if (!product) {
     return (
@@ -332,15 +422,19 @@ export default function ProductDetailPage() {
           </div>
 
           <div className="flex flex-col">
-            {(categoryLabel || isLowStock) && (
+            {(categoryLabel || isLowStock || isOutOfStock) && (
               <div className="mb-1 flex items-center gap-2">
                 {categoryLabel ? (
                   <span className="text-xs font-semibold uppercase tracking-wide text-primary">
                     {categoryLabel}
                   </span>
                 ) : null}
-                {isLowStock ? (
+                {isOutOfStock ? (
                   <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-600">
+                    Stok Habis
+                  </span>
+                ) : isLowStock ? (
+                  <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-600">
                     Stok Menipis
                   </span>
                 ) : null}
@@ -384,7 +478,7 @@ export default function ProductDetailPage() {
                   <button
                     key={day}
                     type="button"
-                    onClick={() => setSelectedSchedule(day)}
+                    onClick={() => setManualSchedule(day)}
                     className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
                       selectedSchedule === day
                         ? "border-primary bg-primary text-white"
@@ -403,7 +497,7 @@ export default function ProductDetailPage() {
                   <button
                     key={level}
                     type="button"
-                    onClick={() => setSelectedLevel(level)}
+                    onClick={() => setManualLevel(level)}
                     className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
                       selectedLevel === level
                         ? "border-primary bg-primary text-white"
@@ -420,8 +514,9 @@ export default function ProductDetailPage() {
               <div className="flex items-center rounded-full border border-border">
                 <button
                   type="button"
+                  disabled={isOutOfStock}
                   onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                  className="p-2.5 text-text hover:text-primary">
+                  className="p-2.5 text-text hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed">
                   <Minus className="h-4 w-4" />
                 </button>
                 <span className="w-8 text-center text-sm font-bold text-text">
@@ -429,8 +524,9 @@ export default function ProductDetailPage() {
                 </span>
                 <button
                   type="button"
+                  disabled={isOutOfStock || (product.stock !== undefined && quantity >= product.stock)}
                   onClick={() => setQuantity((q) => q + 1)}
-                  className="p-2.5 text-text hover:text-primary">
+                  className="p-2.5 text-text hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed">
                   <Plus className="h-4 w-4" />
                 </button>
               </div>
@@ -447,14 +543,16 @@ export default function ProductDetailPage() {
             <div className="mt-auto flex gap-3 pt-8">
               <button
                 type="button"
+                disabled={isOutOfStock}
                 onClick={handleKeranjang}
-                className="flex-1 rounded-full border border-primary py-3 text-sm font-bold text-primary transition-colors hover:bg-primary/10">
+                className="flex-1 rounded-full border border-primary py-3 text-sm font-bold text-primary transition-colors hover:bg-primary/10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent">
                 Keranjang
               </button>
               <button
                 type="button"
+                disabled={isOutOfStock}
                 onClick={handleBeli}
-                className="flex-1 rounded-full bg-primary py-3 text-sm font-bold text-white transition-opacity hover:opacity-90">
+                className="flex-1 rounded-full bg-primary py-3 text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:opacity-50">
                 Beli
               </button>
             </div>

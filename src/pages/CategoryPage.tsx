@@ -4,7 +4,7 @@ import { ChevronDown } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { MarketplaceFooter } from "@/components/MarketplaceFooter";
 import { ProductCard } from "@/components/ProductCard";
-import { CATEGORY_DETAILS, PRODUCTS } from "@/lib/products";
+import { CATEGORY_DETAILS, useMarketplaceProducts } from "@/lib/products";
 
 const SORT_OPTIONS = [
   { value: "default", label: "Bawaan" },
@@ -17,11 +17,12 @@ export default function CategoryPage() {
   const params = useParams();
   const categoryId = params.categoryId ?? "teknologi-informasi";
   const [sortBy, setSortBy] = useState("default");
+  const { products: allProducts } = useMarketplaceProducts();
 
   const category = CATEGORY_DETAILS.find((item) => item.id === categoryId);
 
   const products = useMemo(() => {
-    const filtered = PRODUCTS.filter(
+    const filtered = allProducts.filter(
       (product) => product.categoryId === categoryId,
     );
     const sorted = [...filtered];
@@ -30,7 +31,7 @@ export default function CategoryPage() {
     if (sortBy === "price-desc")
       sorted.sort((a, b) => b.basePrice - a.basePrice);
     return sorted;
-  }, [categoryId, sortBy]);
+  }, [categoryId, sortBy, allProducts]);
 
   return (
     <div className="min-h-screen bg-background transition-colors">

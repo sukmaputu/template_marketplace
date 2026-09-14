@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
+
 export type ProductType = "physical" | "digital" | "service";
 
 export type ProductStatus = "draft" | "published" | "archived";
@@ -595,4 +598,67 @@ export function getRecentlyViewedProducts(
     .map((id) => PRODUCTS.find((product) => product.id === id))
     .filter((product): product is Product => Boolean(product))
     .slice(0, limit);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function mapBackendToProduct(p: any): Product {
+  const basePrice = Number(p.price ?? p.original_price ?? 0);
+  const comparePrice =
+    p.original_price && Number(p.original_price) > basePrice
+      ? Number(p.original_price)
+      : undefined;
+  const img = p.image || p.cover_image_url || undefined;
+
+  return {
+    id: p.uuid || String(p.id),
+    name: p.name,
+    description: p.description || p.summary || undefined,
+    image: img,
+    images: img ? [img] : [],
+    type: p.type === "digital" || p.type === "service" ? p.type : "physical",
+    basePrice,
+    comparePrice,
+    stock: p.stock ?? 0,
+    rating: Number(p.average_rating || 0),
+    reviewCount: Number(p.rating_count || p.review_count || 0),
+    categoryId: p.category?.slug || p.category_uuid || "teknologi-informasi",
+  };
+}
+
+export function useMarketplaceProducts() {
+  const [products, setProducts] = useState<Product[]>(PRODUCTS);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchProducts() {
+      try {
+        const res = await api.get("/ecommerce/products", {
+          params: { limit: 100 },
+        });
+        const items = res.data?.data;
+        if (Array.isArray(items) && items.length > 0 && !cancelled) {
+          const backendItems = items.map(mapBackendToProduct);
+          const backendIdSet = new Set(backendItems.map((b) => b.id));
+          const combined = [
+            ...backendItems,
+            ...PRODUCTS.filter((p) => !backendIdSet.has(p.id)),
+          ];
+          setProducts(combined);
+        }
+      } catch {
+        // Fallback to static PRODUCTS
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    fetchProducts();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return { products, loading };
 }
