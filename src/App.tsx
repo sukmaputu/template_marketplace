@@ -28,18 +28,6 @@ const RequireAuth = lazy(() =>
   })),
 );
 
-const AdminLoginPage = lazy(() => import("@/admin/AdminLoginPage"));
-const AdminLayout = lazy(() => import("@/admin/AdminLayout"));
-const RequireAdminAuth = lazy(() =>
-  import("@/admin/RequireAdminAuth").then((mod) => ({
-    default: mod.RequireAdminAuth,
-  })),
-);
-const AdminAccountPage = lazy(() => import("@/admin/AdminAccountPage"));
-const AdminOrderPage = lazy(() => import("@/admin/AdminOrderPage"));
-const AdminChatPage = lazy(() => import("@/admin/AdminChatPage"));
-const AdminProductPage = lazy(() => import("@/admin/AdminProductPage"));
-
 function LoadingScreen() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background text-text">
@@ -52,15 +40,7 @@ export default function App() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const location = useLocation();
 
-  const hideChatWidgetRoutes = [
-    "/sign-in",
-    "/sign-up",
-    "/admin/login",
-    "/admin/account",
-    "/admin/order",
-    "/admin/chat",
-    "/admin/product",
-  ];
+  const hideChatWidgetRoutes = ["/sign-in", "/sign-up"];
   const shouldShowChatWidget = !hideChatWidgetRoutes.includes(
     location.pathname,
   );
@@ -115,17 +95,6 @@ export default function App() {
                   <Route path="/settings" element={<SettingsPage />} />
                   <Route path="/help" element={<HelpPage />} />
                   <Route path="*" element={<NotFoundPage />} />
-
-                  {/* Admin */}
-                  <Route path="/admin/login" element={<AdminLoginPage />} />
-                  <Route element={<RequireAdminAuth />}>
-                    <Route path="/admin" element={<AdminLayout />}>
-                      <Route path="account" element={<AdminAccountPage />} />
-                      <Route path="order" element={<AdminOrderPage />} />
-                      <Route path="chat" element={<AdminChatPage />} />
-                      <Route path="product" element={<AdminProductPage />} />
-                    </Route>
-                  </Route>
                 </Routes>
               </Suspense>
               {shouldShowChatWidget && <ChatWidget />}
