@@ -37,6 +37,8 @@ export default function SignInPage() {
   const redirectTo = from?.pathname ?? "/";
   const recoveryState = from?.state;
 
+  const [loading, setLoading] = useState(false);
+
   function validate(): boolean {
     const nextErrors: FormErrors = {};
 
@@ -54,20 +56,27 @@ export default function SignInPage() {
     return Object.keys(nextErrors).length === 0;
   }
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!validate()) return;
 
-    const success = login(email, password);
+    setLoading(true);
+    setErrors({});
 
-    if (!success) {
-      setErrors({ general: "Email atau password salah." });
-      return;
+    try {
+      const success = await login(email, password);
+
+      if (!success) {
+        setErrors({ general: "Email atau password salah." });
+        return;
+      }
+      navigate(redirectTo, {
+        replace: true,
+        state: recoveryState,
+      });
+    } finally {
+      setLoading(false);
     }
-    navigate(redirectTo, {
-      replace: true,
-      state: recoveryState,
-    });
   }
 
   function handleGoogleSignIn() {
@@ -168,8 +177,9 @@ export default function SignInPage() {
 
           <button
             type="submit"
-            className="w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-white hover:opacity-90">
-            Masuk
+            disabled={loading}
+            className="w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60">
+            {loading ? "Memproses..." : "Masuk"}
           </button>
         </form>
 

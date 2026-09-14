@@ -31,9 +31,11 @@ export function AddressTab() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [isSearchingZip, setIsSearchingZip] = useState(false);
 
-  useEffect(() => {
+  const [prevEmail, setPrevEmail] = useState(email);
+  if (email !== prevEmail) {
+    setPrevEmail(email);
     setAddresses(getSavedAddresses(email, user ?? undefined));
-  }, [email, user]);
+  }
 
   useEffect(() => {
     if (!/^\d{5}$/.test(form.postalCode)) return;

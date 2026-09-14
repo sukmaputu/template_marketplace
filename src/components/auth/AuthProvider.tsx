@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { AuthContext, type AuthUser } from "@/components/auth/AuthContext";
+import { api, removeAuthToken, setAuthToken } from "@/lib/api";
 
 const DEMO_ACCOUNT = {
   email: "sukma@email.com",
@@ -18,10 +19,8 @@ function isValidStoredUser(value: unknown): value is AuthUser {
 
   const record = value as Record<string, unknown>;
   return (
-    // Cek 'full_name' bukan 'name'
     typeof record.full_name === "string" &&
-    typeof record.email === "string" &&
-    record.email.toString().trim().toLowerCase() === DEMO_ACCOUNT.email
+    typeof record.email === "string"
   );
 }
 
@@ -49,11 +48,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return storedUser;
   });
 
-  function login(email: string, password: string): boolean {
-    const normalizedEmail = email.trim().toLowerCase();
+  async function login(email: string, password: string): Promise<boolean> {
+    const normalizedIdentifier = email.trim().toLowerCase();
 
+    // 1. Try Backend API first
+    try {
+      const res = await api.post<{
+        success: boolean;
+        data?: {
+          token?: string;
+          access_token?: string;
+          akun?: {
+            uuid?: string;
+            email: string;
+            username?: string;
+            full_name?: string;
+            phone?: string;
+            address?: string;
+          };
+        };
+      }>("/auth/login", {
+        identifier: normalizedIdentifier,
+        password,
+      });
+
+      const token = res.data?.data?.token || res.data?.data?.access_token;
+      const akun = res.data?.data?.akun;
+
+      if (token && akun) {
+        setAuthToken(token);
+        const nextUser: AuthUser = {
+          full_name: akun.full_name || akun.username || DEMO_ACCOUNT.full_name,
+          email: akun.email,
+          phone: akun.phone || DEMO_ACCOUNT.phone,
+          username: akun.username || DEMO_ACCOUNT.username,
+          address: akun.address || DEMO_ACCOUNT.address,
+        };
+        setUser(nextUser);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
+        return true;
+      }
+    } catch {
+      // Backend offline or auth failed, fall through to demo check
+    }
+
+    // 2. Demo fallback
     if (
-      normalizedEmail === DEMO_ACCOUNT.email &&
+      normalizedIdentifier === DEMO_ACCOUNT.email &&
       password === DEMO_ACCOUNT.password
     ) {
       const nextUser: AuthUser = {
@@ -61,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: DEMO_ACCOUNT.email,
         phone: DEMO_ACCOUNT.phone,
         username: DEMO_ACCOUNT.username,
+        address: DEMO_ACCOUNT.address,
       };
       setUser(nextUser);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
@@ -72,6 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function logout() {
     setUser(null);
+    removeAuthToken();
     localStorage.removeItem(STORAGE_KEY);
   }
 
