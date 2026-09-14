@@ -32,6 +32,7 @@ import {
   LOYALTY_REWARD_THRESHOLD,
   LOYALTY_REWARD_VOUCHER,
 } from "@/lib/vouchers";
+import { api } from "@/lib/api";
 
 interface ShippingMethod {
   id: "standard" | "express";
@@ -325,41 +326,83 @@ export default function CheckoutPage() {
     return Object.keys(nextErrors).length === 0;
   }
 
-  function handleBayarSekarang(e: FormEvent) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function handleBayarSekarang(e: FormEvent) {
     e.preventDefault();
     if (!validate()) return;
 
-    const purchasedProductIds = selectedItems.map((item) => item.productId);
+    setIsSubmitting(true);
 
-    if (!immediateBuy) {
-      clearSelected();
-    }
-
-    navigate("/payment-success", {
-      state: {
-        totalPaid: totalTagihan,
-        itemIds: purchasedProductIds,
+    try {
+      const payload = {
+        recipient_name: selectedAddress?.recipientName || user?.full_name || "Pelanggan",
+        address: address,
+        shipping_address: address,
+        phone: selectedAddress?.phone || user?.phone || "+62 812 3456 7890",
+        phone_number: selectedAddress?.phone || user?.phone || "+62 812 3456 7890",
+        email: user?.email || "customer@example.com",
+        postal_code: postalCode,
+        shipping_postal_code: postalCode,
+        city: city,
+        shipping_city: city,
+        shipping_courier: "Kurir Internal",
+        shipping_method: shippingMethod.label,
+        shipping_method_id: shippingMethod.id,
+        shipping_cost: shippingCost,
+        service_fee: protectionCost + insuranceCost,
+        discount: discountAmount,
+        voucher_code: selectedVoucher?.code || undefined,
         items: selectedItems.map((item) => ({
-          productId: item.productId,
-          name: item.name,
-          variant: item.variant,
+          product_id: item.productId, // backend checks AlternateID or ProductID
+          variant_id: item.variant !== "Varian standar" ? item.variant : undefined,
           quantity: item.quantity,
-          price: item.basePrice,
-          image: item.image,
         })),
-        subtotal: totalHarga,
-        packagingFee: shippingCost,
-        discountAmount,
-        voucherCode: selectedVoucher?.code,
-        loyaltyPointsEarned,
-        estimatedDeliveryLabel,
-        customer: {
-          name: user?.full_name || "Pelanggan",
-          email: user?.email || "",
-          phone: "+62 812 3456 7890",
+      };
+
+      const res = await api.post("/ecommerce/orders", payload);
+      const orderData = res.data?.data;
+      const createdOrderId = orderData?.uuid || orderData?.id;
+
+      const purchasedProductIds = selectedItems.map((item) => item.productId);
+
+      if (!immediateBuy) {
+        clearSelected();
+      }
+
+      navigate("/payment-success", {
+        state: {
+          totalPaid: totalTagihan,
+          itemIds: purchasedProductIds,
+          orderId: createdOrderId, // Pass backend generated order UUID!
+          items: selectedItems.map((item) => ({
+            productId: item.productId,
+            name: item.name,
+            variant: item.variant,
+            quantity: item.quantity,
+            price: item.basePrice,
+            image: item.image,
+          })),
+          subtotal: totalHarga,
+          packagingFee: shippingCost,
+          discountAmount,
+          voucherCode: selectedVoucher?.code,
+          loyaltyPointsEarned,
+          estimatedDeliveryLabel,
+          customer: {
+            name: user?.full_name || "Pelanggan",
+            email: user?.email || "",
+            phone: "+62 812 3456 7890",
+          },
         },
-      },
-    });
+      });
+    } catch (err: any) {
+      // Handle error gracefully
+      console.error(err);
+      alert("Gagal membuat pesanan. Pastikan koneksi stabil.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -870,9 +913,14 @@ export default function CheckoutPage() {
                 </div>
                 <button
                   type="submit"
-                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3 text-sm font-semibold text-white hover:opacity-90">
-                  <ShieldCheck className="h-4 w-4" />
-                  Bayar Sekarang
+                  disabled={isSubmitting}
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-70 disabled:cursor-not-allowed">
+                  {isSubmitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ShieldCheck className="h-4 w-4" />
+                  )}
+                  {isSubmitting ? "Memproses..." : "Bayar Sekarang"}
                 </button>
               </div>
             </div>

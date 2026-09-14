@@ -10,7 +10,7 @@ import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "@/components/cart/useCart";
 import { calculateCartSummary } from "@/lib/cart";
-import { getDiscountPercent } from "@/lib/products";
+import { getDiscountPercent, PRODUCTS } from "@/lib/products";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 
 export default function CartPage() {
@@ -27,6 +27,11 @@ export default function CartPage() {
   const allSelected = items.length > 0 && items.every((item) => item.selected);
   const selectedItems = items.filter((item) => item.selected);
   const summary = calculateCartSummary(items);
+
+  const isAnySelectedOutOfStock = selectedItems.some((item) => {
+    const p = PRODUCTS.find((prod) => prod.id === item.productId);
+    return p?.stock !== undefined && p.stock <= 0;
+  });
 
   return (
     <div className="min-h-screen bg-background">
@@ -73,19 +78,27 @@ export default function CartPage() {
                 <div className="divide-y divide-border">
                   {items.map((item) => {
                     const discount = getDiscountPercent(item);
+                    const p = PRODUCTS.find((prod) => prod.id === item.productId);
+                    const isOutOfStock = p?.stock !== undefined && p.stock <= 0;
+                    const isMaxStock = p?.stock !== undefined && item.quantity >= p.stock;
 
                     return (
-                      <div key={item.id} className="p-5">
+                      <div key={item.id} className={`p-5 ${isOutOfStock ? "opacity-60 grayscale-[50%]" : ""}`}>
                         <div className="flex items-start gap-4">
                           <input
                             type="checkbox"
                             checked={item.selected}
+                            disabled={isOutOfStock}
                             onChange={() => toggleSelectItem(item.id)}
-                            className="mt-1 h-5 w-5 shrink-0 rounded accent-primary"
+                            className="mt-1 h-5 w-5 shrink-0 rounded accent-primary disabled:cursor-not-allowed"
                           />
 
                           <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg bg-background">
-                            {discount ? (
+                            {isOutOfStock ? (
+                              <span className="absolute left-0 top-0 z-10 rounded-br-md bg-text px-1.5 py-0.5 text-[11px] font-semibold text-white">
+                                Habis
+                              </span>
+                            ) : discount ? (
                               <span className="absolute left-0 top-0 z-10 rounded-br-md bg-red-600 px-1.5 py-0.5 text-[11px] font-semibold text-white">
                                 -{discount}%
                               </span>
@@ -111,6 +124,11 @@ export default function CartPage() {
                               <p className="mt-1 text-sm text-text-secondary">
                                 {item.variant}
                               </p>
+                              {isOutOfStock && (
+                                <p className="mt-1 text-xs font-semibold text-red-600">
+                                  Stok habis
+                                </p>
+                              )}
                             </div>
                             <div className="shrink-0 text-left sm:text-right">
                               <p className="text-base font-bold text-text">
@@ -142,8 +160,9 @@ export default function CartPage() {
                           <div className="flex items-center rounded-full border border-border">
                             <button
                               aria-label="Kurangi jumlah"
+                              disabled={isOutOfStock}
                               onClick={() => updateQuantity(item.id, -1)}
-                              className="p-2 text-text hover:text-primary">
+                              className="p-2 text-text hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed">
                               <Minus className="h-4 w-4" />
                             </button>
                             <span className="w-6 text-center text-sm font-medium text-text">
@@ -151,8 +170,9 @@ export default function CartPage() {
                             </span>
                             <button
                               aria-label="Tambah jumlah"
+                              disabled={isOutOfStock || isMaxStock}
                               onClick={() => updateQuantity(item.id, 1)}
-                              className="p-2 text-text hover:text-primary">
+                              className="p-2 text-text hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed">
                               <Plus className="h-4 w-4" />
                             </button>
                           </div>
@@ -178,8 +198,14 @@ export default function CartPage() {
                 </span>
               </div>
 
+              {isAnySelectedOutOfStock && (
+                <div className="mt-3 text-xs font-medium text-red-600">
+                  Ada produk yang habis, harap batalkan pilihannya.
+                </div>
+              )}
+
               <button
-                disabled={selectedItems.length === 0}
+                disabled={selectedItems.length === 0 || isAnySelectedOutOfStock}
                 onClick={() => navigate("/checkout")}
                 className="mt-5 w-full rounded-full bg-primary py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-40 transition-opacity">
                 Beli ({summary.totalItems})
