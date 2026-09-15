@@ -8,9 +8,8 @@ import { ProductGridSkeleton } from "@/components/skeleton/ProductCardSkeleton";
 import { PromoBannerSection } from "@/components/PromoBannerSection";
 import { Pagination } from "@/components/ui/pagination";
 import {
-  CATEGORY_DETAILS,
-  useMarketplaceProducts,
-  getDiscountPercent,
+  usePaginatedProducts,
+  useCategories,
 } from "@/lib/products";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 // import { PromoModal } from "@/components/PromoModal";
@@ -52,29 +51,23 @@ export default function HomePage() {
   const page =
     Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
 
-  const { products: marketplaceProducts } = useMarketplaceProducts();
-
   const convertPriceToCurrentCurrency = useCallback(
     (value: number) => (currency === "USD" && rate ? value * rate : value),
     [currency, rate],
   );
 
   const priceRangeDefaults = useMemo(() => {
-    if (!marketplaceProducts.length) return [0, 1000000] as [number, number];
-    const convertedMin = Math.min(
-      ...marketplaceProducts.map((product) =>
-        convertPriceToCurrentCurrency(product.basePrice),
-      ),
-    );
-    const convertedMax = Math.max(
-      ...marketplaceProducts.map((product) =>
-        convertPriceToCurrentCurrency(product.basePrice),
-      ),
-    );
-    return [convertedMin, convertedMax] as [number, number];
-  }, [convertPriceToCurrentCurrency, marketplaceProducts]);
+    return [0, convertPriceToCurrentCurrency(20000000)] as [number, number];
+  }, [convertPriceToCurrentCurrency]);
 
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const { categories } = useCategories();
+  const initialCategory = searchParams.get("category");
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(() => {
+    if (initialCategory && initialCategory !== "all") {
+      return [initialCategory];
+    }
+    return [];
+  });
   const [priceRange, setPriceRange] = useState<[number, number]>([
     0,
     priceRangeDefaults[1],
@@ -84,7 +77,6 @@ export default function HomePage() {
   const previousCurrencyRef = useRef(currency);
   const [discountOnly, setDiscountOnly] = useState(false);
   const [sortBy, setSortBy] = useState("default");
-  const [isLoading, setIsLoading] = useState(true);
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"pagination" | "infinite">(
     "pagination",
@@ -94,9 +86,46 @@ export default function HomePage() {
   const [isFetchingMore, setIsFetchingMore] = useState(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 900);
-    return () => clearTimeout(timer);
-  }, []);
+    const cat = searchParams.get("category");
+    if (cat && cat !== "all") {
+      setSelectedCategories((prev) => (prev.includes(cat) ? prev : [cat]));
+    }
+  }, [searchParams]);
+
+  const effectiveMinPrice = useMemo(() => {
+    if (!minPriceInput) return undefined;
+    const val = Number(minPriceInput);
+    if (!Number.isFinite(val) || val <= 0) return undefined;
+    return currency === "USD" && rate ? Math.round(val / rate) : val;
+  }, [minPriceInput, currency, rate]);
+
+  const effectiveMaxPrice = useMemo(() => {
+    if (!maxPriceInput) return undefined;
+    const val = Number(maxPriceInput);
+    if (!Number.isFinite(val) || val <= 0) return undefined;
+    return currency === "USD" && rate ? Math.round(val / rate) : val;
+  }, [maxPriceInput, currency, rate]);
+
+  const categoryParam =
+    selectedCategories.length > 0 ? selectedCategories.join(",") : undefined;
+
+  const {
+    products: serverProducts,
+    total: serverTotal,
+    totalPages: serverTotalPages,
+    currentPage: serverCurrentPage,
+    loading: isServerLoading,
+  } = usePaginatedProducts({
+    page,
+    limit: PAGE_SIZE,
+    search: searchQuery,
+    category: categoryParam,
+    minPrice: effectiveMinPrice,
+    maxPrice: effectiveMaxPrice,
+    discountOnly,
+  });
+
+  const isLoading = isServerLoading;
 
   useEffect(() => {
     if (previousCurrencyRef.current === currency) return;
@@ -165,69 +194,25 @@ export default function HomePage() {
     sortBy !== "default";
 
   const products = useMemo(() => {
-    let filtered = selectedCategories.length
-      ? marketplaceProducts.filter((product) =>
-          selectedCategories.includes(product.categoryId ?? ""),
-        )
-      : marketplaceProducts;
-
-    if (searchQuery) {
-      filtered = filtered.filter((product) =>
-        product.name.toLowerCase().includes(searchQuery),
-      );
-    }
-
-    const effectiveMin = minPriceInput ? Number(minPriceInput) : 0;
-    const effectiveMax = maxPriceInput
-      ? Number(maxPriceInput)
-      : priceRangeDefaults[1];
-
-    filtered = filtered.filter((product) => {
-      const productPrice = convertPriceToCurrentCurrency(product.basePrice);
-      return (
-        productPrice >= Math.min(effectiveMin, effectiveMax) &&
-        productPrice <= Math.max(effectiveMin, effectiveMax)
-      );
-    });
-
-    if (discountOnly) {
-      filtered = filtered.filter(
-        (product) => getDiscountPercent(product) !== undefined,
-      );
-    }
-
-    const sorted = [...filtered];
+    let list = [...serverProducts];
     if (sortBy === "price-asc")
-      sorted.sort(
+      list.sort(
         (a, b) =>
           convertPriceToCurrentCurrency(a.basePrice) -
           convertPriceToCurrentCurrency(b.basePrice),
       );
     if (sortBy === "price-desc")
-      sorted.sort(
+      list.sort(
         (a, b) =>
           convertPriceToCurrentCurrency(b.basePrice) -
           convertPriceToCurrentCurrency(a.basePrice),
       );
-    return sorted;
-  }, [
-    selectedCategories,
-    sortBy,
-    searchQuery,
-    discountOnly,
-    convertPriceToCurrentCurrency,
-    maxPriceInput,
-    minPriceInput,
-    priceRangeDefaults,
-    marketplaceProducts,
-  ]);
+    return list;
+  }, [serverProducts, sortBy, convertPriceToCurrentCurrency]);
 
-  const totalPages = Math.max(1, Math.ceil(products.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const pagedProducts = products.slice(
-    (safePage - 1) * PAGE_SIZE,
-    (safePage - 1) * PAGE_SIZE + PAGE_SIZE,
-  );
+  const totalPages = serverTotalPages;
+  const safePage = serverCurrentPage;
+  const pagedProducts = products;
 
   const displayedProducts =
     viewMode === "infinite"
@@ -277,6 +262,7 @@ export default function HomePage() {
   }, [viewMode, products.length, visibleCount, isFetchingMore]);
 
   function handlePageChange(nextPage: number) {
+    if (nextPage === page) return;
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set("page", String(nextPage));
     setSearchParams(nextParams);
@@ -351,19 +337,22 @@ export default function HomePage() {
             <div className="mt-3 border-t border-border pt-4">
               <h3 className="text-sm font-semibold text-text">Kategori</h3>
               <div className="mt-3 space-y-3">
-                {CATEGORY_DETAILS.map((cat) => (
-                  <label
-                    key={cat.id}
-                    className="flex cursor-pointer items-center gap-2.5 text-sm text-text-secondary">
-                    <input
-                      type="checkbox"
-                      checked={selectedCategories.includes(cat.id)}
-                      onChange={() => toggleCategory(cat.id)}
-                      className="h-4 w-4 rounded border-border accent-primary"
-                    />
-                    {cat.label}
-                  </label>
-                ))}
+                {categories.map((cat) => {
+                  const keyVal = cat.slug || cat.uuid || cat.id;
+                  return (
+                    <label
+                      key={keyVal}
+                      className="flex cursor-pointer items-center gap-2.5 text-sm text-text-secondary">
+                      <input
+                        type="checkbox"
+                        checked={selectedCategories.includes(keyVal)}
+                        onChange={() => toggleCategory(keyVal)}
+                        className="h-4 w-4 rounded border-border accent-primary"
+                      />
+                      {cat.label}
+                    </label>
+                  );
+                })}
               </div>
             </div>
 
@@ -486,7 +475,7 @@ export default function HomePage() {
               <span className="text-xs text-text-secondary sm:text-sm">
                 {viewMode === "infinite"
                   ? `Menampilkan ${displayedProducts.length} produk`
-                  : `Menampilkan ${displayedProducts.length} dari ${products.length} produk`}
+                  : `Menampilkan ${displayedProducts.length} dari ${serverTotal} produk`}
               </span>
 
               <div className="flex flex-wrap items-center gap-3">

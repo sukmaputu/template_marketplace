@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Loader2 } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { MarketplaceFooter } from "@/components/MarketplaceFooter";
 import { ProductCard } from "@/components/ProductCard";
-import { CATEGORY_DETAILS, useMarketplaceProducts } from "@/lib/products";
+import { useCategories, usePaginatedProducts } from "@/lib/products";
 
 const SORT_OPTIONS = [
   { value: "default", label: "Bawaan" },
@@ -17,21 +17,27 @@ export default function CategoryPage() {
   const params = useParams();
   const categoryId = params.categoryId ?? "teknologi-informasi";
   const [sortBy, setSortBy] = useState("default");
-  const { products: allProducts } = useMarketplaceProducts();
+  const { categories } = useCategories();
+  const { products: serverProducts, loading } = usePaginatedProducts({
+    category: categoryId,
+    limit: 30,
+  });
 
-  const category = CATEGORY_DETAILS.find((item) => item.id === categoryId);
+  const category = categories.find(
+    (item) =>
+      item.slug === categoryId ||
+      item.id === categoryId ||
+      item.uuid === categoryId,
+  );
 
   const products = useMemo(() => {
-    const filtered = allProducts.filter(
-      (product) => product.categoryId === categoryId,
-    );
-    const sorted = [...filtered];
+    const sorted = [...serverProducts];
     if (sortBy === "price-asc")
       sorted.sort((a, b) => a.basePrice - b.basePrice);
     if (sortBy === "price-desc")
       sorted.sort((a, b) => b.basePrice - a.basePrice);
     return sorted;
-  }, [categoryId, sortBy, allProducts]);
+  }, [sortBy, serverProducts]);
 
   return (
     <div className="min-h-screen bg-background transition-colors">
@@ -53,9 +59,11 @@ export default function CategoryPage() {
             <h1 className="text-3xl font-bold text-text">
               {category?.label ?? "Kategori"}
             </h1>
-            <p className="mt-2 max-w-2xl text-sm text-text-secondary">
-              {category?.description}
-            </p>
+            {category?.description ? (
+              <p className="mt-2 max-w-2xl text-sm text-text-secondary">
+                {category.description}
+              </p>
+            ) : null}
           </div>
 
           <div className="flex items-center gap-2">
@@ -76,17 +84,21 @@ export default function CategoryPage() {
           </div>
         </div>
 
-        <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
-          {products.map((product) => (
-            <ProductCard key={product.id} product={product} />
-          ))}
-        </div>
-
-        {products.length === 0 ? (
+        {loading ? (
+          <div className="flex min-h-[30vh] items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : products.length > 0 ? (
+          <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+            {products.map((product) => (
+              <ProductCard key={product.id} product={product} />
+            ))}
+          </div>
+        ) : (
           <p className="mt-12 text-center text-sm text-text-secondary">
             Belum ada produk di kategori ini.
           </p>
-        ) : null}
+        )}
       </div>
 
       <MarketplaceFooter />

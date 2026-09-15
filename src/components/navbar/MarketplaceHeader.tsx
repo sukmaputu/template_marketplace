@@ -12,25 +12,30 @@ import {
   PRODUCTS,
   POPULAR_SEARCH_TERMS,
   getRecentlyViewedProducts,
+  useCategories,
   type Product,
 } from "@/lib/products";
-
-const CATEGORY_OPTIONS = [
-  { value: "all", label: "Semua Kategori" },
-  { value: "teknologi-informasi", label: "Teknologi Informasi" },
-  { value: "keuangan", label: "Keuangan" },
-  { value: "asuransi", label: "Asuransi" },
-  { value: "teknologi-mesin", label: "Teknologi Mesin" },
-];
 
 export function MarketplaceHeader() {
   const { itemCount } = useCart();
   const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
+  const { categories } = useCategories();
   const [searchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [category, setCategory] = useState(
     searchParams.get("category") ?? "all",
+  );
+
+  const categoryOptions = useMemo(
+    () => [
+      { value: "all", label: "Semua Kategori" },
+      ...categories.map((c) => ({
+        value: c.slug || c.uuid || c.id,
+        label: c.label,
+      })),
+    ],
+    [categories],
   );
 
   const urlQuery = searchParams.get("q") ?? "";
@@ -196,7 +201,7 @@ export function MarketplaceHeader() {
               onChange={(e) => setCategory(e.target.value)}
               aria-label="Filter kategori"
               className="hidden shrink-0 border-r border-border bg-surface px-3 text-sm text-text-secondary outline-none sm:block sm:max-w-[140px] lg:max-w-none">
-              {CATEGORY_OPTIONS.map((opt) => (
+              {categoryOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>

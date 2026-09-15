@@ -35,7 +35,9 @@ export function Pagination({
           <button
             type="button"
             key={page}
-            onClick={() => onPageChange(page)}
+            onClick={() => {
+              if (page !== currentPage) onPageChange(page);
+            }}
             className={`h-8 w-8 rounded-lg text-sm font-medium transition-colors ${
               page === currentPage
                 ? "bg-primary text-white"

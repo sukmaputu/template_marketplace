@@ -95,6 +95,8 @@ export interface Product {
   rating?: number;
   reviewCount?: number;
   categoryId?: string;
+  categoryName?: string;
+  categorySlug?: string;
   schedules?: string[];
   levels?: string[];
 }
@@ -553,6 +555,36 @@ export const CATEGORY_DETAILS = [
     description:
       "Kelas teknik mesin, gambar teknik, hingga manufaktur dan CNC.",
   },
+  {
+    id: "electronics",
+    label: "Electronics",
+    description:
+      "Audio devices, smart gadgets, keyboards, and modern workstation gear.",
+  },
+  {
+    id: "apparel",
+    label: "Apparel",
+    description:
+      "Premium clothing, everyday streetwear, tees, hoodies, and lifestyle fashion.",
+  },
+  {
+    id: "home-living",
+    label: "Home & Living",
+    description:
+      "Modern home decor, lighting, cookware, bedding sets, and living essentials.",
+  },
+  {
+    id: "accessories",
+    label: "Accessories",
+    description:
+      "Everyday carry essentials, backpacks, aviator sunglasses, and leather totes.",
+  },
+  {
+    id: "outdoors",
+    label: "Outdoors",
+    description:
+      "Camping tents, insulated steel bottles, rechargeable lanterns, and adventure equipment.",
+  },
 ];
 
 export const POPULAR_SEARCH_TERMS = [
@@ -622,10 +654,12 @@ export function mapBackendToProduct(p: any): Product {
     rating: Number(p.average_rating || 0),
     reviewCount: Number(p.rating_count || p.review_count || 0),
     categoryId: p.category?.slug || p.category_uuid || "teknologi-informasi",
+    categoryName: p.category?.name,
+    categorySlug: p.category?.slug,
   };
 }
 
-export function useMarketplaceProducts() {
+export function useMarketplaceProducts(limit = 6) {
   const [products, setProducts] = useState<Product[]>(PRODUCTS);
   const [loading, setLoading] = useState(true);
 
@@ -635,7 +669,7 @@ export function useMarketplaceProducts() {
     async function fetchProducts() {
       try {
         const res = await api.get("/ecommerce/products", {
-          params: { limit: 100 },
+          params: { limit },
         });
         const items = res.data?.data;
         if (Array.isArray(items) && items.length > 0 && !cancelled) {
@@ -658,7 +692,202 @@ export function useMarketplaceProducts() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [limit]);
 
   return { products, loading };
+}
+
+export interface CategoryItem {
+  id: string;
+  uuid?: string;
+  label: string;
+  slug: string;
+  description?: string;
+}
+
+export function useCategories() {
+  const [categories, setCategories] = useState<CategoryItem[]>(() =>
+    CATEGORY_DETAILS.map((c) => ({
+      id: c.id,
+      slug: c.id,
+      label: c.label,
+      description: c.description,
+    }))
+  );
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchCategories() {
+      try {
+        const res = await api.get("/ecommerce/categories");
+        const items = res.data?.data;
+        if (Array.isArray(items) && items.length > 0 && !cancelled) {
+          const mapped: CategoryItem[] = items
+            .filter((cat: any) => cat.is_active !== false)
+            .map((cat: any) => ({
+              id: cat.slug || cat.uuid,
+              uuid: cat.uuid,
+              slug: cat.slug || cat.uuid,
+              label: cat.name,
+              description: cat.description || "",
+            }));
+          setCategories(mapped);
+        }
+      } catch {
+        // Fallback to static CATEGORY_DETAILS
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    fetchCategories();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return { categories, loading };
+}
+
+export interface UsePaginatedProductsOptions {
+  page?: number;
+  limit?: number;
+  search?: string;
+  category?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  discountOnly?: boolean;
+}
+
+export interface UsePaginatedProductsResult {
+  products: Product[];
+  total: number;
+  totalPages: number;
+  currentPage: number;
+  loading: boolean;
+}
+
+export function usePaginatedProducts({
+  page = 1,
+  limit = 6,
+  search = "",
+  category,
+  minPrice,
+  maxPrice,
+  discountOnly = false,
+}: UsePaginatedProductsOptions = {}): UsePaginatedProductsResult {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [currentPage, setCurrentPage] = useState(page);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    async function fetchProducts() {
+      try {
+        const params: Record<string, string | number | boolean> = {
+          page,
+          limit,
+        };
+        if (search && search.trim()) {
+          params.search = search.trim();
+        }
+        if (typeof minPrice === "number" && minPrice > 0) {
+          params.min_price = minPrice;
+        }
+        if (typeof maxPrice === "number" && maxPrice > 0) {
+          params.max_price = maxPrice;
+        }
+        if (category && category.trim()) {
+          params.category = category.trim();
+        }
+        if (discountOnly) {
+          params.discount_only = true;
+        }
+
+        const res = await api.get("/ecommerce/products", {
+          params,
+          signal: controller.signal,
+        });
+        const data = res.data;
+        const items = data?.data;
+        const meta = data?.meta;
+
+        if (!cancelled && Array.isArray(items)) {
+          const backendItems = items.map(mapBackendToProduct);
+          const serverTotal = Number(meta?.total ?? backendItems.length);
+          const serverPages = Number(
+            meta?.total_pages ?? Math.max(1, Math.ceil(serverTotal / limit))
+          );
+          const serverCurrent = Number(meta?.current_page ?? page);
+
+          setProducts(backendItems);
+          setTotal(serverTotal);
+          setTotalPages(serverPages);
+          setCurrentPage(serverCurrent);
+          setLoading(false);
+          return;
+        }
+      } catch (err: unknown) {
+        if ((err as { name?: string })?.name === "CanceledError") {
+          return;
+        }
+        // Fallback to static PRODUCTS
+      }
+
+      if (!cancelled) {
+        let filtered = PRODUCTS;
+        if (search && search.trim()) {
+          const q = search.trim().toLowerCase();
+          filtered = filtered.filter((p) => p.name.toLowerCase().includes(q));
+        }
+        if (category && category.trim()) {
+          const catTerms = category
+            .split(",")
+            .map((c) => c.trim().toLowerCase())
+            .filter(Boolean);
+          if (catTerms.length > 0) {
+            filtered = filtered.filter((p) =>
+              catTerms.includes((p.categoryId ?? "").toLowerCase()),
+            );
+          }
+        }
+        if (discountOnly) {
+          filtered = filtered.filter(
+            (p) => getDiscountPercent(p) !== undefined,
+          );
+        }
+        if (typeof minPrice === "number" && minPrice > 0) {
+          filtered = filtered.filter((p) => p.basePrice >= minPrice);
+        }
+        if (typeof maxPrice === "number" && maxPrice > 0) {
+          filtered = filtered.filter((p) => p.basePrice <= maxPrice);
+        }
+
+        const fallbackTotal = filtered.length;
+        const fallbackPages = Math.max(1, Math.ceil(fallbackTotal / limit));
+        const safePage = Math.min(Math.max(1, page), fallbackPages);
+        const sliced = filtered.slice((safePage - 1) * limit, safePage * limit);
+
+        setProducts(sliced);
+        setTotal(fallbackTotal);
+        setTotalPages(fallbackPages);
+        setCurrentPage(safePage);
+        setLoading(false);
+      }
+    }
+
+    fetchProducts();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [page, limit, search, category, minPrice, maxPrice, discountOnly]);
+
+  return { products, total, totalPages, currentPage, loading };
 }
