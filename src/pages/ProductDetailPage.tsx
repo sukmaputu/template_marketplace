@@ -18,7 +18,7 @@ import {
   PRODUCTS,
   CATEGORY_DETAILS,
   mapBackendToProduct,
-  useMarketplaceProducts,
+  useCategories,
   type Product,
 } from "@/lib/products";
 import { api } from "@/lib/api";
@@ -60,24 +60,11 @@ export default function ProductDetailPage() {
   const { formatPrice } = useCurrency();
   const { isAuthenticated } = useAuth();
   const [isLoginRequiredOpen, setIsLoginRequiredOpen] = useState(false);
-
-  const { products: allProducts, loading: isMarketplaceLoading } =
-    useMarketplaceProducts();
-
   const [backendProduct, setBackendProduct] = useState<Product | null>(null);
   const [isFetchingDetail, setIsFetchingDetail] = useState(false);
 
-  const foundProduct = useMemo(() => {
-    if (!productId) return null;
-    return (
-      allProducts.find((p) => String(p.id) === String(productId)) ||
-      PRODUCTS.find((p) => String(p.id) === String(productId)) ||
-      null
-    );
-  }, [allProducts, productId]);
-
   useEffect(() => {
-    if (!productId || foundProduct) {
+    if (!productId) {
       return;
     }
 
@@ -102,12 +89,19 @@ export default function ProductDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [productId, foundProduct]);
+  }, [productId]);
 
-  const product =
-    foundProduct || (backendProduct?.id === productId ? backendProduct : null);
-  const isLoading =
-    (isMarketplaceLoading && !product) || (isFetchingDetail && !product);
+  const product = useMemo(() => {
+    if (backendProduct && backendProduct.id === productId) {
+      return backendProduct;
+    }
+    return (
+      PRODUCTS.find((p) => String(p.id) === String(productId)) ||
+      null
+    );
+  }, [backendProduct, productId]);
+
+  const isLoading = isFetchingDetail && !product;
 
   const images = useMemo(() => {
     if (product?.images?.length) return product.images;
@@ -157,29 +151,68 @@ export default function ProductDetailPage() {
   const selectedSchedule =
     manualSchedule && schedules.includes(manualSchedule)
       ? manualSchedule
-      : schedules[0];
+      : schedules[0] ?? "";
 
   const selectedLevel =
-    manualLevel && levels.includes(manualLevel) ? manualLevel : levels[0];
+    manualLevel && levels.includes(manualLevel)
+      ? manualLevel
+      : levels[0] ?? "";
 
-  const recommendations = useMemo(() => {
-    if (!product) return [];
-    const sourcePool = allProducts.length > 0 ? allProducts : PRODUCTS;
-    const pool = sourcePool.filter((p) => p && p.id && p.id !== product.id);
-    if (pool.length === 0) return [];
+  const variantLabel = useMemo(() => {
+    const parts = [selectedSchedule, selectedLevel].filter(Boolean);
+    return parts.length > 0 ? parts.join(" • ") : "Standar";
+  }, [selectedSchedule, selectedLevel]);
 
-    const rawIndex = sourcePool.findIndex((p) => p && p.id === product.id);
-    const startIndex = rawIndex >= 0 ? rawIndex % pool.length : 0;
+  const [recommendations, setRecommendations] = useState<Product[]>([]);
 
-    return Array.from(
-      { length: Math.min(4, pool.length) },
-      (_, index) => pool[(startIndex + index) % pool.length],
-    ).filter((p): p is Product => Boolean(p && p.id));
-  }, [product, allProducts]);
+  useEffect(() => {
+    let cancelled = false;
 
+    async function fetchRecommendations() {
+      try {
+        const res = await api.get("/ecommerce/products", {
+          params: { limit: 6 },
+        });
+        const items = res.data?.data;
+        if (Array.isArray(items) && !cancelled) {
+          const mapped = items
+            .map(mapBackendToProduct)
+            .filter((p) => p.id !== productId)
+            .slice(0, 4);
+          if (mapped.length > 0) {
+            setRecommendations(mapped);
+            return;
+          }
+        }
+      } catch {
+        // Fallback to static PRODUCTS
+      }
+
+      if (!cancelled) {
+        const fallback = PRODUCTS.filter((p) => p.id !== productId).slice(0, 4);
+        setRecommendations(fallback);
+      }
+    }
+
+    fetchRecommendations();
+    return () => {
+      cancelled = true;
+    };
+  }, [productId]);
+
+  const { categories } = useCategories();
   const categoryLabel = useMemo(() => {
-    return CATEGORY_DETAILS.find((c) => c.id === product?.categoryId)?.label;
-  }, [product?.categoryId]);
+    if (product?.categoryName) return product.categoryName;
+    return (
+      categories.find(
+        (c) =>
+          c.slug === product?.categoryId ||
+          c.id === product?.categoryId ||
+          c.uuid === product?.categoryId,
+      )?.label ||
+      CATEGORY_DETAILS.find((c) => c.id === product?.categoryId)?.label
+    );
+  }, [product?.categoryName, product?.categoryId, categories]);
 
   const isOutOfStock = product?.stock !== undefined && product.stock <= 0;
   const isLowStock =
@@ -266,16 +299,15 @@ export default function ProductDetailPage() {
     );
   }
 
-  const variantLabel = `${selectedSchedule} • ${selectedLevel}`;
 
   function handleKeranjang() {
-    if (!product) return;
+    if (!product || isOutOfStock) return;
     addToCart(product, quantity, variantLabel);
     showToast(`${product.name} added to cart`);
   }
 
   function handleBeli() {
-    if (!product) return;
+    if (!product || isOutOfStock) return;
     navigate("/checkout", {
       state: {
         immediateBuy: { product, quantity, variant: variantLabel },
@@ -360,6 +392,11 @@ export default function ProductDetailPage() {
 
         <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
           <div className="group relative aspect-square overflow-hidden rounded-xl bg-surface">
+            {isOutOfStock && (
+              <span className="absolute inset-0 z-20 flex items-center justify-center bg-background/80 text-sm font-bold tracking-wider text-text backdrop-blur-[2px]">
+                SOLD OUT
+              </span>
+            )}
             {images.length > 0 ? (
               <>
                 <button
@@ -425,9 +462,11 @@ export default function ProductDetailPage() {
             {(categoryLabel || isLowStock || isOutOfStock) && (
               <div className="mb-1 flex items-center gap-2">
                 {categoryLabel ? (
-                  <span className="text-xs font-semibold uppercase tracking-wide text-primary">
+                  <Link
+                    to={`/category/${product.categorySlug || product.categoryId || ""}`}
+                    className="text-xs font-semibold uppercase tracking-wide text-primary hover:underline">
                     {categoryLabel}
-                  </span>
+                  </Link>
                 ) : null}
                 {isOutOfStock ? (
                   <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-600">
@@ -467,70 +506,100 @@ export default function ProductDetailPage() {
               ) : null}
             </div>
 
-            <p className="mt-6 text-sm leading-relaxed text-text-secondary">
-              {product.description ?? "Belum ada deskripsi untuk produk ini."}
-            </p>
+            {product.description?.startsWith("<") ? (
+              <div
+                className="mt-6 text-sm leading-relaxed text-text-secondary [&_p]:mb-2"
+                dangerouslySetInnerHTML={{ __html: product.description }}
+              />
+            ) : (
+              <p className="mt-6 text-sm leading-relaxed text-text-secondary">
+                {product.description ?? "Belum ada deskripsi untuk produk ini."}
+              </p>
+            )}
 
-            <div className="mt-6">
-              <span className="text-sm font-semibold text-text">Jadwal</span>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {schedules.map((day) => (
-                  <button
-                    key={day}
-                    type="button"
-                    onClick={() => setManualSchedule(day)}
-                    className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
-                      selectedSchedule === day
-                        ? "border-primary bg-primary text-white"
-                        : "border-border text-text hover:border-primary"
-                    }`}>
-                    {day}
-                  </button>
-                ))}
+            {schedules.length > 0 && (
+              <div className="mt-6">
+                <span className="text-sm font-semibold text-text">Jadwal</span>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {schedules.map((day) => (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => setManualSchedule(day)}
+                      className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
+                        selectedSchedule === day
+                          ? "border-primary bg-primary text-white"
+                          : "border-border text-text hover:border-primary"
+                      }`}>
+                      {day}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className="mt-4">
-              <span className="text-sm font-semibold text-text">Tingkat</span>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {levels.map((level) => (
-                  <button
-                    key={level}
-                    type="button"
-                    onClick={() => setManualLevel(level)}
-                    className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
-                      selectedLevel === level
-                        ? "border-primary bg-primary text-white"
-                        : "border-border text-text hover:border-primary"
-                    }`}>
-                    {level}
-                  </button>
-                ))}
+            {levels.length > 0 && (
+              <div className="mt-4">
+                <span className="text-sm font-semibold text-text">Tingkat</span>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {levels.map((level) => (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => setManualLevel(level)}
+                      className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
+                        selectedLevel === level
+                          ? "border-primary bg-primary text-white"
+                          : "border-border text-text hover:border-primary"
+                      }`}>
+                      {level}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="mt-6 flex items-center gap-4">
               <span className="text-sm font-semibold text-text">Pesan</span>
               <div className="flex items-center rounded-full border border-border">
                 <button
                   type="button"
-                  disabled={isOutOfStock}
+                  disabled={isOutOfStock || quantity <= 1}
                   onClick={() => setQuantity((q) => Math.max(1, q - 1))}
                   className="p-2.5 text-text hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed">
                   <Minus className="h-4 w-4" />
                 </button>
                 <span className="w-8 text-center text-sm font-bold text-text">
-                  {quantity}
+                  {isOutOfStock ? 0 : quantity}
                 </span>
                 <button
                   type="button"
-                  disabled={isOutOfStock || (product.stock !== undefined && quantity >= product.stock)}
+                  disabled={
+                    isOutOfStock ||
+                    (product.stock !== undefined && quantity >= product.stock)
+                  }
                   onClick={() => setQuantity((q) => q + 1)}
                   className="p-2.5 text-text hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed">
                   <Plus className="h-4 w-4" />
                 </button>
               </div>
+              {product.stock !== undefined && (
+                <span className="text-xs text-text-secondary">
+                  {isOutOfStock
+                    ? "Stok tidak tersedia"
+                    : `Tersisa ${product.stock} buah`}
+                </span>
+              )}
             </div>
+
+            {isOutOfStock && (
+              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+                <p className="text-sm font-semibold">Stok Habis</p>
+                <p className="mt-1 text-xs text-red-700 dark:text-red-400">
+                  Produk ini saat ini sedang habis. Anda tidak dapat menambahkan ke keranjang atau melakukan pembelian.
+                </p>
+              </div>
+            )}
 
             <button
               type="button"
@@ -553,7 +622,7 @@ export default function ProductDetailPage() {
                 disabled={isOutOfStock}
                 onClick={handleBeli}
                 className="flex-1 rounded-full bg-primary py-3 text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:opacity-50">
-                Beli
+                {isOutOfStock ? "Stok Habis" : "Beli"}
               </button>
             </div>
           </div>

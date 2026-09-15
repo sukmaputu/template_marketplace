@@ -21,6 +21,7 @@ export function ProductCard({ product, onSelect }: ProductCardProps) {
   const { id, name, image, basePrice, comparePrice } = product;
   const discountPercent = getDiscountPercent(product);
   const ratingStats = getProductRatingStats(id);
+  const isOutOfStock = product.stock !== undefined && product.stock <= 0;
 
   return (
     <button
@@ -34,9 +35,9 @@ export function ProductCard({ product, onSelect }: ProductCardProps) {
       }}
       className="group block w-full rounded-xl border border-border bg-surface p-3 text-left transition-shadow hover:shadow-md">
       <div className="relative aspect-square overflow-hidden rounded-lg bg-background">
-        {product.stock !== undefined && product.stock <= 0 ? (
-          <span className="absolute left-0 top-0 z-10 rounded-br-lg rounded-tl-lg bg-text px-2.5 py-1 text-xs font-semibold text-white">
-            Habis
+        {isOutOfStock ? (
+          <span className="absolute inset-0 z-20 flex items-center justify-center bg-background/80 text-xs font-bold tracking-wider text-text backdrop-blur-[2px]">
+            SOLD OUT
           </span>
         ) : discountPercent ? (
           <span className="absolute left-0 top-0 z-10 rounded-br-lg rounded-tl-lg bg-red-600 px-2.5 py-1 text-xs font-semibold text-white">

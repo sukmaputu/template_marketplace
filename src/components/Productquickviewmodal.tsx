@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Minus,
@@ -37,8 +37,8 @@ function ProductQuickViewContent({
     : DEFAULT_SCHEDULES;
   const levels = product.levels?.length ? product.levels : DEFAULT_LEVELS;
 
-  const [selectedSchedule, setSelectedSchedule] = useState(schedules[0]);
-  const [selectedLevel, setSelectedLevel] = useState(levels[0]);
+  const [selectedSchedule, setSelectedSchedule] = useState(schedules[0] ?? "");
+  const [selectedLevel, setSelectedLevel] = useState(levels[0] ?? "");
 
   const images = product.images?.length
     ? product.images
@@ -71,15 +71,21 @@ function ProductQuickViewContent({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onClose, nextImage, prevImage, isPreviewOpen]);
 
-  const variantLabel = `${selectedSchedule} • ${selectedLevel}`;
+  const variantLabel = useMemo(() => {
+    const parts = [selectedSchedule, selectedLevel].filter(Boolean);
+    return parts.length > 0 ? parts.join(" • ") : "Standar";
+  }, [selectedSchedule, selectedLevel]);
+  const isOutOfStock = product.stock !== undefined && product.stock <= 0;
 
   function handleKeranjang() {
+    if (isOutOfStock) return;
     addToCart(product, quantity, variantLabel);
     showToast(`${product.name} added to cart`);
     onClose();
   }
 
   function handleBeli() {
+    if (isOutOfStock) return;
     onClose();
     navigate("/checkout", {
       state: {
@@ -96,6 +102,11 @@ function ProductQuickViewContent({
         onClick={(e) => e.stopPropagation()}
         className="relative grid w-full max-w-4xl grid-cols-1 overflow-hidden rounded-xl bg-surface shadow-xl sm:grid-cols-2">
         <div className="group relative aspect-square bg-background sm:aspect-auto">
+          {isOutOfStock && (
+            <span className="absolute inset-0 z-20 flex items-center justify-center bg-background/80 text-sm font-bold tracking-wider text-text backdrop-blur-[2px]">
+              SOLD OUT
+            </span>
+          )}
           {images.length > 0 ? (
             <>
               <button
@@ -156,6 +167,11 @@ function ProductQuickViewContent({
         </div>
 
         <div className="flex flex-col p-8">
+          {isOutOfStock && (
+            <span className="mb-2 w-fit rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-950/40 dark:text-red-400">
+              Stok Habis
+            </span>
+          )}
           <h2 className="text-2xl font-bold text-text">{product.name}</h2>
 
           <div className="mt-2 flex items-baseline gap-2">
@@ -170,68 +186,100 @@ function ProductQuickViewContent({
             ) : null}
           </div>
 
-          <p className="mt-6 text-sm leading-relaxed text-text-secondary">
-            {product.description ?? "Belum ada deskripsi untuk produk ini."}
-          </p>
+          {product.description?.startsWith("<") ? (
+            <div
+              className="mt-6 text-sm leading-relaxed text-text-secondary [&_p]:mb-2"
+              dangerouslySetInnerHTML={{ __html: product.description }}
+            />
+          ) : (
+            <p className="mt-6 text-sm leading-relaxed text-text-secondary">
+              {product.description ?? "Belum ada deskripsi untuk produk ini."}
+            </p>
+          )}
 
-          <div className="mt-6">
-            <span className="text-sm font-semibold text-text">Jadwal</span>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {schedules.map((day) => (
-                <button
-                  key={day}
-                  type="button"
-                  onClick={() => setSelectedSchedule(day)}
-                  className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
-                    selectedSchedule === day
-                      ? "border-primary bg-primary text-white"
-                      : "border-border text-text hover:border-primary"
-                  }`}>
-                  {day}
-                </button>
-              ))}
+          {schedules.length > 0 && (
+            <div className="mt-6">
+              <span className="text-sm font-semibold text-text">Jadwal</span>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {schedules.map((day: string) => (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => setSelectedSchedule(day)}
+                    className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
+                      selectedSchedule === day
+                        ? "border-primary bg-primary text-white"
+                        : "border-border text-text hover:border-primary"
+                    }`}>
+                    {day}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="mt-4">
-            <span className="text-sm font-semibold text-text">Tingkat</span>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {levels.map((level) => (
-                <button
-                  key={level}
-                  type="button"
-                  onClick={() => setSelectedLevel(level)}
-                  className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
-                    selectedLevel === level
-                      ? "border-primary bg-primary text-white"
-                      : "border-border text-text hover:border-primary"
-                  }`}>
-                  {level}
-                </button>
-              ))}
+          {levels.length > 0 && (
+            <div className="mt-4">
+              <span className="text-sm font-semibold text-text">Tingkat</span>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {levels.map((level: string) => (
+                  <button
+                    key={level}
+                    type="button"
+                    onClick={() => setSelectedLevel(level)}
+                    className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
+                      selectedLevel === level
+                        ? "border-primary bg-primary text-white"
+                        : "border-border text-text hover:border-primary"
+                    }`}>
+                    {level}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="mt-6 flex items-center gap-4">
             <span className="text-sm font-semibold text-text">Pesan</span>
             <div className="flex items-center rounded-full border border-border">
               <button
                 type="button"
+                disabled={isOutOfStock || quantity <= 1}
                 onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                className="p-2.5 text-text hover:text-primary">
+                className="p-2.5 text-text hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed">
                 <Minus className="h-4 w-4" />
               </button>
               <span className="w-8 text-center text-sm font-bold text-text">
-                {quantity}
+                {isOutOfStock ? 0 : quantity}
               </span>
               <button
                 type="button"
+                disabled={
+                  isOutOfStock ||
+                  (product.stock !== undefined && quantity >= product.stock)
+                }
                 onClick={() => setQuantity((q) => q + 1)}
-                className="p-2.5 text-text hover:text-primary">
+                className="p-2.5 text-text hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed">
                 <Plus className="h-4 w-4" />
               </button>
             </div>
+            {product.stock !== undefined && (
+              <span className="text-xs text-text-secondary">
+                {isOutOfStock
+                  ? "Stok tidak tersedia"
+                  : `Tersisa ${product.stock} buah`}
+              </span>
+            )}
           </div>
+
+          {isOutOfStock && (
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+              <p className="font-semibold text-xs">Stok Habis</p>
+              <p className="mt-0.5 text-xs text-red-700 dark:text-red-400">
+                Produk ini sedang tidak tersedia. Anda tidak dapat menambahkan ke keranjang atau melakukan pembelian.
+              </p>
+            </div>
+          )}
 
           <div className="mt-auto flex gap-3 pt-8">
             <button
@@ -242,15 +290,17 @@ function ProductQuickViewContent({
             </button>
             <button
               type="button"
+              disabled={isOutOfStock}
               onClick={handleKeranjang}
-              className="flex-1 rounded-full border border-secondary py-3 text-sm font-bold text-secondary transition-colors hover:bg-secondary/10">
+              className="flex-1 rounded-full border border-secondary py-3 text-sm font-bold text-secondary transition-colors hover:bg-secondary/10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent">
               Keranjang
             </button>
             <button
               type="button"
+              disabled={isOutOfStock}
               onClick={handleBeli}
-              className="flex-1 rounded-full bg-secondary py-3 text-sm font-bold text-white transition-opacity hover:opacity-90">
-              Beli
+              className="flex-1 rounded-full bg-secondary py-3 text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:opacity-50">
+              {isOutOfStock ? "Stok Habis" : "Beli"}
             </button>
           </div>
         </div>
