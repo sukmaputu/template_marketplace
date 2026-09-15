@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   Building2,
   CalendarClock,
@@ -263,33 +263,94 @@ export default function CheckoutPage() {
       }
     | undefined;
 
-  const selectedItems: CheckoutItem[] = immediateBuy
-    ? [
-        {
-          id: immediateBuy.product.id,
-          productId: immediateBuy.product.id,
-          name: immediateBuy.product.name,
-          variant: immediateBuy.variant ?? "Varian standar",
-          image: immediateBuy.product.image,
-          basePrice: immediateBuy.product.basePrice,
-          comparePrice: immediateBuy.product.comparePrice,
-          quantity: immediateBuy.quantity,
-          selected: true,
-        },
-      ]
-    : items
-        .filter((item) => item.selected)
-        .map((item) => ({
-          id: item.id,
-          productId: item.productId,
-          name: item.name,
-          variant: item.variant,
-          image: item.image,
-          basePrice: item.basePrice,
-          comparePrice: item.comparePrice,
-          quantity: item.quantity,
-          selected: true as const,
-        }));
+  const selectedItems: CheckoutItem[] = useMemo(
+    () =>
+      immediateBuy
+        ? [
+            {
+              id: immediateBuy.product.id,
+              productId: immediateBuy.product.id,
+              name: immediateBuy.product.name,
+              variant: immediateBuy.variant ?? "Varian standar",
+              image: immediateBuy.product.image,
+              basePrice: immediateBuy.product.basePrice,
+              comparePrice: immediateBuy.product.comparePrice,
+              quantity: immediateBuy.quantity,
+              selected: true,
+            },
+          ]
+        : items
+            .filter((item) => item.selected)
+            .map((item) => ({
+              id: item.id,
+              productId: item.productId,
+              name: item.name,
+              variant: item.variant,
+              image: item.image,
+              basePrice: item.basePrice,
+              comparePrice: item.comparePrice,
+              quantity: item.quantity,
+              selected: true as const,
+            })),
+    [immediateBuy, items],
+  );
+
+  const [liveStocks, setLiveStocks] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const idsToCheck = immediateBuy
+      ? [immediateBuy.product.id]
+      : selectedItems.map((i) => i.productId);
+
+    if (idsToCheck.length === 0) return;
+    let cancelled = false;
+
+    const uniqueIds = Array.from(new Set(idsToCheck));
+    Promise.all(
+      uniqueIds.map(async (id) => {
+        try {
+          const res = await api.get(`/ecommerce/products/${id}`);
+          return { id, stock: res.data?.data?.stock as number | undefined };
+        } catch {
+          return { id, stock: undefined };
+        }
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      const map: Record<string, number> = {};
+      for (const r of results) {
+        if (typeof r.stock === "number") {
+          map[r.id] = r.stock;
+        }
+      }
+      setLiveStocks(map);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [immediateBuy, selectedItems]);
+
+  const getItemStock = useCallback(
+    (productId: string, fallbackStock?: number) => {
+      return liveStocks[productId] ?? fallbackStock;
+    },
+    [liveStocks],
+  );
+
+  const hasOutOfStockItems = useMemo(() => {
+    if (immediateBuy) {
+      const stock = getItemStock(
+        immediateBuy.product.id,
+        (immediateBuy.product as { stock?: number }).stock,
+      );
+      return stock !== undefined && stock <= 0;
+    }
+    return selectedItems.some((item) => {
+      const stock = getItemStock(item.productId);
+      return stock !== undefined && stock <= 0;
+    });
+  }, [immediateBuy, selectedItems, getItemStock]);
 
   const protectionCost = 8600;
   const insuranceCost = 1100;
@@ -330,6 +391,10 @@ export default function CheckoutPage() {
 
   async function handleBayarSekarang(e: FormEvent) {
     e.preventDefault();
+    if (hasOutOfStockItems) {
+      alert("Pesanan tidak dapat diproses karena ada produk yang stoknya habis.");
+      return;
+    }
     if (!validate()) return;
 
     setIsSubmitting(true);
@@ -396,10 +461,16 @@ export default function CheckoutPage() {
           },
         },
       });
-    } catch (err: any) {
-      // Handle error gracefully
+    } catch (err: unknown) {
       console.error(err);
-      alert("Gagal membuat pesanan. Pastikan koneksi stabil.");
+      const axiosErr = err as {
+        response?: { data?: { error?: string; message?: string } };
+      };
+      const errorMessage =
+        axiosErr.response?.data?.error ||
+        axiosErr.response?.data?.message ||
+        "Gagal membuat pesanan. Pastikan koneksi stabil.";
+      alert(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -412,6 +483,15 @@ export default function CheckoutPage() {
       <form onSubmit={handleBayarSekarang}>
         <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
           <h1 className="text-2xl font-bold text-text">Checkout</h1>
+
+          {hasOutOfStockItems && (
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+              <p className="font-semibold text-sm">Ada Produk yang Stoknya Habis</p>
+              <p className="mt-1 text-xs text-red-700 dark:text-red-400">
+                Salah satu atau beberapa produk dalam pesanan Anda sudah tidak memiliki stok. Silakan kembali ke keranjang atau katalog untuk memperbarui pesanan Anda sebelum melanjutkan pembayaran.
+              </p>
+            </div>
+          )}
 
           <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
             <div className="space-y-4 lg:col-span-2">
@@ -821,6 +901,12 @@ export default function CheckoutPage() {
                         <p className="mt-1 text-sm text-text-secondary">
                           {item.variant}
                         </p>
+                        {getItemStock(item.productId) !== undefined &&
+                          getItemStock(item.productId)! <= 0 && (
+                            <span className="mt-1 inline-block rounded bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-950/40 dark:text-red-400">
+                              Stok Habis
+                            </span>
+                          )}
                       </div>
                       <span className="shrink-0 text-sm font-semibold text-text">
                         {item.quantity} x {formatPrice(item.basePrice)}
@@ -913,14 +999,18 @@ export default function CheckoutPage() {
                 </div>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
-                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-70 disabled:cursor-not-allowed">
+                  disabled={isSubmitting || hasOutOfStockItems || selectedItems.length === 0}
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
                   {isSubmitting ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <ShieldCheck className="h-4 w-4" />
                   )}
-                  {isSubmitting ? "Memproses..." : "Bayar Sekarang"}
+                  {isSubmitting
+                    ? "Memproses..."
+                    : hasOutOfStockItems
+                      ? "Stok Produk Habis"
+                      : "Bayar Sekarang"}
                 </button>
               </div>
             </div>

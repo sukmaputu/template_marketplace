@@ -8,17 +8,24 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
 
   const addToCart = (product: Product, quantity = 1, variant?: string) => {
+    if (product.stock !== undefined && product.stock <= 0) {
+      return;
+    }
+
     const resolvedVariant = variant ?? "Varian standar";
     const cartItemId = `${product.id}::${resolvedVariant}`;
 
     setItems((prev) => {
       const existing = prev.find((item) => item.id === cartItemId);
       if (existing) {
-        return prev.map((item) =>
-          item.id === cartItemId
-            ? { ...item, quantity: item.quantity + quantity }
-            : item,
-        );
+        return prev.map((item) => {
+          if (item.id !== cartItemId) return item;
+          const maxQty = item.stock !== undefined && item.stock > 0 ? item.stock : 999;
+          return {
+            ...item,
+            quantity: Math.min(item.quantity + quantity, maxQty),
+          };
+        });
       }
       return [...prev, createCartItem(product, quantity, resolvedVariant)];
     });
@@ -26,11 +33,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const updateQuantity = (id: CartItem["id"], delta: number) => {
     setItems((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? { ...item, quantity: Math.max(1, item.quantity + delta) }
-          : item,
-      ),
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        const maxQty = item.stock !== undefined && item.stock > 0 ? item.stock : 999;
+        const nextQty = Math.max(1, Math.min(item.quantity + delta, maxQty));
+        return { ...item, quantity: nextQty };
+      }),
     );
   };
 

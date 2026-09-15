@@ -12,6 +12,7 @@ export interface CartItem {
   quantity: number;
   selected: boolean;
   categoryId?: string;
+  stock?: number;
 }
 
 export interface CartSummary {
@@ -37,8 +38,9 @@ export function createCartItem(
     basePrice: product.basePrice,
     comparePrice: product.comparePrice,
     quantity: quantity,
-    selected: true,
+    selected: !(product.stock !== undefined && product.stock <= 0),
     categoryId: product.categoryId,
+    stock: product.stock,
   };
 }
 

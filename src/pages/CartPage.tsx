@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   Heart,
   Minus,
@@ -10,7 +11,10 @@ import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "@/components/cart/useCart";
 import { calculateCartSummary } from "@/lib/cart";
-import { getDiscountPercent, PRODUCTS } from "@/lib/products";
+import {
+  getDiscountPercent,
+} from "@/lib/products";
+import { api } from "@/lib/api";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 
 export default function CartPage() {
@@ -23,14 +27,49 @@ export default function CartPage() {
     toggleSelectItem,
   } = useCart();
   const { formatPrice } = useCurrency();
+  const [liveStocks, setLiveStocks] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (items.length === 0) return;
+    let cancelled = false;
+
+    const uniqueIds = Array.from(new Set(items.map((i) => i.productId)));
+    Promise.all(
+      uniqueIds.map(async (id) => {
+        try {
+          const res = await api.get(`/ecommerce/products/${id}`);
+          return { id, stock: res.data?.data?.stock as number | undefined };
+        } catch {
+          return { id, stock: undefined };
+        }
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      const map: Record<string, number> = {};
+      for (const r of results) {
+        if (typeof r.stock === "number") {
+          map[r.id] = r.stock;
+        }
+      }
+      setLiveStocks(map);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
+
+  const getItemStock = (item: (typeof items)[number]) => {
+    return liveStocks[item.productId] ?? item.stock;
+  };
 
   const allSelected = items.length > 0 && items.every((item) => item.selected);
   const selectedItems = items.filter((item) => item.selected);
   const summary = calculateCartSummary(items);
 
   const isAnySelectedOutOfStock = selectedItems.some((item) => {
-    const p = PRODUCTS.find((prod) => prod.id === item.productId);
-    return p?.stock !== undefined && p.stock <= 0;
+    const stock = getItemStock(item);
+    return stock !== undefined && stock <= 0;
   });
 
   return (
@@ -78,12 +117,15 @@ export default function CartPage() {
                 <div className="divide-y divide-border">
                   {items.map((item) => {
                     const discount = getDiscountPercent(item);
-                    const p = PRODUCTS.find((prod) => prod.id === item.productId);
-                    const isOutOfStock = p?.stock !== undefined && p.stock <= 0;
-                    const isMaxStock = p?.stock !== undefined && item.quantity >= p.stock;
+                    const stock = getItemStock(item);
+                    const isOutOfStock = stock !== undefined && stock <= 0;
+                    const isMaxStock =
+                      stock !== undefined && stock > 0 && item.quantity >= stock;
 
                     return (
-                      <div key={item.id} className={`p-5 ${isOutOfStock ? "opacity-60 grayscale-[50%]" : ""}`}>
+                      <div
+                        key={item.id}
+                        className={`p-5 ${isOutOfStock ? "opacity-60 grayscale-[50%]" : ""}`}>
                         <div className="flex items-start gap-4">
                           <input
                             type="checkbox"
@@ -95,8 +137,8 @@ export default function CartPage() {
 
                           <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg bg-background">
                             {isOutOfStock ? (
-                              <span className="absolute left-0 top-0 z-10 rounded-br-md bg-text px-1.5 py-0.5 text-[11px] font-semibold text-white">
-                                Habis
+                              <span className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 text-[10px] font-bold tracking-wider text-text backdrop-blur-[1px]">
+                                SOLD OUT
                               </span>
                             ) : discount ? (
                               <span className="absolute left-0 top-0 z-10 rounded-br-md bg-red-600 px-1.5 py-0.5 text-[11px] font-semibold text-white">
@@ -124,11 +166,15 @@ export default function CartPage() {
                               <p className="mt-1 text-sm text-text-secondary">
                                 {item.variant}
                               </p>
-                              {isOutOfStock && (
+                              {isOutOfStock ? (
                                 <p className="mt-1 text-xs font-semibold text-red-600">
                                   Stok habis
                                 </p>
-                              )}
+                              ) : stock !== undefined && stock <= 5 ? (
+                                <p className="mt-1 text-xs font-medium text-orange-600">
+                                  Sisa {stock} buah
+                                </p>
+                              ) : null}
                             </div>
                             <div className="shrink-0 text-left sm:text-right">
                               <p className="text-base font-bold text-text">
@@ -160,7 +206,7 @@ export default function CartPage() {
                           <div className="flex items-center rounded-full border border-border">
                             <button
                               aria-label="Kurangi jumlah"
-                              disabled={isOutOfStock}
+                              disabled={isOutOfStock || item.quantity <= 1}
                               onClick={() => updateQuantity(item.id, -1)}
                               className="p-2 text-text hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed">
                               <Minus className="h-4 w-4" />
@@ -207,8 +253,10 @@ export default function CartPage() {
               <button
                 disabled={selectedItems.length === 0 || isAnySelectedOutOfStock}
                 onClick={() => navigate("/checkout")}
-                className="mt-5 w-full rounded-full bg-primary py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-40 transition-opacity">
-                Beli ({summary.totalItems})
+                className="mt-5 w-full rounded-full bg-primary py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity">
+                {isAnySelectedOutOfStock
+                  ? "Ada Produk Habis"
+                  : `Beli (${summary.totalItems})`}
               </button>
             </div>
           </div>
