@@ -32,7 +32,7 @@ export const ORDER_STATUS_CONFIG: Record<
     showInFilter: false,
   },
   processing: {
-    label: "Perlu Dikirim",
+    label: "Sedang Dikemas",
     filterLabel: "Diproses",
     badgeClassName: "bg-accent/15 text-accent",
     showInFilter: true,

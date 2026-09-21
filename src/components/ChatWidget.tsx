@@ -12,6 +12,7 @@ interface ChatMessage {
   message: string;
   is_read: boolean;
   created_at: string;
+  product?: AttachedProductInfo | null;
 }
 
 interface ChatConversation {
@@ -279,6 +280,7 @@ export function ChatWidget() {
 
     const createdAt = nowIso();
     const identity = getCustomerIdentity();
+    const productSnapshot = attachedProduct;
 
     setMessages((prev) => [
       ...prev,
@@ -290,6 +292,7 @@ export function ChatWidget() {
         message: text,
         is_read: true,
         created_at: createdAt,
+        product: productSnapshot,
       },
     ]);
     setConversation((prev) => ({
@@ -299,6 +302,7 @@ export function ChatWidget() {
       agent_read_at: null,
     }));
     setDraft("");
+    setAttachedProduct(null);
 
     setTimeout(() => {
       addStaffMessage(
@@ -436,6 +440,35 @@ export function ChatWidget() {
                             ? "rounded-br-sm bg-primary text-white"
                             : "rounded-bl-sm border border-border bg-surface text-text"
                         }`}>
+                        {msg.product && (
+                          <div
+                            className={`mb-2 flex items-center gap-2 rounded-xl p-2 ${
+                              isCustomer
+                                ? "bg-white/15"
+                                : "border border-border bg-background"
+                            }`}>
+                            {msg.product.image ? (
+                              <img
+                                src={msg.product.image}
+                                alt={msg.product.name}
+                                className="h-10 w-10 shrink-0 rounded-lg object-cover"
+                              />
+                            ) : null}
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-medium">
+                                {msg.product.name}
+                              </p>
+                              {msg.product.priceLabel ? (
+                                <p
+                                  className={`text-xs font-semibold ${
+                                    isCustomer ? "text-white" : "text-primary"
+                                  }`}>
+                                  {msg.product.priceLabel}
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                        )}
                         <p>{msg.message}</p>
                         <p
                           className={`mt-1 text-right text-[10px] ${

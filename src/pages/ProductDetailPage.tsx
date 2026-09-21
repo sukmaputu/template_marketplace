@@ -20,6 +20,9 @@ import {
   mapBackendToProduct,
   useCategories,
   type Product,
+  addRecentlyViewedProduct,
+  getVariantPrice,
+  getDiscountPercent,
 } from "@/lib/products";
 import { api } from "@/lib/api";
 import { showToast } from "@/lib/toast";
@@ -28,7 +31,10 @@ import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 import type { WishlistItem } from "@/components/profile/types";
 import { getProductRatingStats, getProductReviews } from "@/lib/products";
 import { useAuth } from "@/components/auth/AuthContext";
+import { getProductSpecs } from "@/lib/productSpecs";
 
+// Khusus produk kelas (bukan barang fisik). Tetap dipertahankan, hanya
+// ditampilkan kalau produk BUKAN bertipe "physical".
 const DEFAULT_SCHEDULES = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat"];
 const DEFAULT_LEVELS = ["Pemula", "Menengah", "Tingkat Lanjut"];
 const WISHLIST_STORAGE_KEY = "marketplace-wishlist";
@@ -95,13 +101,14 @@ export default function ProductDetailPage() {
     if (backendProduct && backendProduct.id === productId) {
       return backendProduct;
     }
-    return (
-      PRODUCTS.find((p) => String(p.id) === String(productId)) ||
-      null
-    );
+    return PRODUCTS.find((p) => String(p.id) === String(productId)) || null;
   }, [backendProduct, productId]);
 
   const isLoading = isFetchingDetail && !product;
+
+  useEffect(() => {
+    if (product) addRecentlyViewedProduct(product);
+  }, [product]);
 
   const images = useMemo(() => {
     if (product?.images?.length) return product.images;
@@ -117,6 +124,9 @@ export default function ProductDetailPage() {
   const [reviewRefreshKey, setReviewRefreshKey] = useState(0);
   const [manualSchedule, setManualSchedule] = useState<string | null>(null);
   const [manualLevel, setManualLevel] = useState<string | null>(null);
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(
+    null,
+  );
 
   const [prevProductId, setPrevProductId] = useState(productId);
   if (productId !== prevProductId) {
@@ -125,6 +135,7 @@ export default function ProductDetailPage() {
     setCurrentImageIndex(0);
     setManualSchedule(null);
     setManualLevel(null);
+    setSelectedVariantId(null);
   }
 
   const ratingStats = useMemo(() => {
@@ -137,12 +148,21 @@ export default function ProductDetailPage() {
     return product ? getProductReviews(product.id).slice(0, 5) : [];
   }, [product, reviewRefreshKey]);
 
+  // Pakai review lokal kalau ada, kalau tidak pakai rating dari backend
+  const displayRating =
+    ratingStats.reviewCount > 0 ? ratingStats.rating : (product?.rating ?? 0);
+  const displayCount =
+    ratingStats.reviewCount > 0
+      ? ratingStats.reviewCount
+      : (product?.reviewCount ?? 0);
+
   const isInWishlist = useMemo(() => {
     void wishlistVersion;
     if (!product) return false;
     return getWishlistItems().some((item) => item.product.id === product.id);
   }, [product, wishlistVersion]);
 
+  // ---- Opsi khusus produk kelas (disembunyikan untuk barang fisik) ----
   const schedules = product?.schedules?.length
     ? product.schedules
     : DEFAULT_SCHEDULES;
@@ -151,17 +171,42 @@ export default function ProductDetailPage() {
   const selectedSchedule =
     manualSchedule && schedules.includes(manualSchedule)
       ? manualSchedule
-      : schedules[0] ?? "";
+      : (schedules[0] ?? "");
 
   const selectedLevel =
     manualLevel && levels.includes(manualLevel)
       ? manualLevel
-      : levels[0] ?? "";
+      : (levels[0] ?? "");
+
+  // ---- Opsi khusus barang fisik ----
+  const isPhysical = product?.type === "physical";
+
+  const variants = useMemo(() => product?.variants ?? [], [product]);
+
+  // Spesifikasi: pakai data backend kalau suatu saat tersedia,
+  // kalau tidak pakai data hardcode di lib/productSpecs.ts
+  const specs = useMemo(
+    () =>
+      product?.specs?.length ? product.specs : getProductSpecs(product?.sku),
+    [product],
+  );
+  const selectedVariant =
+    variants.find((v) => v.id === selectedVariantId) ?? variants[0] ?? null;
+
+  const unitPrice = product
+    ? getVariantPrice(product, selectedVariant ?? undefined)
+    : 0;
+
+  const discountPercent = product ? getDiscountPercent(product) : undefined;
+
+  // Stok mengikuti varian yang dipilih, fallback ke stok produk
+  const availableStock = selectedVariant?.stock ?? product?.stock;
 
   const variantLabel = useMemo(() => {
+    if (isPhysical) return selectedVariant?.variantName ?? "Standar";
     const parts = [selectedSchedule, selectedLevel].filter(Boolean);
     return parts.length > 0 ? parts.join(" • ") : "Standar";
-  }, [selectedSchedule, selectedLevel]);
+  }, [isPhysical, selectedVariant, selectedSchedule, selectedLevel]);
 
   const [recommendations, setRecommendations] = useState<Product[]>([]);
 
@@ -212,13 +257,13 @@ export default function ProductDetailPage() {
       )?.label ||
       CATEGORY_DETAILS.find((c) => c.id === product?.categoryId)?.label
     );
-  }, [product?.categoryName, product?.categoryId, categories]);
+  }, [product, categories]);
 
-  const isOutOfStock = product?.stock !== undefined && product.stock <= 0;
+  const isOutOfStock = availableStock !== undefined && availableStock <= 0;
   const isLowStock =
     !isOutOfStock &&
-    product?.stock !== undefined &&
-    product.stock <= LOW_STOCK_THRESHOLD;
+    availableStock !== undefined &&
+    availableStock <= LOW_STOCK_THRESHOLD;
 
   const nextImage = useCallback(() => {
     if (!images.length) return;
@@ -299,7 +344,6 @@ export default function ProductDetailPage() {
     );
   }
 
-
   function handleKeranjang() {
     if (!product || isOutOfStock) return;
     addToCart(product, quantity, variantLabel);
@@ -325,7 +369,7 @@ export default function ProductDetailPage() {
             id: product.id,
             name: product.name,
             image: images[0],
-            priceLabel: formatPrice(product.basePrice),
+            priceLabel: formatPrice(unitPrice),
           },
         },
       }),
@@ -496,12 +540,17 @@ export default function ProductDetailPage() {
 
             <div className="mt-2 flex items-baseline gap-2">
               <span className="text-xl font-bold text-primary">
-                {formatPrice(product.basePrice)}
+                {formatPrice(unitPrice)}
               </span>
               {product.comparePrice &&
               product.comparePrice > product.basePrice ? (
                 <span className="text-sm text-text-secondary line-through">
                   {formatPrice(product.comparePrice)}
+                </span>
+              ) : null}
+              {discountPercent ? (
+                <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-600">
+                  -{discountPercent}%
                 </span>
               ) : null}
             </div>
@@ -517,7 +566,8 @@ export default function ProductDetailPage() {
               </p>
             )}
 
-            {schedules.length > 0 && (
+            {/* Khusus produk kelas: disembunyikan untuk barang fisik */}
+            {!isPhysical && schedules.length > 0 && (
               <div className="mt-6">
                 <span className="text-sm font-semibold text-text">Jadwal</span>
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -538,7 +588,7 @@ export default function ProductDetailPage() {
               </div>
             )}
 
-            {levels.length > 0 && (
+            {!isPhysical && levels.length > 0 && (
               <div className="mt-4">
                 <span className="text-sm font-semibold text-text">Tingkat</span>
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -553,6 +603,32 @@ export default function ProductDetailPage() {
                           : "border-border text-text hover:border-primary"
                       }`}>
                       {level}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Khusus barang fisik: pilihan varian */}
+            {isPhysical && variants.length > 0 && (
+              <div className="mt-6">
+                <span className="text-sm font-semibold text-text">Varian</span>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {variants.map((v) => (
+                    <button
+                      key={v.id}
+                      type="button"
+                      disabled={v.stock !== undefined && v.stock <= 0}
+                      onClick={() => {
+                        setSelectedVariantId(v.id);
+                        setQuantity(1);
+                      }}
+                      className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                        selectedVariant?.id === v.id
+                          ? "border-primary bg-primary text-white"
+                          : "border-border text-text hover:border-primary"
+                      }`}>
+                      {v.variantName}
                     </button>
                   ))}
                 </div>
@@ -576,18 +652,18 @@ export default function ProductDetailPage() {
                   type="button"
                   disabled={
                     isOutOfStock ||
-                    (product.stock !== undefined && quantity >= product.stock)
+                    (availableStock !== undefined && quantity >= availableStock)
                   }
                   onClick={() => setQuantity((q) => q + 1)}
                   className="p-2.5 text-text hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed">
                   <Plus className="h-4 w-4" />
                 </button>
               </div>
-              {product.stock !== undefined && (
+              {availableStock !== undefined && (
                 <span className="text-xs text-text-secondary">
                   {isOutOfStock
                     ? "Stok tidak tersedia"
-                    : `Tersisa ${product.stock} buah`}
+                    : `Tersisa ${availableStock} buah`}
                 </span>
               )}
             </div>
@@ -596,7 +672,8 @@ export default function ProductDetailPage() {
               <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
                 <p className="text-sm font-semibold">Stok Habis</p>
                 <p className="mt-1 text-xs text-red-700 dark:text-red-400">
-                  Produk ini saat ini sedang habis. Anda tidak dapat menambahkan ke keranjang atau melakukan pembelian.
+                  Produk ini saat ini sedang habis. Anda tidak dapat menambahkan
+                  ke keranjang atau melakukan pembelian.
                 </p>
               </div>
             )}
@@ -628,6 +705,41 @@ export default function ProductDetailPage() {
           </div>
         </div>
 
+        {/* Khusus barang fisik: spesifikasi produk */}
+        {isPhysical && (
+          <div className="mt-10 rounded-2xl border border-border bg-surface p-5 sm:p-6">
+            <h2 className="text-base font-bold text-text">
+              Spesifikasi Produk
+            </h2>
+            <dl className="mt-4 grid grid-cols-[8rem_1fr] gap-x-6 gap-y-4 text-sm sm:grid-cols-[12rem_1fr]">
+              {categoryLabel ? (
+                <div className="contents">
+                  <dt className="text-text-secondary">Kategori</dt>
+                  <dd>
+                    <Link
+                      to={`/category/${product.categorySlug || product.categoryId || ""}`}
+                      className="text-primary hover:underline">
+                      {categoryLabel}
+                    </Link>
+                  </dd>
+                </div>
+              ) : null}
+              {availableStock !== undefined ? (
+                <div className="contents">
+                  <dt className="text-text-secondary">Stok</dt>
+                  <dd className="text-text">{availableStock}</dd>
+                </div>
+              ) : null}
+              {specs.map((spec) => (
+                <div key={spec.label} className="contents">
+                  <dt className="text-text-secondary">{spec.label}</dt>
+                  <dd className="text-text">{spec.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        )}
+
         <div className="mt-10 rounded-2xl border border-border bg-surface p-5 sm:p-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -640,7 +752,7 @@ export default function ProductDetailPage() {
                     <Star
                       key={star}
                       className={`h-4 w-4 ${
-                        star <= Math.round(ratingStats.rating)
+                        star <= Math.round(displayRating)
                           ? "fill-current"
                           : "text-text-secondary"
                       }`}
@@ -648,12 +760,10 @@ export default function ProductDetailPage() {
                   ))}
                 </div>
                 <span className="text-lg font-bold text-text">
-                  {ratingStats.rating > 0
-                    ? ratingStats.rating.toFixed(1)
-                    : "0.0"}
+                  {displayRating > 0 ? displayRating.toFixed(1) : "0.0"}
                 </span>
                 <span className="text-xs text-text-secondary">
-                  ({ratingStats.reviewCount} review)
+                  ({displayCount} review)
                 </span>
               </div>
             </div>
@@ -776,7 +886,7 @@ export default function ProductDetailPage() {
             aria-modal="true"
             aria-labelledby="wishlist-modal-title"
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm -rounded-2xl bg-background p-6 text-center shadow-xl">
+            className="w-full max-w-sm rounded-2xl bg-background p-6 text-center shadow-xl">
             <h2
               id="wishlist-modal-title"
               className="text-base font-bold text-text">
@@ -817,7 +927,7 @@ export default function ProductDetailPage() {
             aria-modal="true"
             aria-labelledby="login-required-modal-title"
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm -rounded-2xl bg-background p-6 text-center shadow-xl">
+            className="w-full max-w-sm rounded-2xl bg-background p-6 text-center shadow-xl">
             <h2
               id="login-required-modal-title"
               className="text-base font-bold text-text">

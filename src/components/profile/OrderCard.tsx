@@ -22,12 +22,14 @@ export function OrderCard({
   onReviewClick?: (order: Order) => void;
 }) {
   const { formatPrice } = useCurrency();
+  // NOTE: label "processing" di ORDER_STATUS_CONFIG (file ./types) perlu diubah
+  // dari "Perlu Dikirim" menjadi "On Progress" — share file types.ts kalau mau saya ubah langsung.
   const statusInfo = ORDER_STATUS_CONFIG[order.status];
-  const isInProgress =
-    order.status === "processing" ||
-    order.status === "shipping" ||
-    order.status === "pending_payment" ||
-    order.status === "paid";
+  // const isInProgress =
+  //   order.status === "processing" ||
+  //   order.status === "shipping" ||
+  //   order.status === "pending_payment" ||
+  //   order.status === "paid";
 
   const showShippingSummary =
     (order.status === "processing" || order.status === "shipping") &&
@@ -47,9 +49,6 @@ export function OrderCard({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          {order.cancelDeadline && isInProgress && (
-            <CountdownTimer deadlineIso={order.cancelDeadline} />
-          )}
           <span
             className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusInfo.badgeClassName}`}>
             {statusInfo.label}

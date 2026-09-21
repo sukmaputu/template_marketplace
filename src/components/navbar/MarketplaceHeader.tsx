@@ -53,7 +53,7 @@ export function MarketplaceHeader() {
     setCategory(urlCategory);
   }
 
-  // --- Tambahan: state & ref untuk dropdown search ---
+ 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [recentlyViewed, setRecentlyViewed] = useState<Product[]>([]);
   const searchWrapperRef = useRef<HTMLDivElement>(null);
@@ -151,6 +151,24 @@ export function MarketplaceHeader() {
     setIsSearchOpen(false);
   }
 
+  function handleCategoryChange(nextCategory: string) {
+    setCategory(nextCategory);
+    setIsSearchOpen(false);
+
+    if (nextCategory === "all") {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete("category");
+      nextParams.set("page", "1");
+      navigate({
+        pathname: "/",
+        search: nextParams.toString() ? `?${nextParams.toString()}` : "",
+      });
+      return;
+    }
+
+    navigate(`/category/${encodeURIComponent(nextCategory)}`);
+  }
+
   // --- Tambahan: handler klik term populer ---
   function handleTermClick(term: string) {
     setQuery(term);
@@ -198,7 +216,7 @@ export function MarketplaceHeader() {
             className="flex flex-1 items-stretch overflow-hidden rounded-lg border border-border bg-surface focus-within:border-primary">
             <select
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              onChange={(e) => handleCategoryChange(e.target.value)}
               aria-label="Filter kategori"
               className="hidden shrink-0 border-r border-border bg-surface px-3 text-sm text-text-secondary outline-none sm:block sm:max-w-[140px] lg:max-w-none">
               {categoryOptions.map((opt) => (
@@ -236,9 +254,6 @@ export function MarketplaceHeader() {
             </div>
           </form>
 
-          {/* Dropdown DILUAR <form> (yang overflow-hidden) supaya tidak
-              terpotong. Lebar & posisi kiri diambil dari dropdownRect,
-              yang dihitung dari ukuran kolom input saja (inputColumnRef) */}
           {isSearchOpen && dropdownRect && (
             <div
               className="absolute top-full z-50 mt-2 max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-surface p-4 shadow-lg"

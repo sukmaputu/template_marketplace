@@ -1,19 +1,10 @@
 import { useEffect, useState } from "react";
-import {
-  Heart,
-  Minus,
-  Package,
-  Plus,
-  ShoppingCart,
-  Trash2,
-} from "lucide-react";
+import { Minus, Package, Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "@/components/cart/useCart";
 import { calculateCartSummary } from "@/lib/cart";
-import {
-  getDiscountPercent,
-} from "@/lib/products";
+import { getDiscountPercent } from "@/lib/products";
 import { api } from "@/lib/api";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 
@@ -120,7 +111,9 @@ export default function CartPage() {
                     const stock = getItemStock(item);
                     const isOutOfStock = stock !== undefined && stock <= 0;
                     const isMaxStock =
-                      stock !== undefined && stock > 0 && item.quantity >= stock;
+                      stock !== undefined &&
+                      stock > 0 &&
+                      item.quantity >= stock;
 
                     return (
                       <div
@@ -191,11 +184,6 @@ export default function CartPage() {
                         </div>
 
                         <div className="mt-3 flex items-center justify-end gap-4">
-                          <button
-                            aria-label="Simpan ke wishlist"
-                            className="text-text-secondary hover:text-primary">
-                            <Heart className="h-5 w-5" />
-                          </button>
                           <button
                             aria-label="Hapus item"
                             onClick={() => removeItem(item.id)}

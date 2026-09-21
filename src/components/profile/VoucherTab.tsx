@@ -3,6 +3,7 @@ import { Ticket } from "lucide-react";
 import type { Voucher, VoucherStatus } from "@/components/profile/types";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 import { useAuth } from "@/components/auth/UseAuth";
+import Pagination from "@/components/ui/pagination";
 import {
   LOYALTY_REWARD_THRESHOLD,
   LOYALTY_REWARD_VOUCHER,
@@ -46,6 +47,8 @@ const STATUS_STYLE: Record<VoucherStatus, string> = {
   kadaluarsa: "bg-background text-text-secondary line-through decoration-1",
 };
 
+const ITEMS_PER_PAGE = 5;
+
 const STATUS_LABEL: Record<VoucherStatus, string> = {
   aktif: "Aktif",
   terpakai: "Terpakai",
@@ -54,6 +57,7 @@ const STATUS_LABEL: Record<VoucherStatus, string> = {
 
 export function VoucherTab() {
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const { formatPrice } = useCurrency();
   const { user } = useAuth();
@@ -64,11 +68,18 @@ export function VoucherTab() {
         (user?.loyalty_points ?? 0) >= LOYALTY_REWARD_THRESHOLD
           ? [LOYALTY_REWARD_VOUCHER]
           : [];
-      setVouchers([...DUMMY_VOUCHERS, ...loyaltyVoucher]);
+      setVouchers([...loyaltyVoucher, ...DUMMY_VOUCHERS]);
+      setCurrentPage(1);
       setIsLoading(false);
     }, 400);
     return () => clearTimeout(timer);
   }, [user?.loyalty_points]);
+
+  const totalPages = Math.max(1, Math.ceil(vouchers.length / ITEMS_PER_PAGE));
+  const paginatedVouchers = vouchers.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE,
+  );
 
   return (
     <div className="rounded-xl border border-border bg-surface p-6">
@@ -93,7 +104,7 @@ export function VoucherTab() {
         )}
 
         {!isLoading &&
-          vouchers.map((v) => (
+          paginatedVouchers.map((v) => (
             <div
               key={v.id}
               className={`flex items-start gap-3 rounded-lg border border-border p-4 ${
@@ -135,6 +146,19 @@ export function VoucherTab() {
             </div>
           ))}
       </div>
+
+      {!isLoading && vouchers.length > 0 && (
+        <div className="mt-6 border-t border-border">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={(page) => {
+              setCurrentPage(page);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }

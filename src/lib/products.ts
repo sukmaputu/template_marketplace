@@ -75,14 +75,21 @@ export interface ProductRow {
 
 export interface ProductVariant {
   id: string;
+  sku?: string; // BARU: variant_sku dari backend
   variantName: string;
   stock?: number;
   overridePrice?: number;
   priceDelta?: number;
 }
 
+export interface ProductSpec {
+  label: string;
+  value: string;
+}
+
 export interface Product {
   id: string;
+  sku?: string; // BARU: sku produk dari backend (dipakai sebagai kunci spesifikasi hardcode)
   name: string;
   description?: string;
   image?: string;
@@ -92,6 +99,7 @@ export interface Product {
   comparePrice?: number;
   stock?: number;
   variants?: ProductVariant[];
+  specs?: ProductSpec[];
   rating?: number;
   reviewCount?: number;
   categoryId?: string;
@@ -209,6 +217,7 @@ export function getProductRatingStats(productId: string) {
 export function mapProductRow(row: ProductRow): Product {
   return {
     id: row.id,
+    sku: row.sku ?? undefined,
     name: row.name,
     description: row.description ?? row.summary ?? undefined,
     image: row.cover_image_url ?? row.images?.[0]?.image_url ?? undefined,
@@ -224,6 +233,7 @@ export function mapProductRow(row: ProductRow): Product {
       ?.filter((variant) => variant.is_active)
       .map((variant) => ({
         id: variant.id,
+        sku: variant.variant_sku ?? undefined,
         variantName: variant.variant_name,
         stock: variant.stock ?? undefined,
         overridePrice: variant.override_price ?? undefined,
@@ -518,6 +528,7 @@ export function toProductRow(product: Product): ProductRow {
     variants: product.variants?.map((variant) => ({
       id: variant.id,
       product_id: productId,
+      variant_sku: variant.sku,
       variant_name: variant.variantName,
       price_delta: variant.priceDelta,
       override_price: variant.overridePrice,
@@ -598,6 +609,8 @@ export const POPULAR_SEARCH_TERMS = [
 ];
 
 const RECENTLY_VIEWED_STORAGE_KEY = "marketplace-recently-viewed";
+const RECENTLY_VIEWED_PRODUCTS_STORAGE_KEY =
+  "marketplace-recently-viewed-products";
 const MAX_RECENTLY_VIEWED = 4;
 
 export function getRecentlyViewedIds(): string[] {
@@ -612,13 +625,34 @@ export function getRecentlyViewedIds(): string[] {
   }
 }
 
-export function addRecentlyViewedProduct(productId: string) {
+export function addRecentlyViewedProduct(product: Product) {
   if (typeof window === "undefined") return;
-  const ids = getRecentlyViewedIds().filter((id) => id !== productId);
-  ids.unshift(productId);
+  const ids = getRecentlyViewedIds().filter((id) => id !== product.id);
+  ids.unshift(product.id);
   window.localStorage.setItem(
     RECENTLY_VIEWED_STORAGE_KEY,
     JSON.stringify(ids.slice(0, MAX_RECENTLY_VIEWED)),
+  );
+
+  let storedProducts: Product[] = [];
+  try {
+    const raw = window.localStorage.getItem(
+      RECENTLY_VIEWED_PRODUCTS_STORAGE_KEY,
+    );
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    if (Array.isArray(parsed)) storedProducts = parsed as Product[];
+  } catch {
+    storedProducts = [];
+  }
+
+  window.localStorage.setItem(
+    RECENTLY_VIEWED_PRODUCTS_STORAGE_KEY,
+    JSON.stringify(
+      [
+        product,
+        ...storedProducts.filter((item) => item.id !== product.id),
+      ].slice(0, MAX_RECENTLY_VIEWED),
+    ),
   );
   window.dispatchEvent(new Event("recently-viewed-updated"));
 }
@@ -626,10 +660,40 @@ export function addRecentlyViewedProduct(productId: string) {
 export function getRecentlyViewedProducts(
   limit = MAX_RECENTLY_VIEWED,
 ): Product[] {
+  let storedProducts: Product[] = [];
+  try {
+    const raw = window.localStorage.getItem(
+      RECENTLY_VIEWED_PRODUCTS_STORAGE_KEY,
+    );
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    if (Array.isArray(parsed)) storedProducts = parsed as Product[];
+  } catch {
+    storedProducts = [];
+  }
+
+  const storedProductsById = new Map(
+    storedProducts.map((product) => [product.id, product]),
+  );
   return getRecentlyViewedIds()
-    .map((id) => PRODUCTS.find((product) => product.id === id))
+    .map(
+      (id) =>
+        storedProductsById.get(id) ??
+        PRODUCTS.find((product) => product.id === id),
+    )
     .filter((product): product is Product => Boolean(product))
     .slice(0, limit);
+}
+
+// BARU: bentuk varian dari response backend
+interface BackendVariant {
+  uuid?: string;
+  id?: string | number;
+  variant_sku?: string | null;
+  variant_name: string;
+  price_delta?: number | null;
+  override_price?: number | null;
+  stock?: number | null;
+  is_active?: boolean;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -641,8 +705,23 @@ export function mapBackendToProduct(p: any): Product {
       : undefined;
   const img = p.image || p.cover_image_url || undefined;
 
+  // BARU: petakan varian aktif dari backend
+  const variants: ProductVariant[] | undefined = Array.isArray(p.variants)
+    ? (p.variants as BackendVariant[])
+        .filter((v) => v.is_active !== false)
+        .map((v) => ({
+          id: v.uuid || String(v.id),
+          sku: v.variant_sku || undefined,
+          variantName: v.variant_name,
+          stock: v.stock ?? undefined,
+          overridePrice: v.override_price ?? undefined,
+          priceDelta: v.price_delta ?? undefined,
+        }))
+    : undefined;
+
   return {
     id: p.uuid || String(p.id),
+    sku: p.sku || undefined,
     name: p.name,
     description: p.description || p.summary || undefined,
     image: img,
@@ -651,6 +730,14 @@ export function mapBackendToProduct(p: any): Product {
     basePrice,
     comparePrice,
     stock: p.stock ?? 0,
+    variants,
+    // BARU: kalau backend suatu saat mengirim `specs`, otomatis dipakai
+    specs: Array.isArray(p.specs)
+      ? p.specs.map((s: { spec_name: string; spec_value: string }) => ({
+          label: s.spec_name,
+          value: s.spec_value,
+        }))
+      : undefined,
     rating: Number(p.average_rating || 0),
     reviewCount: Number(p.rating_count || p.review_count || 0),
     categoryId: p.category?.slug || p.category_uuid || "teknologi-informasi",
@@ -705,6 +792,14 @@ export interface CategoryItem {
   description?: string;
 }
 
+interface BackendCategory {
+  uuid?: string;
+  slug?: string;
+  name: string;
+  description?: string | null;
+  is_active?: boolean;
+}
+
 export function useCategories() {
   const [categories, setCategories] = useState<CategoryItem[]>(() =>
     CATEGORY_DETAILS.map((c) => ({
@@ -712,7 +807,7 @@ export function useCategories() {
       slug: c.id,
       label: c.label,
       description: c.description,
-    }))
+    })),
   );
   const [loading, setLoading] = useState(true);
 
@@ -724,15 +819,18 @@ export function useCategories() {
         const res = await api.get("/ecommerce/categories");
         const items = res.data?.data;
         if (Array.isArray(items) && items.length > 0 && !cancelled) {
-          const mapped: CategoryItem[] = items
-            .filter((cat: any) => cat.is_active !== false)
-            .map((cat: any) => ({
-              id: cat.slug || cat.uuid,
-              uuid: cat.uuid,
-              slug: cat.slug || cat.uuid,
-              label: cat.name,
-              description: cat.description || "",
-            }));
+          const mapped: CategoryItem[] = (items as BackendCategory[])
+            .filter((cat) => cat.is_active !== false)
+            .map((cat) => {
+              const categoryId = cat.slug || cat.uuid || "uncategorized";
+              return {
+                id: categoryId,
+                uuid: cat.uuid,
+                slug: categoryId,
+                label: cat.name,
+                description: cat.description || "",
+              };
+            });
           setCategories(mapped);
         }
       } catch {
@@ -822,7 +920,7 @@ export function usePaginatedProducts({
           const backendItems = items.map(mapBackendToProduct);
           const serverTotal = Number(meta?.total ?? backendItems.length);
           const serverPages = Number(
-            meta?.total_pages ?? Math.max(1, Math.ceil(serverTotal / limit))
+            meta?.total_pages ?? Math.max(1, Math.ceil(serverTotal / limit)),
           );
           const serverCurrent = Number(meta?.current_page ?? page);
 

@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   Building2,
   CalendarClock,
@@ -46,7 +52,6 @@ const SHIPPING_METHODS: ShippingMethod[] = [
   { id: "express", label: "Express", eta: "1-2 hari kerja", cost: 25000 },
 ];
 
-// Dummy Data Voucher untuk pilihan
 const DUMMY_VOUCHERS: Voucher[] = [
   {
     id: "1",
@@ -392,7 +397,9 @@ export default function CheckoutPage() {
   async function handleBayarSekarang(e: FormEvent) {
     e.preventDefault();
     if (hasOutOfStockItems) {
-      alert("Pesanan tidak dapat diproses karena ada produk yang stoknya habis.");
+      alert(
+        "Pesanan tidak dapat diproses karena ada produk yang stoknya habis.",
+      );
       return;
     }
     if (!validate()) return;
@@ -401,11 +408,13 @@ export default function CheckoutPage() {
 
     try {
       const payload = {
-        recipient_name: selectedAddress?.recipientName || user?.full_name || "Pelanggan",
+        recipient_name:
+          selectedAddress?.recipientName || user?.full_name || "Pelanggan",
         address: address,
         shipping_address: address,
         phone: selectedAddress?.phone || user?.phone || "+62 812 3456 7890",
-        phone_number: selectedAddress?.phone || user?.phone || "+62 812 3456 7890",
+        phone_number:
+          selectedAddress?.phone || user?.phone || "+62 812 3456 7890",
         email: user?.email || "customer@example.com",
         postal_code: postalCode,
         shipping_postal_code: postalCode,
@@ -419,8 +428,9 @@ export default function CheckoutPage() {
         discount: discountAmount,
         voucher_code: selectedVoucher?.code || undefined,
         items: selectedItems.map((item) => ({
-          product_id: item.productId, // backend checks AlternateID or ProductID
-          variant_id: item.variant !== "Varian standar" ? item.variant : undefined,
+          product_id: item.productId,
+          variant_id:
+            item.variant !== "Varian standar" ? item.variant : undefined,
           quantity: item.quantity,
         })),
       };
@@ -439,7 +449,7 @@ export default function CheckoutPage() {
         state: {
           totalPaid: totalTagihan,
           itemIds: purchasedProductIds,
-          orderId: createdOrderId, // Pass backend generated order UUID!
+          orderId: createdOrderId,
           items: selectedItems.map((item) => ({
             productId: item.productId,
             name: item.name,
@@ -486,9 +496,13 @@ export default function CheckoutPage() {
 
           {hasOutOfStockItems && (
             <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
-              <p className="font-semibold text-sm">Ada Produk yang Stoknya Habis</p>
+              <p className="font-semibold text-sm">
+                Ada Produk yang Stoknya Habis
+              </p>
               <p className="mt-1 text-xs text-red-700 dark:text-red-400">
-                Salah satu atau beberapa produk dalam pesanan Anda sudah tidak memiliki stok. Silakan kembali ke keranjang atau katalog untuk memperbarui pesanan Anda sebelum melanjutkan pembayaran.
+                Salah satu atau beberapa produk dalam pesanan Anda sudah tidak
+                memiliki stok. Silakan kembali ke keranjang atau katalog untuk
+                memperbarui pesanan Anda sebelum melanjutkan pembayaran.
               </p>
             </div>
           )}
@@ -999,7 +1013,11 @@ export default function CheckoutPage() {
                 </div>
                 <button
                   type="submit"
-                  disabled={isSubmitting || hasOutOfStockItems || selectedItems.length === 0}
+                  disabled={
+                    isSubmitting ||
+                    hasOutOfStockItems ||
+                    selectedItems.length === 0
+                  }
                   className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
                   {isSubmitting ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
