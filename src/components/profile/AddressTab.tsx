@@ -12,10 +12,12 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/auth/UseAuth";
 import {
-  createAddressId,
+  createAddressApi,
+  deleteAddressApi,
+  fetchAddressesFromBackend,
   getSavedAddresses,
-  saveSavedAddresses,
-  setDefaultAddress,
+  setDefaultAddressApi,
+  updateAddressApi,
   type SavedAddress,
 } from "@/lib/addresses";
 import { lookupPostalCode } from "@/lib/postalCode";
@@ -38,18 +40,43 @@ export function AddressTab() {
   const [addresses, setAddresses] = useState<SavedAddress[]>(() =>
     getSavedAddresses(email, user ?? undefined),
   );
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [isSearchingZip, setIsSearchingZip] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
-  const [prevEmail, setPrevEmail] = useState(email);
-  if (email !== prevEmail) {
-    setPrevEmail(email);
-    setAddresses(getSavedAddresses(email, user ?? undefined));
-    setCurrentPage(1);
-  }
+  // Sync addresses from backend whenever user/email is ready or updated in another tab/browser
+  useEffect(() => {
+    let isCurrent = true;
+    async function loadAddresses() {
+      setIsLoading(true);
+      try {
+        const fetched = await fetchAddressesFromBackend(email, user ?? undefined);
+        if (isCurrent && Array.isArray(fetched)) {
+          setAddresses(fetched);
+        }
+      } catch (err) {
+        console.warn("Failed to load addresses from backend:", err);
+      } finally {
+        if (isCurrent) setIsLoading(false);
+      }
+    }
+
+    loadAddresses();
+
+    const handleSync = () => {
+      loadAddresses();
+    };
+
+    window.addEventListener("marketplace-address-updated", handleSync);
+    return () => {
+      isCurrent = false;
+      window.removeEventListener("marketplace-address-updated", handleSync);
+    };
+  }, [email, user]);
 
   useEffect(() => {
     if (!/^\d{5}$/.test(form.postalCode)) return;
@@ -86,11 +113,6 @@ export function AddressTab() {
     startIndex + ITEMS_PER_PAGE,
   );
 
-  function updateAddresses(next: SavedAddress[]) {
-    setAddresses(next);
-    saveSavedAddresses(next, email);
-  }
-
   function openCreate() {
     setEditingId(null);
     setForm({
@@ -115,42 +137,74 @@ export function AddressTab() {
     setIsModalOpen(true);
   }
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const existing = editingId
-      ? addresses.find((address) => address.id === editingId)
-      : undefined;
-    const nextAddress: SavedAddress = {
-      ...form,
-      id: editingId ?? createAddressId(),
-      isDefault: existing?.isDefault ?? addresses.length === 0,
-    };
-    const next = editingId
-      ? addresses.map((address) =>
-          address.id === editingId ? nextAddress : address,
-        )
-      : [...addresses, nextAddress];
-    updateAddresses(next);
-    if (!editingId) {
-      // alamat baru masuk ke halaman terakhir, langsung tampilkan halamannya
-      setCurrentPage(Math.max(1, Math.ceil(next.length / ITEMS_PER_PAGE)));
+    setIsSaving(true);
+    try {
+      if (editingId) {
+        const existing = addresses.find((a) => a.id === editingId);
+        const updated = await updateAddressApi(
+          editingId,
+          {
+            ...form,
+            isDefault: existing?.isDefault ?? false,
+          },
+          email,
+        );
+        setAddresses((prev) =>
+          prev.map((address) => (address.id === editingId ? updated : address)),
+        );
+      } else {
+        const isDefault = addresses.length === 0;
+        const created = await createAddressApi(
+          {
+            ...form,
+            isDefault,
+          },
+          email,
+        );
+        const next = [...addresses, created];
+        setAddresses(next);
+        // alamat baru langsung tampil di halaman terakhir
+        setCurrentPage(Math.max(1, Math.ceil(next.length / ITEMS_PER_PAGE)));
+      }
+      setIsModalOpen(false);
+    } catch (err) {
+      console.error("Error saving address:", err);
+    } finally {
+      setIsSaving(false);
     }
-    setIsModalOpen(false);
   }
 
-  function handleDelete(id: string) {
-    const remaining = addresses.filter((address) => address.id !== id);
-    if (
-      remaining.length > 0 &&
-      !remaining.some((address) => address.isDefault)
-    ) {
-      remaining[0] = { ...remaining[0], isDefault: true };
+  async function handleDelete(id: string) {
+    try {
+      await deleteAddressApi(id, email);
+      const remaining = addresses.filter((address) => address.id !== id);
+      if (
+        remaining.length > 0 &&
+        !remaining.some((address) => address.isDefault)
+      ) {
+        remaining[0] = { ...remaining[0], isDefault: true };
+        await setDefaultAddressApi(remaining[0].id, email);
+      }
+      setAddresses(remaining);
+    } catch (err) {
+      console.error("Error deleting address:", err);
     }
-    updateAddresses(remaining);
   }
 
-  function handleSetDefault(id: string) {
-    updateAddresses(setDefaultAddress(addresses, id));
+  async function handleSetDefault(id: string) {
+    try {
+      await setDefaultAddressApi(id, email);
+      setAddresses((prev) =>
+        prev.map((address) => ({
+          ...address,
+          isDefault: address.id === id,
+        })),
+      );
+    } catch (err) {
+      console.error("Error setting default address:", err);
+    }
   }
 
   function updateField(field: keyof typeof EMPTY_FORM, value: string) {
@@ -175,7 +229,12 @@ export function AddressTab() {
         </button>
       </div>
 
-      {addresses.length === 0 ? (
+      {isLoading && addresses.length === 0 ? (
+        <div className="mt-8 flex flex-col items-center justify-center gap-2 py-8 text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-text-secondary">Memuat daftar alamat...</p>
+        </div>
+      ) : addresses.length === 0 ? (
         <div className="mt-8 flex flex-col items-center gap-2 py-8 text-center">
           <MapPin className="h-8 w-8 text-text-secondary" />
           <p className="text-sm text-text-secondary">
@@ -369,7 +428,9 @@ export function AddressTab() {
               </button>
               <button
                 type="submit"
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+                disabled={isSaving}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
+                {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
                 Simpan Alamat
               </button>
             </div>

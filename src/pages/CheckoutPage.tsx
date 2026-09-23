@@ -28,9 +28,9 @@ import { useAuth } from "@/components/auth/UseAuth";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 import type { Voucher } from "@/components/profile/types";
 import {
-  createAddressId,
+  createAddressApi,
+  fetchAddressesFromBackend,
   getSavedAddresses,
-  saveSavedAddresses,
   type SavedAddress,
 } from "@/lib/addresses";
 import { lookupPostalCode } from "@/lib/postalCode";
@@ -208,19 +208,59 @@ export default function CheckoutPage() {
     };
   }, [isAddressModalOpen, quickAddress.postalCode]);
 
-  function saveQuickAddress() {
+  useEffect(() => {
+    let isCurrent = true;
+    async function loadAddresses() {
+      if (!user?.email) return;
+      try {
+        const fetched = await fetchAddressesFromBackend(
+          user.email,
+          user ?? undefined,
+        );
+        if (isCurrent && Array.isArray(fetched) && fetched.length > 0) {
+          setSavedAddresses(fetched);
+          setSelectedAddressId((curr) => {
+            if (curr && fetched.some((a) => a.id === curr)) return curr;
+            const def = fetched.find((a) => a.isDefault) ?? fetched[0];
+            return def ? def.id : null;
+          });
+        }
+      } catch (err) {
+        console.warn("Failed to sync addresses in checkout:", err);
+      }
+    }
+    loadAddresses();
+
+    const handleSync = () => {
+      loadAddresses();
+    };
+
+    window.addEventListener("marketplace-address-updated", handleSync);
+    return () => {
+      isCurrent = false;
+      window.removeEventListener("marketplace-address-updated", handleSync);
+    };
+  }, [user?.email, user]);
+
+  async function saveQuickAddress() {
     if (Object.values(quickAddress).some((value) => !value.trim())) return;
 
-    const nextAddress: SavedAddress = {
-      ...quickAddress,
-      id: createAddressId(),
-      isDefault: savedAddresses.length === 0,
-    };
-    const nextAddresses = [...savedAddresses, nextAddress];
-    setSavedAddresses(nextAddresses);
-    saveSavedAddresses(nextAddresses, user?.email);
-    setSelectedAddressId(nextAddress.id);
-    setIsAddressModalOpen(false);
+    try {
+      const isDefault = savedAddresses.length === 0;
+      const created = await createAddressApi(
+        {
+          ...quickAddress,
+          isDefault,
+        },
+        user?.email,
+      );
+      const nextAddresses = [...savedAddresses, created];
+      setSavedAddresses(nextAddresses);
+      setSelectedAddressId(created.id);
+      setIsAddressModalOpen(false);
+    } catch (err) {
+      console.error("Failed to save quick address:", err);
+    }
   }
 
   const availableVouchers =

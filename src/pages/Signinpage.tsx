@@ -43,9 +43,11 @@ export default function SignInPage() {
     const nextErrors: FormErrors = {};
 
     if (!email.trim()) {
-      nextErrors.email = "Email wajib diisi.";
-    } else if (!EMAIL_REGEX.test(email.trim())) {
+      nextErrors.email = "Email atau username wajib diisi.";
+    } else if (email.includes("@") && !EMAIL_REGEX.test(email.trim())) {
       nextErrors.email = "Format email tidak valid.";
+    } else if (!email.includes("@") && email.trim().length < 3) {
+      nextErrors.email = "Username minimal 3 karakter.";
     }
 
     if (!password) {
@@ -107,16 +109,16 @@ export default function SignInPage() {
         <form onSubmit={handleSubmit} noValidate className="mt-6 space-y-4">
           <div>
             <label htmlFor="email" className="text-sm font-medium text-text">
-              Alamat Email
+              Alamat Email / Username
             </label>
             <div className="relative mt-1.5">
               <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
               <input
                 id="email"
-                type="email"
+                type="text"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="nama@email.com"
+                placeholder="nama@email.com atau username"
                 className={`w-full rounded-lg border bg-background py-2.5 pl-10 pr-3 text-sm text-text outline-none placeholder:text-text-secondary focus:border-primary ${
                   errors.email ? "border-red-500" : "border-border"
                 }`}

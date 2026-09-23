@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff, Lock, Mail, MapPin, Phone, User } from "lucide-react";
+import { Eye, EyeOff, Loader2, Lock, Mail, MapPin, Phone, User } from "lucide-react";
+import { useAuth } from "@/components/auth/UseAuth";
 
 interface FormValues {
   full_name: string;
@@ -29,10 +30,13 @@ const INITIAL_VALUES: FormValues = {
 
 export default function SignUpPage() {
   const navigate = useNavigate();
+  const { register } = useAuth();
   const [values, setValues] = useState<FormValues>(INITIAL_VALUES);
   const [errors, setErrors] = useState<FormErrors>({});
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [generalError, setGeneralError] = useState("");
 
   function setField<K extends keyof FormValues>(key: K, value: FormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -75,21 +79,32 @@ export default function SignUpPage() {
     return Object.keys(nextErrors).length === 0;
   }
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!validate()) return;
 
-    const payload = {
-      full_name: values.full_name,
-      username: values.username || null,
-      email: values.email,
-      password_hash: values.password,
-      phone: values.phone || null,
-      address: values.address || null,
-    };
+    setLoading(true);
+    setGeneralError("");
 
-    console.log("Sign up Payload:", payload);
-    navigate("/sign-in");
+    const res = await register({
+      full_name: values.full_name,
+      username: values.username || undefined,
+      email: values.email,
+      password: values.password,
+      phone: values.phone || undefined,
+      address: values.address || undefined,
+    });
+
+    setLoading(false);
+
+    if (!res.success) {
+      setGeneralError(
+        res.message || "Pendaftaran akun gagal. Silakan coba lagi.",
+      );
+      return;
+    }
+
+    navigate("/", { replace: true });
   }
 
   const fieldClass = (hasError?: string) =>
@@ -111,6 +126,12 @@ export default function SignUpPage() {
             Isi data diri kamu untuk mulai berbelanja.
           </p>
         </div>
+
+        {generalError && (
+          <div className="mt-4 rounded-lg bg-red-500/10 p-3 text-sm text-red-600">
+            {generalError}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} noValidate className="mt-5 space-y-3">
           {/* Row 1: Nama Lengkap + Username */}
@@ -297,8 +318,10 @@ export default function SignUpPage() {
 
           <button
             type="submit"
-            className="w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-white hover:opacity-90">
-            Daftar
+            disabled={loading}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+            {loading ? "Mendaftarkan..." : "Daftar"}
           </button>
         </form>
 

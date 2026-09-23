@@ -11,10 +11,22 @@ export interface AuthUser {
   loyalty_points?: number;
 }
 
+export interface RegisterParams {
+  full_name: string;
+  email: string;
+  password: string;
+  username?: string;
+  phone?: string;
+  address?: string;
+}
+
 export interface AuthContextValue {
   user: AuthUser | null;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<boolean> | boolean;
+  register: (
+    params: RegisterParams,
+  ) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   addLoyaltyPoints: (points: number) => void;
 }

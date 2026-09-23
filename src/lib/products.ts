@@ -749,6 +749,13 @@ export function mapBackendToProduct(p: any): Product {
 export function useMarketplaceProducts(limit = 6) {
   const [products, setProducts] = useState<Product[]>(PRODUCTS);
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => setRefreshKey((k) => k + 1);
+    window.addEventListener("products-updated", handleUpdate);
+    return () => window.removeEventListener("products-updated", handleUpdate);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -779,7 +786,7 @@ export function useMarketplaceProducts(limit = 6) {
     return () => {
       cancelled = true;
     };
-  }, [limit]);
+  }, [limit, refreshKey]);
 
   return { products, loading };
 }
@@ -881,6 +888,13 @@ export function usePaginatedProducts({
   const [totalPages, setTotalPages] = useState(1);
   const [currentPage, setCurrentPage] = useState(page);
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => setRefreshKey((k) => k + 1);
+    window.addEventListener("products-updated", handleUpdate);
+    return () => window.removeEventListener("products-updated", handleUpdate);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -985,7 +999,7 @@ export function usePaginatedProducts({
       cancelled = true;
       controller.abort();
     };
-  }, [page, limit, search, category, minPrice, maxPrice, discountOnly]);
+  }, [page, limit, search, category, minPrice, maxPrice, discountOnly, refreshKey]);
 
   return { products, total, totalPages, currentPage, loading };
 }
