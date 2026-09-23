@@ -5,8 +5,7 @@ export function formatRupiah(value: number) {
 import type { Order } from "./types";
 
 export function isRefundEligible(order: Order): boolean {
-  const eligibleStatus =
-    order.status === "completed" || order.status === "processing";
+  const eligibleStatus = order.status === "completed";
   if (!eligibleStatus) return false;
 
   if (!order.refundDeadline) return true;

@@ -1,5 +1,15 @@
 import { useEffect, useState } from "react";
-import { Check, Loader2, MapPin, Pencil, Plus, Trash2, X } from "lucide-react";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  MapPin,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useAuth } from "@/components/auth/UseAuth";
 import {
   createAddressId,
@@ -20,6 +30,8 @@ const EMPTY_FORM: Omit<SavedAddress, "id" | "isDefault"> = {
   postalCode: "",
 };
 
+const ITEMS_PER_PAGE = 5;
+
 export function AddressTab() {
   const { user } = useAuth();
   const email = user?.email;
@@ -30,11 +42,13 @@ export function AddressTab() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [isSearchingZip, setIsSearchingZip] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const [prevEmail, setPrevEmail] = useState(email);
   if (email !== prevEmail) {
     setPrevEmail(email);
     setAddresses(getSavedAddresses(email, user ?? undefined));
+    setCurrentPage(1);
   }
 
   useEffect(() => {
@@ -63,6 +77,14 @@ export function AddressTab() {
       window.clearTimeout(timer);
     };
   }, [form.postalCode]);
+
+  const totalPages = Math.max(1, Math.ceil(addresses.length / ITEMS_PER_PAGE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (safeCurrentPage - 1) * ITEMS_PER_PAGE;
+  const paginatedAddresses = addresses.slice(
+    startIndex,
+    startIndex + ITEMS_PER_PAGE,
+  );
 
   function updateAddresses(next: SavedAddress[]) {
     setAddresses(next);
@@ -109,6 +131,10 @@ export function AddressTab() {
         )
       : [...addresses, nextAddress];
     updateAddresses(next);
+    if (!editingId) {
+      // alamat baru masuk ke halaman terakhir, langsung tampilkan halamannya
+      setCurrentPage(Math.max(1, Math.ceil(next.length / ITEMS_PER_PAGE)));
+    }
     setIsModalOpen(false);
   }
 
@@ -157,61 +183,121 @@ export function AddressTab() {
           </p>
         </div>
       ) : (
-        <div className="mt-6 space-y-3">
-          {addresses.map((address) => (
-            <div
-              key={address.id}
-              className="rounded-lg border border-border p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 gap-3">
-                  <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold text-text">{address.label}</p>
-                      {address.isDefault && (
-                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
-                          Utama
-                        </span>
-                      )}
+        <>
+          <div className="mt-6 space-y-3">
+            {paginatedAddresses.map((address) => (
+              <div
+                key={address.id}
+                className="rounded-lg border border-border p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 gap-3">
+                    <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-text">
+                          {address.label}
+                        </p>
+                        {address.isDefault && (
+                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                            Utama
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-sm font-medium text-text">
+                        {address.recipientName} · {address.phone}
+                      </p>
+                      <p className="mt-1 text-sm text-text-secondary">
+                        {address.addressLine}, {address.city},{" "}
+                        {address.province} {address.postalCode}
+                      </p>
                     </div>
-                    <p className="mt-1 text-sm font-medium text-text">
-                      {address.recipientName} · {address.phone}
-                    </p>
-                    <p className="mt-1 text-sm text-text-secondary">
-                      {address.addressLine}, {address.city}, {address.province}{" "}
-                      {address.postalCode}
-                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(address)}
+                      aria-label="Edit alamat"
+                      className="rounded-md p-2 text-text-secondary hover:bg-background hover:text-primary">
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(address.id)}
+                      aria-label="Hapus alamat"
+                      className="rounded-md p-2 text-text-secondary hover:bg-background hover:text-red-600">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-1">
+                {!address.isDefault && (
                   <button
                     type="button"
-                    onClick={() => openEdit(address)}
-                    aria-label="Edit alamat"
-                    className="rounded-md p-2 text-text-secondary hover:bg-background hover:text-primary">
-                    <Pencil className="h-4 w-4" />
+                    onClick={() => handleSetDefault(address.id)}
+                    className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline">
+                    <Check className="h-3.5 w-3.5" />
+                    Jadikan alamat utama
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(address.id)}
-                    aria-label="Hapus alamat"
-                    className="rounded-md p-2 text-text-secondary hover:bg-background hover:text-red-600">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
+                )}
               </div>
-              {!address.isDefault && (
+            ))}
+          </div>
+
+          {totalPages > 1 && (
+            <div className="mt-4 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-text-secondary">
+                Menampilkan{" "}
+                <span className="font-semibold text-text">
+                  {startIndex + 1}
+                </span>{" "}
+                -{" "}
+                <span className="font-semibold text-text">
+                  {Math.min(startIndex + ITEMS_PER_PAGE, addresses.length)}
+                </span>{" "}
+                dari{" "}
+                <span className="font-semibold text-text">
+                  {addresses.length}
+                </span>{" "}
+                alamat
+              </p>
+
+              <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={() => handleSetDefault(address.id)}
-                  className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline">
-                  <Check className="h-3.5 w-3.5" />
-                  Jadikan alamat utama
+                  onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                  disabled={safeCurrentPage === 1}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-text-secondary hover:bg-background disabled:opacity-40 disabled:pointer-events-none">
+                  <ChevronLeft className="h-4 w-4" />
                 </button>
-              )}
+
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                  (pageNum) => (
+                    <button
+                      key={pageNum}
+                      type="button"
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold transition-colors ${
+                        safeCurrentPage === pageNum
+                          ? "bg-primary text-white"
+                          : "border border-border text-text hover:bg-background"
+                      }`}>
+                      {pageNum}
+                    </button>
+                  ),
+                )}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCurrentPage((p) => Math.min(p + 1, totalPages))
+                  }
+                  disabled={safeCurrentPage === totalPages}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-text-secondary hover:bg-background disabled:opacity-40 disabled:pointer-events-none">
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
 
       {isModalOpen && (

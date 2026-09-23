@@ -63,9 +63,7 @@ export function MarketplaceHeader() {
     width: number;
   } | null>(null);
 
-  // Dropdown diletakkan di luar <form> (yang punya overflow-hidden untuk
-  // sudut rounded) supaya tidak ikut terpotong. Posisi & lebarnya dihitung
-  // manual di sini supaya tetap presisi selebar kolom input saja.
+  
   useEffect(() => {
     if (!isSearchOpen) return;
 

@@ -41,6 +41,8 @@ interface AttachedProductInfo {
   priceLabel?: string;
 }
 
+type ChatViewMode = "general" | "product";
+
 const GUEST_STORAGE_KEY = "chat_guest_identity";
 
 function nowIso() {
@@ -100,7 +102,7 @@ const INITIAL_MESSAGES: ChatMessage[] = [
     conversation_id: null,
     sender_user_id: null,
     sender_role: "admin",
-    message: "Halo! Ada yang bisa kami bantu terkait pesanan atau produk kamu?",
+    message: "Halo! Apa ada yang bisa kami bantu?",
     is_read: true,
     created_at: nowIso(),
   },
@@ -119,6 +121,11 @@ export function ChatWidget() {
   const [unreadCount, setUnreadCount] = useState(INITIAL_UNREAD);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Menentukan tampilan chat: "general" (dibuka dari beranda/tombol mengambang)
+  // vs "product" (dibuka dari halaman produk via "Tanya Admin").
+  // Data (messages/conversation) tetap satu room yang sama — ini cuma filter tampilan.
+  const [viewMode, setViewMode] = useState<ChatViewMode>("general");
+
   // Produk yang sedang ditanyakan (attachment di atas input), diisi lewat event open-chat-widget
   const [attachedProduct, setAttachedProduct] =
     useState<AttachedProductInfo | null>(null);
@@ -134,6 +141,12 @@ export function ChatWidget() {
   // Sudah "teridentifikasi" kalau: login, ATAU guest yang sudah isi form
   const isIdentified = isAuthenticated || !!guestIdentity;
   const needsGuestForm = !isAuthenticated && !guestIdentity;
+
+  // Pesan yang ditampilkan, difilter sesuai viewMode.
+  // "general" -> sembunyikan pesan yang membawa attachment produk.
+  // "product" -> tampilkan semua (termasuk semua produk yang pernah ditanyakan, tetap 1 room).
+  const visibleMessages =
+    viewMode === "general" ? messages.filter((m) => !m.product) : messages;
 
   // Derived, bukan state — dihitung ulang tiap render, tanpa effect
   function getCustomerIdentity() {
@@ -168,7 +181,7 @@ export function ChatWidget() {
         behavior: "smooth",
       });
     }
-  }, [messages, isOpen]);
+  }, [visibleMessages, isOpen]);
 
   const markConversationReadByCustomer = useCallback(() => {
     setConversation((prev) => ({ ...prev, customer_read_at: nowIso() }));
@@ -182,6 +195,7 @@ export function ChatWidget() {
   useEffect(() => {
     function handleExternalOpen(e: Event) {
       setIsOpen(true);
+      setViewMode("product");
       markConversationReadByCustomer();
       setUnreadCount(0);
 
@@ -202,10 +216,15 @@ export function ChatWidget() {
 
   function openWidget() {
     setIsOpen(true);
+    setViewMode("general");
     if (isIdentified) {
       markConversationReadByCustomer();
       setUnreadCount(0);
     }
+    // Buka manual (dari tombol mengambang) = pertanyaan umum,
+    // bukan lanjutan dari halaman produk tertentu.
+    setAttachedProduct(null);
+    setDraft("");
   }
 
   function closeWidget() {
@@ -247,7 +266,11 @@ export function ChatWidget() {
     setUnreadCount(0);
   }
 
-  function addStaffMessage(text: string, role: ChatSenderRole = "admin") {
+  function addStaffMessage(
+    text: string,
+    role: ChatSenderRole = "admin",
+    product: AttachedProductInfo | null = null,
+  ) {
     const createdAt = nowIso();
 
     setMessages((prev) => [
@@ -260,6 +283,7 @@ export function ChatWidget() {
         message: text,
         is_read: false,
         created_at: createdAt,
+        product,
       },
     ]);
     setConversation((prev) => ({ ...prev, last_activity_at: createdAt }));
@@ -308,6 +332,7 @@ export function ChatWidget() {
       addStaffMessage(
         "Terima kasih pesannya, mohon tunggu sebentar ya kak.",
         "admin",
+        productSnapshot,
       );
     }, 1500);
   }
@@ -428,7 +453,7 @@ export function ChatWidget() {
               <div
                 ref={scrollRef}
                 className="flex-1 space-y-4 overflow-y-auto bg-background p-4">
-                {messages.map((msg) => {
+                {visibleMessages.map((msg) => {
                   const isCustomer = msg.sender_role === "customer";
                   return (
                     <div

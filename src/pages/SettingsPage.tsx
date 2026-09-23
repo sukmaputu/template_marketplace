@@ -204,12 +204,6 @@ export default function SettingsPage() {
               checked={notifications.orderUpdates}
               onChange={() => toggleNotification("orderUpdates")}
             />
-            <ToggleRow
-              label="Reminder Kelas"
-              description="Pengingat sebelum jadwal kelas yang kamu ikuti dimulai."
-              checked={notifications.classReminder}
-              onChange={() => toggleNotification("classReminder")}
-            />
           </div>
         </div>
       </div>

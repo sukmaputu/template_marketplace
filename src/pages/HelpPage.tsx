@@ -13,7 +13,13 @@ interface FaqCategory {
   items: FaqItem[];
 }
 
-const FAQ_CATEGORIES: FaqCategory[] = [
+// TODO: ganti ini dengan deteksi otomatis kalau backend sudah punya cara
+// mengecek mode toko (misal dari env var, feature flag, atau response API).
+// false = tampilkan FAQ versi jualan kelas (sebelum konek backend produk)
+// true  = tampilkan FAQ versi jualan barang fisik (setelah konek backend produk)
+const IS_BACKEND_CONNECTED = false;
+
+const FAQ_CATEGORIES_KELAS: FaqCategory[] = [
   {
     title: "Sebelum Beli",
     items: [
@@ -80,6 +86,93 @@ const FAQ_CATEGORIES: FaqCategory[] = [
     ],
   },
 ];
+
+const FAQ_CATEGORIES_PRODUK: FaqCategory[] = [
+  {
+    title: "Sebelum Beli",
+    items: [
+      {
+        question: "Apakah produk yang dijual asli dan bergaransi?",
+        answer:
+          "Ya, semua produk yang dijual di toko ini asli dan sesuai deskripsi. Untuk produk dengan garansi resmi, informasi garansi akan tercantum di halaman detail produk.",
+      },
+      {
+        question: "Bagaimana cara mengetahui stok produk tersedia?",
+        answer:
+          "Ketersediaan stok ditampilkan langsung di halaman produk. Kalau stok habis, tombol pembelian akan otomatis nonaktif dan berubah menjadi 'Stok Habis'.",
+      },
+      {
+        question: "Apakah bisa refund kalau barang tidak sesuai?",
+        answer:
+          "Bisa, refund dapat diajukan melalui halaman Riwayat Pembelian selama pesanan masih memenuhi masa berlaku pengajuan refund. Sertakan foto/video bukti kondisi barang saat mengajukan.",
+      },
+    ],
+  },
+  {
+    title: "Pembayaran",
+    items: [
+      {
+        question: "Metode pembayaran apa saja yang didukung?",
+        answer:
+          "Kami mendukung Virtual Account (BCA, BRI, Mandiri) dan pembayaran tunai di gerai retail (Alfamart, Alfamidi, Lawson, Dan+Dan).",
+      },
+      {
+        question: "Kenapa pembayaran saya gagal/belum terkonfirmasi?",
+        answer:
+          "Pembayaran via Virtual Account biasanya terkonfirmasi otomatis dalam 1-10 menit. Kalau lebih dari 30 menit belum terkonfirmasi, silakan hubungi admin lewat chat dengan menyertakan nomor pesanan kamu.",
+      },
+    ],
+  },
+  {
+    title: "Pengiriman",
+    items: [
+      {
+        question: "Berapa lama estimasi pengiriman barang?",
+        answer:
+          "Estimasi pengiriman tergantung metode yang dipilih saat checkout: Standard sekitar 3-5 hari kerja, Express sekitar 1-2 hari kerja, dihitung sejak pesanan dikonfirmasi.",
+      },
+      {
+        question: "Bagaimana cara melacak status pengiriman pesanan saya?",
+        answer:
+          "Buka halaman Profil → tab Riwayat Pembelian, lalu klik 'Lacak Pengiriman' atau 'Rincian Pengiriman' pada pesanan yang sedang diproses atau dikirim untuk melihat status dan nomor resi.",
+      },
+    ],
+  },
+  {
+    title: "Setelah Beli",
+    items: [
+      {
+        question: "Bagaimana cara konfirmasi kalau barang sudah diterima?",
+        answer:
+          "Buka halaman Profil → tab Riwayat Pembelian, lalu klik 'Pesanan Diterima' pada pesanan yang statusnya sedang dikirim setelah barang sampai di tangan kamu.",
+      },
+      {
+        question: "Apakah saya bisa memberi ulasan untuk produk yang dibeli?",
+        answer:
+          "Bisa. Setelah pesanan berstatus selesai, kamu bisa klik 'Beri Ulasan' pada pesanan tersebut di halaman Riwayat Pembelian untuk membagikan rating dan pengalaman kamu.",
+      },
+    ],
+  },
+  {
+    title: "Akun",
+    items: [
+      {
+        question: "Saya lupa password, bagaimana cara reset?",
+        answer:
+          "Klik 'Lupa password?' di halaman Sign In, lalu ikuti instruksi yang dikirim ke email terdaftar kamu.",
+      },
+      {
+        question: "Bagaimana cara mengganti email akun saya?",
+        answer:
+          "Saat ini penggantian email perlu dibantu tim kami untuk verifikasi keamanan. Silakan hubungi admin lewat chat.",
+      },
+    ],
+  },
+];
+
+const FAQ_CATEGORIES: FaqCategory[] = IS_BACKEND_CONNECTED
+  ? FAQ_CATEGORIES_PRODUK
+  : FAQ_CATEGORIES_KELAS;
 
 function AccordionItem({ item }: { item: FaqItem }) {
   const [isOpen, setIsOpen] = useState(false);

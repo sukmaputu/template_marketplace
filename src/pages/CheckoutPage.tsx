@@ -241,6 +241,15 @@ export default function CheckoutPage() {
       setVoucherError("Kode voucher tidak valid atau sudah kedaluwarsa.");
       return;
     }
+    if (
+      found.min_purchase_amount !== undefined &&
+      totalHarga < found.min_purchase_amount
+    ) {
+      setVoucherError(
+        `Minimal belanja ${formatPrice(found.min_purchase_amount)} untuk voucher ini.`,
+      );
+      return;
+    }
     setSelectedVoucher(found);
     setVoucherError("");
     setVoucherCodeInput("");
@@ -467,7 +476,7 @@ export default function CheckoutPage() {
           customer: {
             name: user?.full_name || "Pelanggan",
             email: user?.email || "",
-            phone: "+62 812 3456 7890",
+            phone: selectedAddress?.phone || user?.phone || "+62 812 3456 7890",
           },
         },
       });
@@ -748,37 +757,44 @@ export default function CheckoutPage() {
 
                       {availableVouchers
                         .filter((v) => v.status === "aktif")
-                        .map((v) => (
-                          <button
-                            key={v.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedVoucher(v);
-                              setShowVoucherList(false);
-                            }}
-                            className={`flex w-full items-start gap-3 rounded-lg border p-4 text-left transition-colors ${
-                              selectedVoucher?.id === v.id
-                                ? "border-primary bg-primary/5"
-                                : "border-border"
-                            }`}>
-                            <Ticket className="mt-1 h-4 w-4 text-primary" />
-                            <div className="flex-1">
-                              <p className="text-sm font-semibold text-text">
-                                {v.title}
-                              </p>
-                              <p className="text-xs text-primary font-bold">
-                                {v.discount_amount !== undefined
-                                  ? formatPrice(v.discount_amount)
-                                  : v.discount_label}
-                              </p>
-                              <p className="text-[10px] text-text-secondary">
-                                {v.min_purchase_amount !== undefined
-                                  ? `Min. belanja ${formatPrice(v.min_purchase_amount)}`
-                                  : v.min_purchase}
-                              </p>
-                            </div>
-                          </button>
-                        ))}
+                        .map((v) => {
+                          const belowMinimum =
+                            v.min_purchase_amount !== undefined &&
+                            totalHarga < v.min_purchase_amount;
+                          return (
+                            <button
+                              key={v.id}
+                              type="button"
+                              disabled={belowMinimum}
+                              onClick={() => {
+                                if (belowMinimum) return;
+                                setSelectedVoucher(v);
+                                setShowVoucherList(false);
+                              }}
+                              className={`flex w-full items-start gap-3 rounded-lg border p-4 text-left transition-colors ${
+                                selectedVoucher?.id === v.id
+                                  ? "border-primary bg-primary/5"
+                                  : "border-border"
+                              } ${belowMinimum ? "opacity-50 cursor-not-allowed" : ""}`}>
+                              <Ticket className="mt-1 h-4 w-4 text-primary" />
+                              <div className="flex-1">
+                                <p className="text-sm font-semibold text-text">
+                                  {v.title}
+                                </p>
+                                <p className="text-xs text-primary font-bold">
+                                  {v.discount_amount !== undefined
+                                    ? formatPrice(v.discount_amount)
+                                    : v.discount_label}
+                                </p>
+                                <p className="text-[10px] text-text-secondary">
+                                  {v.min_purchase_amount !== undefined
+                                    ? `Min. belanja ${formatPrice(v.min_purchase_amount)}`
+                                    : v.min_purchase}
+                                </p>
+                              </div>
+                            </button>
+                          );
+                        })}
                       <button
                         type="button"
                         onClick={() => {

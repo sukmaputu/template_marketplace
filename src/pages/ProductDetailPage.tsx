@@ -364,7 +364,6 @@ export default function ProductDetailPage() {
     window.dispatchEvent(
       new CustomEvent("open-chat-widget", {
         detail: {
-          message: `Halo, saya ingin bertanya tentang produk "${product.name}".`,
           product: {
             id: product.id,
             name: product.name,

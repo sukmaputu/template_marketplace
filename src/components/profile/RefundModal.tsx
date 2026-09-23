@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { RotateCcw, X } from "lucide-react";
+import {
+  RotateCcw,
+  X,
+  Upload,
+  FileImage,
+  FileVideo,
+  Trash2,
+} from "lucide-react";
 import type { Order } from "./types";
 import { REFUND_REASONS } from "./types";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
@@ -11,15 +18,32 @@ export function RefundModal({
 }: {
   order: Order;
   onClose: () => void;
-  onSubmit: (orderId: string, reason: string, note: string) => void;
+  onSubmit: (
+    orderId: string,
+    reason: string,
+    note: string,
+    evidence: File[],
+  ) => void;
 }) {
   const { formatPrice } = useCurrency();
   const [reason, setReason] = useState<string>(REFUND_REASONS[0]);
   const [note, setNote] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [evidence, setEvidence] = useState<File[]>([]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    const newFiles = Array.from(e.target.files);
+    setEvidence((prev) => [...prev, ...newFiles]);
+    e.target.value = "";
+  };
+
+  const removeFile = (index: number) => {
+    setEvidence((prev) => prev.filter((_, i) => i !== index));
+  };
 
   const handleSubmit = () => {
-    onSubmit(order.id, reason, note);
+    onSubmit(order.id, reason, note, evidence);
     setSubmitted(true);
   };
 
@@ -96,6 +120,57 @@ export function RefundModal({
                 placeholder="Ceritakan lebih detail kendalanya..."
                 className="mt-2 w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-text focus:border-primary focus:outline-none"
               />
+            </div>
+
+            <div className="mt-4">
+              <label className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+                Bukti Foto / Video
+              </label>
+              <label
+                htmlFor="refund-evidence"
+                className="mt-2 flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-border bg-background px-3 py-5 text-center hover:bg-surface">
+                <Upload className="h-5 w-5 text-text-secondary" />
+                <span className="text-xs font-medium text-text">
+                  Klik untuk unggah foto/video
+                </span>
+                <span className="text-[11px] text-text-secondary">
+                  JPG, PNG, MP4 (bisa lebih dari satu file)
+                </span>
+                <input
+                  id="refund-evidence"
+                  type="file"
+                  accept="image/*,video/*"
+                  multiple
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+              </label>
+
+              {evidence.length > 0 && (
+                <ul className="mt-3 space-y-1.5">
+                  {evidence.map((file, index) => (
+                    <li
+                      key={`${file.name}-${index}`}
+                      className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2">
+                      <div className="flex min-w-0 items-center gap-2">
+                        {file.type.startsWith("video") ? (
+                          <FileVideo className="h-4 w-4 shrink-0 text-text-secondary" />
+                        ) : (
+                          <FileImage className="h-4 w-4 shrink-0 text-text-secondary" />
+                        )}
+                        <span className="truncate text-xs text-text">
+                          {file.name}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => removeFile(index)}
+                        className="shrink-0 rounded p-1 text-text-secondary hover:bg-surface hover:text-text">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             <div className="mt-6 flex justify-end gap-2 border-t border-border pt-4">
