@@ -7,7 +7,7 @@ import { OrderCard } from "./OrderCard";
 import { TrackingModal } from "./TrackingModal";
 import { RefundModal } from "./RefundModal";
 import { ConfirmModal } from "./ConfirmModal";
-import { getStoredOrders } from "@/lib/orderHistory";
+import { fetchOrdersFromBackend, getStoredOrders } from "@/lib/orderHistory";
 import { showToast } from "@/lib/toast";
 
 type FilterKey = "ALL" | OrderStatus;
@@ -33,13 +33,34 @@ export function RiwayatPembelianTab() {
   const ITEMS_PER_PAGE = 10;
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadOrders() {
+      try {
+        const fetched = await fetchOrdersFromBackend();
+        if (!cancelled && fetched.length > 0) {
+          setOrders(fetched);
+          return;
+        }
+      } catch {
+        // ignore
+      }
+      if (!cancelled) {
+        setOrders([...getStoredOrders(), ...MOCK_ORDERS]);
+      }
+    }
+
+    loadOrders();
+
     const refreshOrders = () => {
-      setOrders([...getStoredOrders(), ...MOCK_ORDERS]);
+      loadOrders();
     };
 
     window.addEventListener("order-history-updated", refreshOrders);
-    return () =>
+    return () => {
+      cancelled = true;
       window.removeEventListener("order-history-updated", refreshOrders);
+    };
   }, []);
 
   const filterTabs: { key: FilterKey; label: string }[] = [

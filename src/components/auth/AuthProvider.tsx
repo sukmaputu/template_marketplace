@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { AuthContext, type AuthUser } from "@/components/auth/AuthContext";
+import { AuthContext, type AuthUser, type RegisterParams } from "@/components/auth/AuthContext";
 import { api, removeAuthToken, setAuthToken } from "@/lib/api";
+import { createAddressApi } from "@/lib/addresses";
 
 const DEMO_ACCOUNT = {
   email: "sukma@email.com",
@@ -112,6 +113,92 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return false;
   }
 
+  async function register(
+    params: RegisterParams,
+  ): Promise<{ success: boolean; message?: string }> {
+    const cleanEmail = params.email.trim().toLowerCase();
+    const cleanName = params.full_name.trim();
+    const baseUsername =
+      params.username?.trim().toLowerCase().replace(/[^a-z0-9_]/g, "") ||
+      cleanName.toLowerCase().replace(/[^a-z0-9_]/g, "") ||
+      cleanEmail.split("@")[0].replace(/[^a-z0-9_]/g, "");
+    const username =
+      baseUsername.length >= 3
+        ? baseUsername
+        : `${baseUsername}${Math.floor(100 + Math.random() * 900)}`;
+
+    try {
+      const res = await api.post<{
+        success: boolean;
+        message?: string;
+        data?: {
+          token?: string;
+          access_token?: string;
+          akun?: {
+            uuid?: string;
+            email: string;
+            username?: string;
+            full_name?: string;
+            phone?: string;
+          };
+        };
+      }>("/auth/register", {
+        email: cleanEmail,
+        username,
+        password: params.password,
+        full_name: cleanName || undefined,
+        phone: params.phone?.trim() || undefined,
+      });
+
+      const token = res.data?.data?.token || res.data?.data?.access_token;
+      const akun = res.data?.data?.akun;
+
+      if (token && akun) {
+        setAuthToken(token);
+        const nextUser: AuthUser = {
+          full_name: akun.full_name || cleanName || akun.username || "Pengguna",
+          email: akun.email,
+          phone: akun.phone || params.phone?.trim(),
+          username: akun.username || username,
+          address: params.address?.trim(),
+        };
+        setUser(nextUser);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
+
+        if (params.address?.trim()) {
+          try {
+            await createAddressApi(
+              {
+                label: "Rumah Utama",
+                recipientName: nextUser.full_name,
+                phone: nextUser.phone || "",
+                addressLine: params.address.trim(),
+                city: "",
+                province: "",
+                postalCode: "",
+                isDefault: true,
+              },
+              nextUser.email,
+            );
+          } catch {
+            // Ignore initial address error
+          }
+        }
+      }
+
+      return { success: true };
+    } catch (err: unknown) {
+      const axiosErr = err as {
+        response?: { data?: { error?: string; message?: string } };
+      };
+      const errorMsg =
+        axiosErr.response?.data?.message ||
+        axiosErr.response?.data?.error ||
+        "Pendaftaran akun gagal. Silakan coba lagi.";
+      return { success: false, message: errorMsg };
+    }
+  }
+
   function logout() {
     setUser(null);
     removeAuthToken();
@@ -139,6 +226,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       isAuthenticated: user !== null,
       login,
+      register,
       logout,
       addLoyaltyPoints,
     }),
