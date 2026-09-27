@@ -73,12 +73,12 @@ export function ProductCard({ product, onSelect }: ProductCardProps) {
           </span>
         </div>
 
-        <div className="flex items-baseline gap-2">
-          <span className="text-base font-bold text-primary">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className="min-w-0 text-base font-bold text-primary">
             {formatPrice(basePrice)}
           </span>
           {comparePrice && comparePrice > basePrice ? (
-            <span className="text-sm text-text-secondary line-through">
+            <span className="min-w-0 truncate text-sm text-text-secondary line-through">
               {formatPrice(comparePrice)}
             </span>
           ) : null}

@@ -49,6 +49,9 @@ export function OrderCard({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          {isRefundEligible(order) && order.refundDeadline && (
+            <CountdownTimer deadlineIso={order.refundDeadline} />
+          )}
           <span
             className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusInfo.badgeClassName}`}>
             {statusInfo.label}
@@ -195,17 +198,12 @@ export function OrderCard({
           )}
 
           {isRefundEligible(order) && (
-            <div className="flex items-center gap-2">
-              {order.refundDeadline && (
-                <CountdownTimer deadlineIso={order.refundDeadline} />
-              )}
-              <button
-                onClick={() => onRefundClick(order)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3.5 py-1.5 text-xs font-medium text-text hover:bg-background">
-                <RotateCcw className="h-3.5 w-3.5 text-text-secondary" />
-                Ajukan Refund
-              </button>
-            </div>
+            <button
+              onClick={() => onRefundClick(order)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3.5 py-1.5 text-xs font-medium text-text hover:bg-background">
+              <RotateCcw className="h-3.5 w-3.5 text-text-secondary" />
+              Ajukan Refund
+            </button>
           )}
         </div>
       </div>

@@ -7,10 +7,7 @@ import { ProductCard } from "@/components/ProductCard";
 import { ProductGridSkeleton } from "@/components/skeleton/ProductCardSkeleton";
 import { PromoBannerSection } from "@/components/PromoBannerSection";
 import { Pagination } from "@/components/ui/pagination";
-import {
-  usePaginatedProducts,
-  useCategories,
-} from "@/lib/products";
+import { usePaginatedProducts, useCategories } from "@/lib/products";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 // import { PromoModal } from "@/components/PromoModal";
 
@@ -23,6 +20,33 @@ const SORT_OPTIONS = [
 
 const PAGE_SIZE = 6;
 const DEFAULT_MIN_PRICE = 0;
+
+// ---- UI-only filter options (belum ada di backend) ----
+// Begitu backend expose field ini (misal attributes: { color, size, useCase, style }),
+// sambungkan selectedColors/selectedSizes/selectedUseCases/selectedStyles
+// sebagai parameter tambahan ke usePaginatedProducts, seperti minPrice/maxPrice/discountOnly.
+const COLOR_OPTIONS = [
+  { label: "Hitam", hex: "#111827" },
+  { label: "Putih", hex: "#FFFFFF" },
+  { label: "Abu-abu", hex: "#9CA3AF" },
+  { label: "Merah", hex: "#EF4444" },
+  { label: "Biru", hex: "#3B82F6" },
+  { label: "Hijau", hex: "#22C55E" },
+  { label: "Cokelat", hex: "#92400E" },
+  { label: "Krem", hex: "#E5D3B3" },
+];
+
+const SIZE_OPTIONS = ["S", "M", "L", "XL", "8", "30", "32", "34", "36"];
+
+const USE_CASE_OPTIONS = [
+  "Olahraga",
+  "Kerja / Formal",
+  "Kasual Harian",
+  "Outdoor",
+  "Santai / Rumahan",
+];
+
+const STYLE_OPTIONS = ["Casual", "Sporty", "Formal", "Vintage", "Minimalis"];
 
 function formatRupiah(value: number) {
   return `Rp ${value.toLocaleString("id-ID")}`;
@@ -85,12 +109,59 @@ export default function HomePage() {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
 
-  useEffect(() => {
-    const cat = searchParams.get("category");
-    if (cat && cat !== "all") {
-      setSelectedCategories((prev) => (prev.includes(cat) ? prev : [cat]));
+  // ---- Filter atribut (UI-only, belum tersambung ke data produk) ----
+  const [selectedColors, setSelectedColors] = useState<string[]>([]);
+  const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+  const [selectedUseCases, setSelectedUseCases] = useState<string[]>([]);
+  const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
+  const [isColorFilterOpen, setIsColorFilterOpen] = useState(true);
+  const [isSizeFilterOpen, setIsSizeFilterOpen] = useState(true);
+  const [isUseCaseFilterOpen, setIsUseCaseFilterOpen] = useState(true);
+  const [isStyleFilterOpen, setIsStyleFilterOpen] = useState(true);
+
+  function toggleColor(color: string) {
+    setSelectedColors((prev) =>
+      prev.includes(color) ? prev.filter((c) => c !== color) : [...prev, color],
+    );
+    resetToFirstPage();
+  }
+
+  function toggleSize(size: string) {
+    setSelectedSizes((prev) =>
+      prev.includes(size) ? prev.filter((s) => s !== size) : [...prev, size],
+    );
+    resetToFirstPage();
+  }
+
+  function toggleUseCase(useCase: string) {
+    setSelectedUseCases((prev) =>
+      prev.includes(useCase)
+        ? prev.filter((u) => u !== useCase)
+        : [...prev, useCase],
+    );
+    resetToFirstPage();
+  }
+
+  function toggleStyle(style: string) {
+    setSelectedStyles((prev) =>
+      prev.includes(style) ? prev.filter((s) => s !== style) : [...prev, style],
+    );
+    resetToFirstPage();
+  }
+
+  // Sinkronisasi kategori dari URL, dilakukan saat render (bukan di useEffect)
+  // supaya tidak memicu setState di dalam effect body.
+  const categoryFromUrl = searchParams.get("category");
+  const [prevCategoryFromUrl, setPrevCategoryFromUrl] =
+    useState(categoryFromUrl);
+  if (categoryFromUrl !== prevCategoryFromUrl) {
+    setPrevCategoryFromUrl(categoryFromUrl);
+    if (categoryFromUrl && categoryFromUrl !== "all") {
+      setSelectedCategories((prev) =>
+        prev.includes(categoryFromUrl) ? prev : [categoryFromUrl],
+      );
     }
-  }, [searchParams]);
+  }
 
   const effectiveMinPrice = useMemo(() => {
     if (!minPriceInput) return undefined;
@@ -123,6 +194,8 @@ export default function HomePage() {
     minPrice: effectiveMinPrice,
     maxPrice: effectiveMaxPrice,
     discountOnly,
+    // TODO: sambungkan selectedColors / selectedSizes / selectedUseCases / selectedStyles
+    // ke sini begitu backend menyediakan field & query param yang sesuai.
   });
 
   const isLoading = isServerLoading;
@@ -183,6 +256,10 @@ export default function HomePage() {
     setMaxPriceInput("");
     setDiscountOnly(false);
     setSortBy("default");
+    setSelectedColors([]);
+    setSelectedSizes([]);
+    setSelectedUseCases([]);
+    setSelectedStyles([]);
     resetToFirstPage();
   }
 
@@ -191,10 +268,14 @@ export default function HomePage() {
     discountOnly ||
     minPriceInput !== "" ||
     maxPriceInput !== "" ||
-    sortBy !== "default";
+    sortBy !== "default" ||
+    selectedColors.length > 0 ||
+    selectedSizes.length > 0 ||
+    selectedUseCases.length > 0 ||
+    selectedStyles.length > 0;
 
   const products = useMemo(() => {
-    let list = [...serverProducts];
+    const list = [...serverProducts];
     if (sortBy === "price-asc")
       list.sort(
         (a, b) =>
@@ -230,6 +311,10 @@ export default function HomePage() {
     searchQuery,
     priceRange,
     discountOnly,
+    selectedColors,
+    selectedSizes,
+    selectedUseCases,
+    selectedStyles,
   });
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
   if (filterKey !== prevFilterKey) {
@@ -450,6 +535,142 @@ export default function HomePage() {
                     : "Pilih rentang harga sesuai kebutuhan"}
                 </p>
               </div>
+            </div>
+
+            <div className="mt-6 border-t border-border pt-4">
+              <button
+                type="button"
+                onClick={() => setIsColorFilterOpen((prev) => !prev)}
+                className="flex w-full items-center justify-between text-sm font-semibold text-text">
+                Warna
+                <ChevronDown
+                  className={`h-4 w-4 text-text-secondary transition-transform ${
+                    isColorFilterOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+              {isColorFilterOpen && (
+                <div className="mt-3 flex flex-wrap gap-3">
+                  {COLOR_OPTIONS.map((color) => {
+                    const isSelected = selectedColors.includes(color.label);
+                    return (
+                      <button
+                        key={color.label}
+                        type="button"
+                        onClick={() => toggleColor(color.label)}
+                        title={color.label}
+                        aria-label={color.label}
+                        aria-pressed={isSelected}
+                        className="flex flex-col items-center gap-1">
+                        <span
+                          style={{ backgroundColor: color.hex }}
+                          className={`h-7 w-7 rounded-full border transition-all ${
+                            isSelected
+                              ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-surface"
+                              : "border-border"
+                          }`}
+                        />
+                        <span className="text-[10px] text-text-secondary">
+                          {color.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 border-t border-border pt-4">
+              <button
+                type="button"
+                onClick={() => setIsSizeFilterOpen((prev) => !prev)}
+                className="flex w-full items-center justify-between text-sm font-semibold text-text">
+                Ukuran
+                <ChevronDown
+                  className={`h-4 w-4 text-text-secondary transition-transform ${
+                    isSizeFilterOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+              {isSizeFilterOpen && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {SIZE_OPTIONS.map((size) => (
+                    <button
+                      key={size}
+                      type="button"
+                      onClick={() => toggleSize(size)}
+                      className={`rounded-lg border px-3.5 py-1.5 text-xs font-medium transition-colors ${
+                        selectedSizes.includes(size)
+                          ? "border-primary bg-primary text-white"
+                          : "border-border text-text hover:border-primary"
+                      }`}>
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 border-t border-border pt-4">
+              <button
+                type="button"
+                onClick={() => setIsUseCaseFilterOpen((prev) => !prev)}
+                className="flex w-full items-center justify-between text-sm font-semibold text-text">
+                Kegunaan
+                <ChevronDown
+                  className={`h-4 w-4 text-text-secondary transition-transform ${
+                    isUseCaseFilterOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+              {isUseCaseFilterOpen && (
+                <div className="mt-3 space-y-3">
+                  {USE_CASE_OPTIONS.map((useCase) => (
+                    <label
+                      key={useCase}
+                      className="flex cursor-pointer items-center gap-2.5 text-sm text-text-secondary">
+                      <input
+                        type="checkbox"
+                        checked={selectedUseCases.includes(useCase)}
+                        onChange={() => toggleUseCase(useCase)}
+                        className="h-4 w-4 rounded border-border accent-primary"
+                      />
+                      {useCase}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 border-t border-border pt-4">
+              <button
+                type="button"
+                onClick={() => setIsStyleFilterOpen((prev) => !prev)}
+                className="flex w-full items-center justify-between text-sm font-semibold text-text">
+                Style
+                <ChevronDown
+                  className={`h-4 w-4 text-text-secondary transition-transform ${
+                    isStyleFilterOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+              {isStyleFilterOpen && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {STYLE_OPTIONS.map((style) => (
+                    <button
+                      key={style}
+                      type="button"
+                      onClick={() => toggleStyle(style)}
+                      className={`rounded-lg border px-3.5 py-1.5 text-xs font-medium transition-colors ${
+                        selectedStyles.includes(style)
+                          ? "border-primary bg-primary text-white"
+                          : "border-border text-text hover:border-primary"
+                      }`}>
+                      {style}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="mt-6 border-t border-border pt-4">
