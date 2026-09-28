@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ChevronDown, SlidersHorizontal, X } from "lucide-react";
+import { Check, ChevronDown, SlidersHorizontal, X } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { MarketplaceFooter } from "@/components/MarketplaceFooter";
 import { ProductCard } from "@/components/ProductCard";
@@ -47,6 +47,83 @@ const USE_CASE_OPTIONS = [
 ];
 
 const STYLE_OPTIONS = ["Casual", "Sporty", "Formal", "Vintage", "Minimalis"];
+
+function FilterSection({
+  title,
+  count = 0,
+  isOpen = true,
+  onToggle,
+  children,
+}: {
+  title: string;
+  count?: number;
+  isOpen?: boolean;
+  onToggle?: () => void;
+  children: React.ReactNode;
+}) {
+  const header = (
+    <>
+      <span className="flex items-center gap-2">
+        <span className="text-[13px] font-semibold text-text">{title}</span>
+        {count > 0 && (
+          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-white">
+            {count}
+          </span>
+        )}
+      </span>
+      {onToggle && (
+        <ChevronDown
+          className={`h-4 w-4 text-text-secondary transition-transform duration-200 ${
+            isOpen ? "rotate-180" : ""
+          }`}
+        />
+      )}
+    </>
+  );
+
+  return (
+    <div className="border-t border-border py-4 first:border-t-0 first:pt-0">
+      {onToggle ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex w-full items-center justify-between">
+          {header}
+        </button>
+      ) : (
+        <div className="flex items-center justify-between">{header}</div>
+      )}
+      {isOpen && <div className="mt-3">{children}</div>}
+    </div>
+  );
+}
+
+function FilterCheckbox({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-background">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        className="peer sr-only"
+      />
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 border-border bg-surface text-transparent transition-all peer-checked:border-primary peer-checked:bg-primary peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-primary/40">
+        <Check className="h-3.5 w-3.5" strokeWidth={3} />
+      </span>
+      <span className="text-sm text-text-secondary transition-colors peer-checked:font-medium peer-checked:text-text">
+        {label}
+      </span>
+    </label>
+  );
+}
 
 function formatRupiah(value: number) {
   return `Rp ${value.toLocaleString("id-ID")}`;
@@ -114,7 +191,7 @@ export default function HomePage() {
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [selectedUseCases, setSelectedUseCases] = useState<string[]>([]);
   const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
-  const [isColorFilterOpen, setIsColorFilterOpen] = useState(true);
+  const [isColorDropdownOpen, setIsColorDropdownOpen] = useState(false);
   const [isSizeFilterOpen, setIsSizeFilterOpen] = useState(true);
   const [isUseCaseFilterOpen, setIsUseCaseFilterOpen] = useState(true);
   const [isStyleFilterOpen, setIsStyleFilterOpen] = useState(true);
@@ -405,51 +482,47 @@ export default function HomePage() {
           <aside
             className={`${
               isMobileFilterOpen ? "block" : "hidden"
-            } w-full shrink-0 lg:sticky lg:top-24 lg:block lg:h-fit lg:max-h-[calc(100vh-7rem)] lg:w-64 lg:overflow-y-auto`}>
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-text">Filter</h2>
-              {hasActiveFilters ? (
-                <button
-                  type="button"
-                  onClick={handleClearFilters}
-                  className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
-                  <X className="h-3 w-3" />
-                  Hapus Filter
-                </button>
-              ) : null}
-            </div>
+            } w-full shrink-0 lg:sticky lg:top-24 lg:block lg:h-fit lg:w-64`}>
+            <div className="bg-background lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="flex items-center gap-2 text-sm font-bold text-text">
+                  <SlidersHorizontal className="h-4 w-4 text-primary" />
+                  Filter
+                </h2>
+                {hasActiveFilters ? (
+                  <button
+                    type="button"
+                    onClick={handleClearFilters}
+                    className="flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20">
+                    <X className="h-3 w-3" />
+                    Hapus
+                  </button>
+                ) : null}
+              </div>
 
-            <div className="mt-3 border-t border-border pt-4">
-              <h3 className="text-sm font-semibold text-text">Kategori</h3>
-              <div className="mt-3 space-y-3">
-                {categories.map((cat) => {
-                  const keyVal = cat.slug || cat.uuid || cat.id;
-                  return (
-                    <label
-                      key={keyVal}
-                      className="flex cursor-pointer items-center gap-2.5 text-sm text-text-secondary">
-                      <input
-                        type="checkbox"
+              <FilterSection title="Kategori" count={selectedCategories.length}>
+                <div className="space-y-0.5">
+                  {categories.map((cat) => {
+                    const keyVal = cat.slug || cat.uuid || cat.id;
+                    return (
+                      <FilterCheckbox
+                        key={keyVal}
+                        label={cat.label}
                         checked={selectedCategories.includes(keyVal)}
                         onChange={() => toggleCategory(keyVal)}
-                        className="h-4 w-4 rounded border-border accent-primary"
                       />
-                      {cat.label}
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
+                    );
+                  })}
+                </div>
+              </FilterSection>
 
-            <div className="mt-6 border-t border-border pt-4">
-              <h3 className="text-sm font-semibold text-text">Rentang Harga</h3>
-              <div className="mt-3 space-y-3">
-                <div className="space-y-2">
+              <FilterSection title="Rentang Harga">
+                <div className="grid grid-cols-1 gap-2">
                   <input
                     type="number"
                     min={0}
                     step={currency === "USD" ? 1 : 10000}
-                    placeholder="Harga minimum"
+                    placeholder="Minimum"
                     value={minPriceInput}
                     onChange={(e) => {
                       const nextValue = e.target.value;
@@ -472,13 +545,13 @@ export default function HomePage() {
                       );
                       resetToFirstPage();
                     }}
-                    className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-text outline-none placeholder:text-text-secondary/80 focus:border-primary"
+                    className="w-full min-w-0 rounded-md border border-border bg-background px-3 py-2 text-xs text-text outline-none transition-colors placeholder:text-text-secondary/70 focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
                   <input
                     type="number"
                     min={0}
                     step={currency === "USD" ? 1 : 10000}
-                    placeholder="Harga maksimum"
+                    placeholder="Maksimum"
                     value={maxPriceInput}
                     onChange={(e) => {
                       const nextValue = e.target.value;
@@ -504,10 +577,10 @@ export default function HomePage() {
                       );
                       resetToFirstPage();
                     }}
-                    className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-text outline-none placeholder:text-text-secondary/80 focus:border-primary"
+                    className="w-full min-w-0 rounded-md border border-border bg-background px-3 py-2 text-xs text-text outline-none transition-colors placeholder:text-text-secondary/70 focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
-                <p className="text-[11px] text-text-secondary">
+                <p className="mt-2 text-[11px] text-text-secondary">
                   {minPriceInput || maxPriceInput
                     ? currency === "USD" && rate
                       ? `$${Math.min(
@@ -534,158 +607,128 @@ export default function HomePage() {
                         )}`
                     : "Pilih rentang harga sesuai kebutuhan"}
                 </p>
-              </div>
-            </div>
+              </FilterSection>
 
-            <div className="mt-6 border-t border-border pt-4">
-              <button
-                type="button"
-                onClick={() => setIsColorFilterOpen((prev) => !prev)}
-                className="flex w-full items-center justify-between text-sm font-semibold text-text">
-                Warna
-                <ChevronDown
-                  className={`h-4 w-4 text-text-secondary transition-transform ${
-                    isColorFilterOpen ? "rotate-180" : ""
-                  }`}
-                />
-              </button>
-              {isColorFilterOpen && (
-                <div className="mt-3 flex flex-wrap gap-3">
-                  {COLOR_OPTIONS.map((color) => {
-                    const isSelected = selectedColors.includes(color.label);
-                    return (
-                      <button
-                        key={color.label}
-                        type="button"
-                        onClick={() => toggleColor(color.label)}
-                        title={color.label}
-                        aria-label={color.label}
-                        aria-pressed={isSelected}
-                        className="flex flex-col items-center gap-1">
-                        <span
-                          style={{ backgroundColor: color.hex }}
-                          className={`h-7 w-7 rounded-full border transition-all ${
-                            isSelected
-                              ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-surface"
-                              : "border-border"
-                          }`}
-                        />
-                        <span className="text-[10px] text-text-secondary">
-                          {color.label}
-                        </span>
-                      </button>
-                    );
-                  })}
+              <FilterSection title="Warna" count={selectedColors.length}>
+                <div className="relative">
+                  <button
+                    type="button"
+                    aria-expanded={isColorDropdownOpen}
+                    onClick={() => setIsColorDropdownOpen((prev) => !prev)}
+                    className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-left text-xs text-text transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
+                    <span className="truncate">
+                      {selectedColors.length > 0
+                        ? selectedColors.join(", ")
+                        : "Pilih warna"}
+                    </span>
+                    <ChevronDown
+                      className={`ml-2 h-4 w-4 shrink-0 text-text-secondary transition-transform ${
+                        isColorDropdownOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+                  {isColorDropdownOpen && (
+                    <div className="mt-1 space-y-0.5 rounded-md border border-border bg-background p-1">
+                      {COLOR_OPTIONS.map((color) => {
+                        const isSelected = selectedColors.includes(color.label);
+                        return (
+                          <button
+                            key={color.label}
+                            type="button"
+                            onClick={() => toggleColor(color.label)}
+                            aria-pressed={isSelected}
+                            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs text-text transition-colors hover:bg-surface">
+                            <span
+                              style={{ backgroundColor: color.hex }}
+                              className={`h-4 w-4 shrink-0 rounded-sm border ${
+                                isSelected ? "border-primary" : "border-border"
+                              }`}></span>
+                            <span className="flex-1">{color.label}</span>
+                            {isSelected && (
+                              <Check
+                                className="h-3.5 w-3.5 text-primary"
+                                strokeWidth={3}
+                              />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </FilterSection>
 
-            <div className="mt-6 border-t border-border pt-4">
-              <button
-                type="button"
-                onClick={() => setIsSizeFilterOpen((prev) => !prev)}
-                className="flex w-full items-center justify-between text-sm font-semibold text-text">
-                Ukuran
-                <ChevronDown
-                  className={`h-4 w-4 text-text-secondary transition-transform ${
-                    isSizeFilterOpen ? "rotate-180" : ""
-                  }`}
-                />
-              </button>
-              {isSizeFilterOpen && (
-                <div className="mt-3 flex flex-wrap gap-2">
+              <FilterSection
+                title="Ukuran"
+                count={selectedSizes.length}
+                isOpen={isSizeFilterOpen}
+                onToggle={() => setIsSizeFilterOpen((prev) => !prev)}>
+                <div className="flex flex-wrap gap-2">
                   {SIZE_OPTIONS.map((size) => (
                     <button
                       key={size}
                       type="button"
                       onClick={() => toggleSize(size)}
-                      className={`rounded-lg border px-3.5 py-1.5 text-xs font-medium transition-colors ${
+                      className={`min-w-10 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
                         selectedSizes.includes(size)
-                          ? "border-primary bg-primary text-white"
-                          : "border-border text-text hover:border-primary"
+                          ? "border-primary bg-primary text-white shadow-sm"
+                          : "border-border bg-background text-text hover:border-primary hover:text-primary"
                       }`}>
                       {size}
                     </button>
                   ))}
                 </div>
-              )}
-            </div>
+              </FilterSection>
 
-            <div className="mt-6 border-t border-border pt-4">
-              <button
-                type="button"
-                onClick={() => setIsUseCaseFilterOpen((prev) => !prev)}
-                className="flex w-full items-center justify-between text-sm font-semibold text-text">
-                Kegunaan
-                <ChevronDown
-                  className={`h-4 w-4 text-text-secondary transition-transform ${
-                    isUseCaseFilterOpen ? "rotate-180" : ""
-                  }`}
-                />
-              </button>
-              {isUseCaseFilterOpen && (
-                <div className="mt-3 space-y-3">
+              <FilterSection
+                title="Kegunaan"
+                count={selectedUseCases.length}
+                isOpen={isUseCaseFilterOpen}
+                onToggle={() => setIsUseCaseFilterOpen((prev) => !prev)}>
+                <div className="space-y-0.5">
                   {USE_CASE_OPTIONS.map((useCase) => (
-                    <label
+                    <FilterCheckbox
                       key={useCase}
-                      className="flex cursor-pointer items-center gap-2.5 text-sm text-text-secondary">
-                      <input
-                        type="checkbox"
-                        checked={selectedUseCases.includes(useCase)}
-                        onChange={() => toggleUseCase(useCase)}
-                        className="h-4 w-4 rounded border-border accent-primary"
-                      />
-                      {useCase}
-                    </label>
+                      label={useCase}
+                      checked={selectedUseCases.includes(useCase)}
+                      onChange={() => toggleUseCase(useCase)}
+                    />
                   ))}
                 </div>
-              )}
-            </div>
+              </FilterSection>
 
-            <div className="mt-6 border-t border-border pt-4">
-              <button
-                type="button"
-                onClick={() => setIsStyleFilterOpen((prev) => !prev)}
-                className="flex w-full items-center justify-between text-sm font-semibold text-text">
-                Style
-                <ChevronDown
-                  className={`h-4 w-4 text-text-secondary transition-transform ${
-                    isStyleFilterOpen ? "rotate-180" : ""
-                  }`}
-                />
-              </button>
-              {isStyleFilterOpen && (
-                <div className="mt-3 flex flex-wrap gap-2">
+              <FilterSection
+                title="Style"
+                count={selectedStyles.length}
+                isOpen={isStyleFilterOpen}
+                onToggle={() => setIsStyleFilterOpen((prev) => !prev)}>
+                <div className="flex flex-wrap gap-2">
                   {STYLE_OPTIONS.map((style) => (
                     <button
                       key={style}
                       type="button"
                       onClick={() => toggleStyle(style)}
-                      className={`rounded-lg border px-3.5 py-1.5 text-xs font-medium transition-colors ${
+                      className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all ${
                         selectedStyles.includes(style)
-                          ? "border-primary bg-primary text-white"
-                          : "border-border text-text hover:border-primary"
+                          ? "border-primary bg-primary text-white shadow-sm"
+                          : "border-border bg-background text-text hover:border-primary hover:text-primary"
                       }`}>
                       {style}
                     </button>
                   ))}
                 </div>
-              )}
-            </div>
+              </FilterSection>
 
-            <div className="mt-6 border-t border-border pt-4">
-              <label className="flex cursor-pointer items-center gap-2.5 text-sm text-text-secondary">
-                <input
-                  type="checkbox"
+              <FilterSection title="Promo">
+                <FilterCheckbox
+                  label="Hanya produk diskon"
                   checked={discountOnly}
                   onChange={() => {
                     setDiscountOnly((prev) => !prev);
                     resetToFirstPage();
                   }}
-                  className="h-4 w-4 rounded border-border accent-primary"
                 />
-                Hanya produk diskon
-              </label>
+              </FilterSection>
             </div>
           </aside>
 
