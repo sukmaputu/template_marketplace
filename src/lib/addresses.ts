@@ -194,10 +194,7 @@ export async function createAddressApi(
         const record = mapBackendToSavedAddress(res.data.data);
         const existing = getSavedAddresses(email);
         const next = input.isDefault
-          ? [
-              ...existing.map((a) => ({ ...a, isDefault: false })),
-              record,
-            ]
+          ? [...existing.map((a) => ({ ...a, isDefault: false })), record]
           : [...existing, record];
         saveSavedAddresses(next, email);
         websocketService.broadcastLocal({ type: "address_updated" });
@@ -254,9 +251,7 @@ export async function updateAddressApi(
     ...input,
     id,
     isDefault:
-      input.isDefault ??
-      existing.find((a) => a.id === id)?.isDefault ??
-      false,
+      input.isDefault ?? existing.find((a) => a.id === id)?.isDefault ?? false,
   };
   const next = existing.map((a) => (a.id === id ? updated : a));
   saveSavedAddresses(next, email);
@@ -271,11 +266,7 @@ export async function deleteAddressApi(
   const token = getAuthToken();
 
   if (token && isUUID(id)) {
-    try {
-      await api.delete(`/core/addresses/${id}`);
-    } catch (err) {
-      console.warn("Backend address delete failed:", err);
-    }
+    await api.delete(`/core/addresses/${id}`);
   }
 
   const remaining = getSavedAddresses(email).filter((a) => a.id !== id);
@@ -290,11 +281,7 @@ export async function setDefaultAddressApi(
   const token = getAuthToken();
 
   if (token && isUUID(id)) {
-    try {
-      await api.patch(`/core/addresses/${id}/primary`);
-    } catch (err) {
-      console.warn("Backend set default address failed:", err);
-    }
+    await api.patch(`/core/addresses/${id}/primary`);
   }
 
   const next = setDefaultAddress(getSavedAddresses(email), id);

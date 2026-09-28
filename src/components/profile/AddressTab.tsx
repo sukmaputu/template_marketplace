@@ -21,6 +21,7 @@ import {
   type SavedAddress,
 } from "@/lib/addresses";
 import { lookupPostalCode } from "@/lib/postalCode";
+import { showToast } from "@/lib/toast";
 
 const EMPTY_FORM: Omit<SavedAddress, "id" | "isDefault"> = {
   label: "Rumah",
@@ -54,7 +55,10 @@ export function AddressTab() {
     async function loadAddresses() {
       setIsLoading(true);
       try {
-        const fetched = await fetchAddressesFromBackend(email, user ?? undefined);
+        const fetched = await fetchAddressesFromBackend(
+          email,
+          user ?? undefined,
+        );
         if (isCurrent && Array.isArray(fetched)) {
           setAddresses(fetched);
         }
@@ -177,19 +181,32 @@ export function AddressTab() {
   }
 
   async function handleDelete(id: string) {
+    const addressToDelete = addresses.find((address) => address.id === id);
+    if (!addressToDelete) return;
+
+    const needsNewDefault =
+      addressToDelete.isDefault ||
+      !addresses.some((address) => address.isDefault);
+    const replacement = needsNewDefault
+      ? addresses.find((address) => address.id !== id)
+      : undefined;
+
     try {
-      await deleteAddressApi(id, email);
-      const remaining = addresses.filter((address) => address.id !== id);
-      if (
-        remaining.length > 0 &&
-        !remaining.some((address) => address.isDefault)
-      ) {
-        remaining[0] = { ...remaining[0], isDefault: true };
-        await setDefaultAddressApi(remaining[0].id, email);
+      if (replacement) {
+        await setDefaultAddressApi(replacement.id, email);
+        setAddresses((prev) =>
+          prev.map((address) => ({
+            ...address,
+            isDefault: address.id === replacement.id,
+          })),
+        );
       }
-      setAddresses(remaining);
+
+      await deleteAddressApi(id, email);
+      setAddresses((prev) => prev.filter((address) => address.id !== id));
     } catch (err) {
       console.error("Error deleting address:", err);
+      showToast("Gagal menghapus alamat. Silakan coba lagi.");
     }
   }
 
@@ -204,6 +221,7 @@ export function AddressTab() {
       );
     } catch (err) {
       console.error("Error setting default address:", err);
+      showToast("Gagal mengubah alamat utama. Silakan coba lagi.");
     }
   }
 
