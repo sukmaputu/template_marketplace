@@ -1,13 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { Check, ChevronDown, SlidersHorizontal, X } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import {
+  Check,
+  ChevronDown,
+  SlidersHorizontal,
+  X,
+  Search,
+  Sparkles,
+  ArrowRight,
+} from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { MarketplaceFooter } from "@/components/MarketplaceFooter";
 import { ProductCard } from "@/components/ProductCard";
 import { ProductGridSkeleton } from "@/components/skeleton/ProductCardSkeleton";
 import { PromoBannerSection } from "@/components/PromoBannerSection";
 import { Pagination } from "@/components/ui/pagination";
-import { usePaginatedProducts, useCategories } from "@/lib/products";
+import {
+  usePaginatedProducts,
+  useCategories,
+  useMarketplaceProducts,
+  getTopRecommendedProducts,
+  getRelatedProducts,
+  PRODUCTS,
+} from "@/lib/products";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 // import { PromoModal } from "@/components/PromoModal";
 
@@ -337,7 +352,9 @@ export default function HomePage() {
     setSelectedSizes([]);
     setSelectedUseCases([]);
     setSelectedStyles([]);
-    resetToFirstPage();
+    const nextParams = new URLSearchParams();
+    nextParams.set("page", "1");
+    setSearchParams(nextParams, { replace: true });
   }
 
   const hasActiveFilters =
@@ -381,6 +398,29 @@ export default function HomePage() {
           )
         : []
       : pagedProducts;
+
+  const { products: allMarketplaceProducts } = useMarketplaceProducts(50);
+  const catalogPool = useMemo(
+    () =>
+      allMarketplaceProducts.length > 0 ? allMarketplaceProducts : PRODUCTS,
+    [allMarketplaceProducts],
+  );
+
+  const topRecommendedProducts = useMemo(() => {
+    return getTopRecommendedProducts(catalogPool, 6);
+  }, [catalogPool]);
+
+  const relatedProducts = useMemo(() => {
+    if (!searchQuery) return [];
+    const currentProductIds = products.map((p) => p.id);
+    return getRelatedProducts({
+      query: searchQuery,
+      categoryId: selectedCategories[0],
+      excludeIds: currentProductIds,
+      limit: 3,
+      sourceProducts: catalogPool,
+    });
+  }, [searchQuery, selectedCategories, products, catalogPool]);
 
   const filterKey = JSON.stringify({
     selectedCategories,
@@ -789,6 +829,55 @@ export default function HomePage() {
               <div className="mt-6">
                 <ProductGridSkeleton count={PAGE_SIZE} />
               </div>
+            ) : products.length === 0 ? (
+              <div className="mt-8 rounded-2xl border border-dashed border-border bg-surface/50 p-6 text-center sm:p-10">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Search className="h-6 w-6" />
+                </div>
+                <h3 className="mt-4 text-base font-semibold text-text sm:text-lg">
+                  {searchQuery
+                    ? `Tidak ada produk yang cocok dengan "${searchQuery}"`
+                    : "Belum ada produk yang cocok dengan filter ini"}
+                </h3>
+                <p className="mx-auto mt-2 max-w-md text-xs text-text-secondary sm:text-sm">
+                  {searchQuery
+                    ? "Coba periksa ejaan Anda, gunakan kata kunci yang lebih umum, atau jelajahi rekomendasi produk terbaik kami di bawah ini."
+                    : "Coba ubah atau reset filter untuk melihat koleksi produk lainnya."}
+                </p>
+                <div className="mt-5 flex justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleClearFilters}
+                    className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 sm:text-sm">
+                    <X className="h-4 w-4" />
+                    Reset Filter & Pencarian
+                  </button>
+                </div>
+
+                {topRecommendedProducts.length > 0 && (
+                  <div className="mt-10 border-t border-border pt-8 text-left">
+                    <div className="mb-5 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-5 w-5 text-primary" />
+                        <h4 className="text-base font-bold text-text sm:text-lg">
+                          Rekomendasi Produk Terbaik Untuk Anda
+                        </h4>
+                      </div>
+                      <span className="text-xs text-text-secondary">
+                        Pilihan terpopuler dengan rating & ulasan tertinggi
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                      {topRecommendedProducts.slice(0, 3).map((product) => (
+                        <ProductCard
+                          key={`empty-rec-${product.id}`}
+                          product={product}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             ) : (
               <>
                 <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
@@ -800,11 +889,7 @@ export default function HomePage() {
                   ))}
                 </div>
 
-                {products.length === 0 ? (
-                  <p className="mt-12 text-center text-sm text-text-secondary">
-                    Belum ada produk yang cocok dengan filter/pencarian ini.
-                  </p>
-                ) : viewMode === "pagination" ? (
+                {viewMode === "pagination" ? (
                   <div className="mt-6 overflow-hidden rounded-xl border border-border bg-surface">
                     <Pagination
                       currentPage={safePage}
@@ -818,6 +903,40 @@ export default function HomePage() {
                       Memuat produk lainnya...
                     </p>
                   </div>
+                )}
+
+                {/* Bagian Produk Terkait ketika pencarian aktif dan ada hasil */}
+                {searchQuery && relatedProducts.length > 0 && (
+                  <section className="mt-14 border-t border-border pt-8">
+                    <div className="mb-6 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-5 w-5 text-primary" />
+                          <h2 className="text-lg font-bold text-text sm:text-xl">
+                            Produk Terkait yang Mungkin Anda Sukai
+                          </h2>
+                        </div>
+                        <p className="mt-1 text-xs text-text-secondary sm:text-sm">
+                          Rekomendasi berdasarkan pencarian &quot;{searchQuery}&quot;
+                        </p>
+                      </div>
+                      <Link
+                        to="/"
+                        onClick={handleClearFilters}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                        Lihat Semua Katalog
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Link>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                      {relatedProducts.map((product) => (
+                        <ProductCard
+                          key={`related-${product.id}`}
+                          product={product}
+                        />
+                      ))}
+                    </div>
+                  </section>
                 )}
               </>
             )}
