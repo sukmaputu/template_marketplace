@@ -1,26 +1,42 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Search, ShoppingCart, X } from "lucide-react";
+import { Search, ShoppingCart, X, Star, Sparkles, TrendingUp, History } from "lucide-react";
 import { ThemeToggle } from "@/components/navbar/Themetoggle";
 import { NotificationMenu } from "@/components/navbar/NotificationMenu";
 import { ProfileMenu } from "@/components/navbar/ProfileMenu";
 import { MobileMenu } from "@/components/navbar/MobileMenu";
 import { useCart } from "@/components/cart/useCart";
 import { useAuth } from "@/components/auth/UseAuth";
-import { CurrencySwitcher } from "@/components/navbar/CurrencySwitcher";
+import { CurrencySwitcher, useCurrency } from "@/components/navbar/CurrencySwitcher";
 import {
   PRODUCTS,
   POPULAR_SEARCH_TERMS,
   getRecentlyViewedProducts,
+  removeRecentlyViewedProduct,
+  clearRecentlyViewedProducts,
+  getTopRecommendedProducts,
+  getRelatedProducts,
+  getDiscountPercent,
+  useMarketplaceProducts,
   useCategories,
+  getRecentSearches,
+  addRecentSearch,
+  removeRecentSearch,
+  clearRecentSearches,
   type Product,
 } from "@/lib/products";
 
 export function MarketplaceHeader() {
   const { itemCount } = useCart();
   const { isAuthenticated, user } = useAuth();
+  const { formatPrice } = useCurrency();
   const navigate = useNavigate();
   const { categories } = useCategories();
+  const { products: marketplaceProducts } = useMarketplaceProducts(50);
+  const allProducts = useMemo(
+    () => (marketplaceProducts.length > 0 ? marketplaceProducts : PRODUCTS),
+    [marketplaceProducts],
+  );
   const [searchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [category, setCategory] = useState(
@@ -56,6 +72,7 @@ export function MarketplaceHeader() {
  
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [recentlyViewed, setRecentlyViewed] = useState<Product[]>([]);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const searchWrapperRef = useRef<HTMLDivElement>(null);
   const inputColumnRef = useRef<HTMLDivElement>(null);
   const [dropdownRect, setDropdownRect] = useState<{
@@ -93,6 +110,16 @@ export function MarketplaceHeader() {
   }, []);
 
   useEffect(() => {
+    function loadRecentSearches() {
+      setRecentSearches(getRecentSearches());
+    }
+    loadRecentSearches();
+    window.addEventListener("recent-searches-updated", loadRecentSearches);
+    return () =>
+      window.removeEventListener("recent-searches-updated", loadRecentSearches);
+  }, []);
+
+  useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (
         searchWrapperRef.current &&
@@ -113,15 +140,29 @@ export function MarketplaceHeader() {
   }, []);
   // --- Akhir tambahan ---
 
-  // --- Tambahan: hasil pencarian live saat mengetik ---
+  // --- Tambahan: hasil pencarian live & rekomendasi ---
   const trimmedQuery = query.trim().toLowerCase();
 
   const searchResults = useMemo(() => {
     if (!trimmedQuery) return [];
-    return PRODUCTS.filter((product) =>
+    return allProducts.filter((product) =>
       product.name.toLowerCase().includes(trimmedQuery),
     );
-  }, [trimmedQuery]);
+  }, [trimmedQuery, allProducts]);
+
+  const topRecommended = useMemo(() => {
+    return getTopRecommendedProducts(allProducts, 4, "best");
+  }, [allProducts]);
+
+  const relatedSearchResults = useMemo(() => {
+    if (!trimmedQuery || searchResults.length === 0) return [];
+    return getRelatedProducts({
+      query: trimmedQuery,
+      excludeIds: searchResults.map((p) => p.id),
+      limit: 3,
+      sourceProducts: allProducts,
+    });
+  }, [trimmedQuery, searchResults, allProducts]);
   // --- Akhir tambahan ---
 
   function handleSearchSubmit(e: FormEvent) {
@@ -130,6 +171,7 @@ export function MarketplaceHeader() {
     const nextParams = new URLSearchParams(searchParams);
 
     if (trimmed) {
+      addRecentSearch(trimmed);
       nextParams.set("q", trimmed);
     } else {
       nextParams.delete("q");
@@ -171,6 +213,7 @@ export function MarketplaceHeader() {
   function handleTermClick(term: string) {
     setQuery(term);
     setIsSearchOpen(false);
+    addRecentSearch(term);
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set("q", term);
     if (category && category !== "all") {
@@ -195,6 +238,102 @@ export function MarketplaceHeader() {
     });
   }
   // --- Akhir tambahan ---
+
+  function renderRecommendationSection(title: string, keyPrefix: string) {
+    if (topRecommended.length === 0) return null;
+
+    return (
+      <div className="mt-4 border-t border-border pt-3">
+        <div className="mb-2 flex items-center gap-1.5">
+          <Sparkles className="h-3.5 w-3.5 text-primary" />
+          <p className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+            {title}
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          {topRecommended.map((product) => {
+            const discount = getDiscountPercent(product);
+            const rating = product.rating ?? 0;
+            const reviews = product.reviewCount ?? 0;
+
+            let badgeText = "Pilihan Utama";
+            let badgeClass = "bg-primary/10 text-primary";
+            if (discount && discount >= 20) {
+              badgeText = `Diskon ${discount}%`;
+              badgeClass = "bg-red-500/10 text-red-600 dark:text-red-400";
+            } else if (reviews >= 10) {
+              badgeText = "Terlaris";
+              badgeClass = "bg-amber-500/10 text-amber-700 dark:text-amber-400";
+            } else if (rating >= 4.5) {
+              badgeText = "Top Rated";
+              badgeClass = "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+            }
+
+            return (
+              <Link
+                key={`${keyPrefix}-${product.id}`}
+                to={`/product/${product.id}`}
+                onClick={() => setIsSearchOpen(false)}
+                className="group flex items-center justify-between gap-3 rounded-lg p-2 transition-colors hover:bg-border/40"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-border/20">
+                    {product.image ? (
+                      <img
+                        src={product.image}
+                        alt={product.name}
+                        className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                      />
+                    ) : null}
+                    {discount ? (
+                      <span className="absolute left-0 top-0 rounded-br bg-red-600 px-1 py-0.2 text-[9px] font-bold text-white">
+                        -{discount}%
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-text transition-colors group-hover:text-primary">
+                      {product.name}
+                    </p>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="font-semibold text-primary">
+                        {formatPrice(product.basePrice)}
+                      </span>
+                      {product.comparePrice &&
+                      product.comparePrice > product.basePrice ? (
+                        <span className="text-[11px] text-text-secondary line-through">
+                          {formatPrice(product.comparePrice)}
+                        </span>
+                      ) : null}
+                      <span
+                        className={`rounded px-1.5 py-0.2 text-[10px] font-medium ${badgeClass}`}
+                      >
+                        {badgeText}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-0.5">
+                  {rating > 0 ? (
+                    <div className="flex items-center gap-1 text-[11px] font-medium text-amber-500">
+                      <Star className="h-3 w-3 fill-current" />
+                      <span>{rating.toFixed(1)}</span>
+                      {reviews > 0 ? (
+                        <span className="text-[10px] text-text-secondary">
+                          ({reviews})
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
@@ -258,51 +397,184 @@ export function MarketplaceHeader() {
               style={{ left: dropdownRect.left, width: dropdownRect.width }}>
               {trimmedQuery ? (
                 <div>
-                  <p className="text-sm font-semibold text-text">Produk</p>
-                  <p className="mb-3 text-xs text-text-secondary">
-                    {searchResults.length} Hasil Ditemukan
-                  </p>
-
                   {searchResults.length > 0 ? (
-                    <div className="flex flex-col gap-1">
-                      {searchResults.map((product) => (
-                        <Link
-                          key={product.id}
-                          to={`/product/${product.id}`}
-                          onClick={() => setIsSearchOpen(false)}
-                          className="flex items-center gap-3 rounded-lg p-2 hover:bg-border/40">
-                          <div className="h-14 w-14 shrink-0 overflow-hidden rounded-md bg-border/20">
-                            {product.image && (
-                              <img
-                                src={product.image}
-                                alt={product.name}
-                                className="h-full w-full object-cover"
-                              />
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-text">
-                              {product.name}
+                    <div>
+                      <div className="mb-2 flex items-center justify-between border-b border-border/60 pb-2">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                          Hasil Pencarian
+                        </p>
+                        <span className="text-xs text-text-secondary">
+                          {searchResults.length} Produk Ditemukan
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        {searchResults.slice(0, 6).map((product) => {
+                          const discount = getDiscountPercent(product);
+                          return (
+                            <Link
+                              key={product.id}
+                              to={`/product/${product.id}`}
+                              onClick={() => setIsSearchOpen(false)}
+                              className="group flex items-center justify-between gap-3 rounded-lg p-2 transition-colors hover:bg-border/40">
+                              <div className="flex min-w-0 items-center gap-3">
+                                <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-border/20">
+                                  {product.image ? (
+                                    <img
+                                      src={product.image}
+                                      alt={product.name}
+                                      className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                                    />
+                                  ) : (
+                                    <div className="flex h-full w-full items-center justify-center text-[10px] text-text-secondary">
+                                      No Img
+                                    </div>
+                                  )}
+                                  {discount ? (
+                                    <span className="absolute left-0 top-0 rounded-br bg-red-600 px-1 py-0.2 text-[9px] font-bold text-white">
+                                      -{discount}%
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium text-text transition-colors group-hover:text-primary">
+                                    {product.name}
+                                  </p>
+                                  <div className="flex items-center gap-2 text-xs">
+                                    <span className="font-semibold text-primary">
+                                      {formatPrice(product.basePrice)}
+                                    </span>
+                                    {product.comparePrice &&
+                                    product.comparePrice > product.basePrice ? (
+                                      <span className="text-[11px] text-text-secondary line-through">
+                                        {formatPrice(product.comparePrice)}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </div>
+                              {(product.rating ?? 0) > 0 ? (
+                                <div className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-amber-500">
+                                  <Star className="h-3 w-3 fill-current" />
+                                  <span>{(product.rating ?? 0).toFixed(1)}</span>
+                                </div>
+                              ) : null}
+                            </Link>
+                          );
+                        })}
+                      </div>
+
+                      {/* Produk Terkait dalam pencarian jika ada */}
+                      {relatedSearchResults.length > 0 && (
+                        <div className="mt-4 border-t border-border pt-3">
+                          <div className="mb-2 flex items-center gap-1.5">
+                            <Sparkles className="h-3.5 w-3.5 text-primary" />
+                            <p className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                              Produk Terkait yang Mungkin Anda Sukai
                             </p>
-                            <p className="text-sm text-text-secondary">
-                              Rp {product.basePrice}
-                            </p>
                           </div>
-                        </Link>
-                      ))}
+                          <div className="flex flex-col gap-1">
+                            {relatedSearchResults.map((product) => (
+                              <Link
+                                key={`related-search-${product.id}`}
+                                to={`/product/${product.id}`}
+                                onClick={() => setIsSearchOpen(false)}
+                                className="group flex items-center justify-between gap-3 rounded-lg p-2 transition-colors hover:bg-border/40">
+                                <div className="flex min-w-0 items-center gap-3">
+                                  <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md bg-border/20">
+                                    {product.image && (
+                                      <img
+                                        src={product.image}
+                                        alt={product.name}
+                                        className="h-full w-full object-cover"
+                                      />
+                                    )}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="truncate text-xs font-medium text-text transition-colors group-hover:text-primary">
+                                      {product.name}
+                                    </p>
+                                    <p className="text-xs font-semibold text-primary">
+                                      {formatPrice(product.basePrice)}
+                                    </p>
+                                  </div>
+                                </div>
+                              </Link>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ) : (
-                    <p className="text-sm text-text-secondary">
-                      Tidak ada produk yang cocok dengan &quot;{query}&quot;
-                    </p>
+                    <div>
+                      <div className="rounded-lg border border-dashed border-border/80 bg-surface/50 p-3 text-center">
+                        <p className="text-sm font-semibold text-text">
+                          Tidak ada produk yang cocok dengan &quot;{query}&quot;
+                        </p>
+                        <p className="mt-0.5 text-xs text-text-secondary">
+                          Berikut rekomendasi produk terpopuler pilihan kami:
+                        </p>
+                      </div>
+
+                      {renderRecommendationSection(
+                        "Rekomendasi Terbaik Untuk Anda",
+                        "rec-empty",
+                      )}
+                    </div>
                   )}
                 </div>
               ) : (
                 <>
+                  {recentSearches.length > 0 && (
+                    <div className="mb-4">
+                      <div className="mb-2 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <History className="h-3.5 w-3.5 text-primary" />
+                          <p className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                            Pencarian Terakhir
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={clearRecentSearches}
+                          className="text-[11px] font-medium text-red-500 transition-colors hover:text-red-600 hover:underline">
+                          Hapus Semua
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {recentSearches.map((term) => (
+                          <div
+                            key={term}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-xs text-text transition-colors hover:border-primary">
+                            <button
+                              type="button"
+                              onClick={() => handleTermClick(term)}
+                              className="font-medium hover:text-primary">
+                              {term}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeRecentSearch(term);
+                              }}
+                              aria-label={`Hapus ${term}`}
+                              className="rounded-full p-0.5 text-text-secondary hover:bg-border/60 hover:text-red-500">
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div>
-                    <p className="mb-2 text-sm font-medium text-text">
-                      Kata Kunci Populer
-                    </p>
+                    <div className="mb-2 flex items-center gap-1.5">
+                      <TrendingUp className="h-3.5 w-3.5 text-primary" />
+                      <p className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                        Kata Kunci Populer
+                      </p>
+                    </div>
                     <div className="flex flex-wrap gap-2">
                       {POPULAR_SEARCH_TERMS.map((term) => (
                         <button
@@ -317,36 +589,64 @@ export function MarketplaceHeader() {
                   </div>
 
                   {recentlyViewed.length > 0 && (
-                    <div className="mt-4">
-                      <p className="mb-2 text-sm font-medium text-text">
-                        Baru Dilihat
-                      </p>
+                    <div className="mt-4 border-t border-border pt-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                          Baru Dilihat
+                        </p>
+                        <button
+                          type="button"
+                          onClick={clearRecentlyViewedProducts}
+                          className="text-[11px] font-medium text-red-500 transition-colors hover:text-red-600 hover:underline">
+                          Hapus Semua
+                        </button>
+                      </div>
                       <div className="flex flex-wrap gap-3">
                         {recentlyViewed.map((product) => (
-                          <Link
+                          <div
                             key={product.id}
-                            to={`/product/${product.id}`}
-                            onClick={() => setIsSearchOpen(false)}
-                            className="group w-28 shrink-0">
-                            <div className="aspect-square overflow-hidden rounded-lg bg-border/20">
-                              {product.image && (
-                                <img
-                                  src={product.image}
-                                  alt={product.name}
-                                  className="h-full w-full object-cover transition-transform group-hover:scale-105"
-                                />
-                              )}
-                            </div>
-                            <p className="mt-1 line-clamp-2 text-xs text-text">
-                              {product.name}
-                            </p>
-                            <p className="text-xs font-semibold text-primary">
-                              {product.basePrice}
-                            </p>
-                          </Link>
+                            className="group relative w-28 shrink-0">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                removeRecentlyViewedProduct(product.id);
+                              }}
+                              aria-label={`Hapus ${product.name} dari baru dilihat`}
+                              className="absolute right-1 top-1 z-20 flex h-5 w-5 items-center justify-center rounded-full bg-background/80 text-text-secondary shadow-sm backdrop-blur-xs transition-colors hover:bg-background hover:text-red-500">
+                              <X className="h-3 w-3" />
+                            </button>
+
+                            <Link
+                              to={`/product/${product.id}`}
+                              onClick={() => setIsSearchOpen(false)}
+                              className="block">
+                              <div className="aspect-square overflow-hidden rounded-lg bg-border/20">
+                                {product.image && (
+                                  <img
+                                    src={product.image}
+                                    alt={product.name}
+                                    className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                                  />
+                                )}
+                              </div>
+                              <p className="mt-1 line-clamp-2 text-xs text-text transition-colors group-hover:text-primary">
+                                {product.name}
+                              </p>
+                              <p className="text-xs font-semibold text-primary">
+                                {formatPrice(product.basePrice)}
+                              </p>
+                            </Link>
+                          </div>
                         ))}
                       </div>
                     </div>
+                  )}
+
+                  {renderRecommendationSection(
+                    "Rekomendasi Populer",
+                    "rec-blank",
                   )}
                 </>
               )}
