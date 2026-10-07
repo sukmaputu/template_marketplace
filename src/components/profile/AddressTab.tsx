@@ -43,7 +43,11 @@ export function AddressTab() {
   );
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [deletingAddressId, setDeletingAddressId] = useState<string | null>(
+    null,
+  );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [isSearchingZip, setIsSearchingZip] = useState(false);
@@ -210,6 +214,18 @@ export function AddressTab() {
     }
   }
 
+  async function confirmDeleteAddress() {
+    if (!deletingAddressId) return;
+
+    setIsDeleting(true);
+    try {
+      await handleDelete(deletingAddressId);
+      setDeletingAddressId(null);
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   async function handleSetDefault(id: string) {
     try {
       await setDefaultAddressApi(id, email);
@@ -299,7 +315,7 @@ export function AddressTab() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleDelete(address.id)}
+                      onClick={() => setDeletingAddressId(address.id)}
                       aria-label="Hapus alamat"
                       className="rounded-md p-2 text-text-secondary hover:bg-background hover:text-red-600">
                       <Trash2 className="h-4 w-4" />
@@ -453,6 +469,39 @@ export function AddressTab() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {deletingAddressId && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-address-title">
+          <div className="w-full max-w-sm rounded-xl border border-border bg-surface p-6 shadow-xl">
+            <h3
+              id="delete-address-title"
+              className="text-base font-semibold text-text">
+              Anda yakin ingin menhapus alamat ini ?
+            </h3>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeletingAddressId(null)}
+                disabled={isDeleting}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:bg-background disabled:opacity-50">
+                Tidak
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteAddress}
+                disabled={isDeleting}
+                className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">
+                {isDeleting && <Loader2 className="h-4 w-4 animate-spin" />}
+                Hapus
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

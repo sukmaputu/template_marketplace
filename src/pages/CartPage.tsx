@@ -19,6 +19,7 @@ export default function CartPage() {
   } = useCart();
   const { formatPrice } = useCurrency();
   const [liveStocks, setLiveStocks] = useState<Record<string, number>>({});
+  const [pendingRemovalId, setPendingRemovalId] = useState<string | null>(null);
 
   useEffect(() => {
     if (items.length === 0) return;
@@ -62,6 +63,12 @@ export default function CartPage() {
     const stock = getItemStock(item);
     return stock !== undefined && stock <= 0;
   });
+
+  function confirmRemoveItem() {
+    if (!pendingRemovalId) return;
+    removeItem(pendingRemovalId);
+    setPendingRemovalId(null);
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -186,7 +193,7 @@ export default function CartPage() {
                         <div className="mt-3 flex items-center justify-end gap-4">
                           <button
                             aria-label="Hapus item"
-                            onClick={() => removeItem(item.id)}
+                            onClick={() => setPendingRemovalId(item.id)}
                             className="text-text-secondary hover:text-red-600">
                             <Trash2 className="h-5 w-5" />
                           </button>
@@ -250,6 +257,38 @@ export default function CartPage() {
           </div>
         </div>
       </div>
+
+      {pendingRemovalId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="presentation">
+          <div
+            className="w-full max-w-sm rounded-xl border border-border bg-surface p-6 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="remove-cart-item-title">
+            <h2
+              id="remove-cart-item-title"
+              className="text-base font-semibold text-text">
+              Yakin ingin menghapus item ini dari keranjang?
+            </h2>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingRemovalId(null)}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:bg-background">
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={confirmRemoveItem}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">
+                Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

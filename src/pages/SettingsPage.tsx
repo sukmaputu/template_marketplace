@@ -4,7 +4,6 @@ import { ArrowLeft, Bell, Eye, EyeOff, Lock } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 
 interface PasswordForm {
-  current: string;
   next: string;
   confirm: string;
 }
@@ -52,13 +51,14 @@ function ToggleRow({
 
 export default function SettingsPage() {
   const [passwordForm, setPasswordForm] = useState<PasswordForm>({
-    current: "",
     next: "",
     confirm: "",
   });
   const [showPassword, setShowPassword] = useState(false);
   const [passwordError, setPasswordError] = useState("");
-  const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [isConfirmPasswordModalOpen, setIsConfirmPasswordModalOpen] =
+    useState(false);
+  const [isCheckEmailModalOpen, setIsCheckEmailModalOpen] = useState(false);
 
   const [notifications, setNotifications] = useState<NotificationPrefs>({
     emailPromo: true,
@@ -72,10 +72,9 @@ export default function SettingsPage() {
 
   function handlePasswordSubmit(e: FormEvent) {
     e.preventDefault();
-    setPasswordSuccess(false);
     setPasswordError("");
 
-    if (!passwordForm.current || !passwordForm.next || !passwordForm.confirm) {
+    if (!passwordForm.next || !passwordForm.confirm) {
       setPasswordError("Semua kolom wajib diisi.");
       return;
     }
@@ -88,9 +87,17 @@ export default function SettingsPage() {
       return;
     }
 
-    console.log("Ganti password:", passwordForm);
-    setPasswordSuccess(true);
-    setPasswordForm({ current: "", next: "", confirm: "" });
+    setIsConfirmPasswordModalOpen(true);
+  }
+
+  function confirmPasswordChange() {
+    setIsConfirmPasswordModalOpen(false);
+    setIsCheckEmailModalOpen(true);
+  }
+
+  function closeCheckEmailModal() {
+    setIsCheckEmailModalOpen(false);
+    setPasswordForm({ next: "", confirm: "" });
   }
 
   return (
@@ -119,20 +126,6 @@ export default function SettingsPage() {
           </div>
 
           <form onSubmit={handlePasswordSubmit} className="mt-4 space-y-4">
-            <div>
-              <label className="text-sm font-medium text-text">
-                Password Saat Ini
-              </label>
-              <input
-                type="password"
-                value={passwordForm.current}
-                onChange={(e) =>
-                  setPasswordForm((p) => ({ ...p, current: e.target.value }))
-                }
-                className="mt-1.5 w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm text-text outline-none focus:border-primary"
-              />
-            </div>
-
             <div>
               <label className="text-sm font-medium text-text">
                 Password Baru
@@ -177,11 +170,6 @@ export default function SettingsPage() {
             {passwordError ? (
               <p className="text-xs text-red-600">{passwordError}</p>
             ) : null}
-            {passwordSuccess ? (
-              <p className="text-xs text-secondary">
-                Password berhasil diubah.
-              </p>
-            ) : null}
 
             <button
               type="submit"
@@ -206,6 +194,64 @@ export default function SettingsPage() {
             />
           </div>
         </div>
+
+        {isConfirmPasswordModalOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            role="presentation">
+            <div
+              className="w-full max-w-sm rounded-xl border border-border bg-surface p-6 shadow-xl"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="confirm-password-title">
+              <h2
+                id="confirm-password-title"
+                className="text-base font-semibold text-text">
+                Apa Anda yakin ingin ganti password?
+              </h2>
+              <div className="mt-6 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmPasswordModalOpen(false)}
+                  className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:bg-background">
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmPasswordChange}
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">
+                  Hapus
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isCheckEmailModalOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            role="presentation">
+            <div
+              className="w-full max-w-sm rounded-xl border border-border bg-surface p-6 shadow-xl"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="check-email-title">
+              <h2
+                id="check-email-title"
+                className="text-base font-semibold text-text">
+                Tolong Periksa Email
+              </h2>
+              <div className="mt-6 flex justify-end">
+                <button
+                  type="button"
+                  onClick={closeCheckEmailModal}
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+                  Mengerti
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

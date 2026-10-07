@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { useCart } from "@/components/cart/useCart";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useBlocker, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/components/auth/UseAuth";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 import type { Voucher } from "@/components/profile/types";
@@ -132,7 +132,23 @@ export default function CheckoutPage() {
   const { formatPrice } = useCurrency();
   const location = useLocation();
   const navigate = useNavigate();
+  const navigationBlocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      currentLocation.pathname === "/checkout" &&
+      nextLocation.pathname !== currentLocation.pathname &&
+      nextLocation.pathname !== "/payment-success",
+  );
   const { items, clearSelected } = useCart();
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
 
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>(() =>
     getSavedAddresses(user?.email, user ?? undefined),
@@ -217,12 +233,12 @@ export default function CheckoutPage() {
           user.email,
           user ?? undefined,
         );
-        if (isCurrent && Array.isArray(fetched) && fetched.length > 0) {
+        if (isCurrent && Array.isArray(fetched)) {
           setSavedAddresses(fetched);
           setSelectedAddressId((curr) => {
             if (curr && fetched.some((a) => a.id === curr)) return curr;
             const def = fetched.find((a) => a.isDefault) ?? fetched[0];
-            return def ? def.id : null;
+            return def?.id ?? null;
           });
         }
       } catch (err) {
@@ -1091,6 +1107,40 @@ export default function CheckoutPage() {
           </div>
         </div>
       </form>
+
+      {navigationBlocker.state === "blocked" && (
+        <div
+          className="fixed inset-0 z-100 flex items-center justify-center bg-black/50 px-4"
+          onClick={() => navigationBlocker.reset()}
+          role="presentation">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="checkout-leave-title"
+            onClick={(event) => event.stopPropagation()}
+            className="w-full max-w-sm rounded-lg border border-border bg-surface p-6 shadow-lg">
+            <h2
+              id="checkout-leave-title"
+              className="text-base font-semibold text-text">
+              Apakah Anda yakin ingin keluar dari halaman checkout?
+            </h2>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => navigationBlocker.reset()}
+                className="rounded-md border border-border px-4 py-2 text-sm font-medium text-text transition-colors hover:bg-border/40">
+                Tidak
+              </button>
+              <button
+                type="button"
+                onClick={() => navigationBlocker.proceed()}
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700">
+                Keluar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

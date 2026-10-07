@@ -92,9 +92,7 @@ export function getSavedAddresses(
     if (!saved) return createLegacyAddress(owner);
 
     const parsed = JSON.parse(saved) as SavedAddress[];
-    return Array.isArray(parsed) && parsed.length > 0
-      ? parsed
-      : createLegacyAddress(owner);
+    return Array.isArray(parsed) ? parsed : createLegacyAddress(owner);
   } catch {
     return createLegacyAddress(owner);
   }

@@ -32,6 +32,7 @@ function getStoredWishlist(): WishlistItem[] {
 export function WishlistTab() {
   const [items, setItems] = useState<WishlistItem[]>(() => getStoredWishlist());
   const [page, setPage] = useState(1);
+  const [pendingRemovalId, setPendingRemovalId] = useState<string | null>(null);
   const isLoading = false;
 
   const { formatPrice } = useCurrency();
@@ -58,6 +59,7 @@ export function WishlistTab() {
 
   function handleRemove(id: string) {
     setItems((prev) => prev.filter((item) => item.id !== id));
+    setPendingRemovalId(null);
   }
 
   function handleAddToCart(item: WishlistItem) {
@@ -113,7 +115,7 @@ export function WishlistTab() {
                   className="group relative flex flex-col overflow-hidden rounded-lg border border-border">
                   <button
                     type="button"
-                    onClick={() => handleRemove(item.id)}
+                    onClick={() => setPendingRemovalId(item.id)}
                     aria-label="Hapus dari wishlist"
                     className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-text-secondary shadow-sm hover:text-red-500">
                     <Trash2 className="h-3.5 w-3.5" />
@@ -214,6 +216,38 @@ export function WishlistTab() {
             </nav>
           )}
         </>
+      )}
+
+      {pendingRemovalId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="presentation">
+          <div
+            className="w-full max-w-sm rounded-xl border border-border bg-surface p-6 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="remove-wishlist-item-title">
+            <h2
+              id="remove-wishlist-item-title"
+              className="text-base font-semibold text-text">
+              Yakin ingin menghapus item ini dari wishlist?
+            </h2>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingRemovalId(null)}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:bg-background">
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRemove(pendingRemovalId)}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">
+                Hapus
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
