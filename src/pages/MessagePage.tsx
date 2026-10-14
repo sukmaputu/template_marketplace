@@ -102,8 +102,8 @@ export default function MessagePage() {
       conversation_id?: string;
       conversation?: Partial<ChatConversation>;
       message?: ChatMessage;
-      customer_email?: string;
-      customer_user_id?: string;
+      customer_email?: string | null;
+      customer_user_id?: string | null;
     }) => {
       const currentConv = conversationRef.current;
       if (!currentConv) return false;
