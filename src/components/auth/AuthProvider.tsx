@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { AuthContext, type AuthUser, type RegisterParams } from "@/components/auth/AuthContext";
 import { api, removeAuthToken, setAuthToken } from "@/lib/api";
 import { createAddressApi } from "@/lib/addresses";
+import { chatService } from "@/services/chat.service";
 
 const DEMO_ACCOUNT = {
   email: "sukma@email.com",
@@ -48,6 +49,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const storedUser = loadStoredUser();
     return storedUser;
   });
+
+  useEffect(() => {
+    if (user?.email) {
+      chatService.transferGuestHistory({
+        id: user.username || user.email,
+        email: user.email,
+        phone: user.phone,
+        full_name: user.full_name,
+      });
+    }
+  }, [user]);
 
   async function login(email: string, password: string): Promise<boolean> {
     const normalizedIdentifier = email.trim().toLowerCase();
@@ -107,6 +119,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
       setUser(nextUser);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
+      chatService.transferGuestHistory({
+        id: nextUser.username || nextUser.email,
+        email: nextUser.email,
+        phone: nextUser.phone,
+        full_name: nextUser.full_name,
+      });
       return true;
     }
 

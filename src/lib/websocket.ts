@@ -2,12 +2,16 @@
 // Handles WebSocket connection to backend ws://127.0.0.1:8080/ws
 // and multi-tab synchronization via BroadcastChannel and Storage events.
 
-export type WSConnectionStatus =
-  | "connecting"
-  | "connected"
-  | "disconnected"
-  | "reconnecting";
+import type {
+  WSChatMessagePayload,
+  WSConnectionStatus,
+  WSTypingPayload,
+  WSPresencePayload,
+  WSPresenceQueryPayload,
+  WSReadReceiptPayload,
+} from "@/types/chat";
 
+export type { WSConnectionStatus };
 export type WSCallback<T = unknown> = (payload: T) => void;
 export type WSStatusCallback = (status: WSConnectionStatus) => void;
 
@@ -38,25 +42,22 @@ function resolveWsUrl(): string {
     }
   }
 
-  if (typeof window !== "undefined") {
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const hostname = window.location.hostname || "127.0.0.1";
-    return `${protocol}//${hostname}:8080/ws`;
-  }
+  const host = import.meta.env.VITE_WS_HOST || "127.0.0.1";
+  const port = import.meta.env.VITE_WS_PORT || "8080";
+  const protocol =
+    typeof window !== "undefined" && window.location.protocol === "https:"
+      ? "wss:"
+      : "ws:";
 
-  return "ws://127.0.0.1:8080/ws";
+  return `${protocol}//${host}:${port}/ws`;
 }
 
-function parseMessage(data: string): WSEvent {
+function parseMessage(data: string): unknown {
   try {
-    const parsed = JSON.parse(data);
-    if (parsed && typeof parsed === "object") {
-      return parsed as WSEvent;
-    }
+    return JSON.parse(data);
   } catch {
-    // not JSON
+    return { type: "raw", data };
   }
-  return { type: "raw", data };
 }
 
 class MarketplaceWebSocketService {
@@ -69,6 +70,9 @@ class MarketplaceWebSocketService {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private channel: BroadcastChannel | null = null;
+  private messageQueue: string[] = [];
+  private isManuallyClosed = false;
+  private presenceAnnouncer: (() => void) | null = null;
 
   constructor() {
     if (typeof window !== "undefined") {
@@ -113,33 +117,20 @@ class MarketplaceWebSocketService {
   }
 
   public isConnected(): boolean {
-    return (
-      this.socket !== null && this.socket.readyState === WebSocket.OPEN
-    );
+    return this.socket !== null && this.socket.readyState === WebSocket.OPEN;
   }
 
-  public on(type: string, callback: WSCallback): () => void {
-    if (!this.typeListeners.has(type)) {
-      this.typeListeners.set(type, new Set());
-    }
-    this.typeListeners.get(type)!.add(callback);
-
-    return () => {
-      const set = this.typeListeners.get(type);
-      if (set) {
-        set.delete(callback);
-        if (set.size === 0) {
-          this.typeListeners.delete(type);
+  private setStatus(next: WSConnectionStatus): void {
+    if (this.status !== next) {
+      this.status = next;
+      this.statusListeners.forEach((cb) => {
+        try {
+          cb(next);
+        } catch (err) {
+          console.error("[WebSocket] Status listener error:", err);
         }
-      }
-    };
-  }
-
-  public onAny(callback: WSCallback): () => void {
-    this.listeners.add(callback);
-    return () => {
-      this.listeners.delete(callback);
-    };
+      });
+    }
   }
 
   public onStatusChange(callback: WSStatusCallback): () => void {
@@ -150,16 +141,8 @@ class MarketplaceWebSocketService {
     };
   }
 
-  private setStatus(newStatus: WSConnectionStatus): void {
-    if (this.status === newStatus) return;
-    this.status = newStatus;
-    for (const listener of this.statusListeners) {
-      try {
-        listener(newStatus);
-      } catch (err) {
-        console.error("[WS] Status listener error:", err);
-      }
-    }
+  public setPresenceAnnouncer(handler: () => void): void {
+    this.presenceAnnouncer = handler;
   }
 
   public connect(): void {
@@ -173,57 +156,76 @@ class MarketplaceWebSocketService {
       return;
     }
 
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
+    this.isManuallyClosed = false;
+    this.clearReconnectTimer();
 
-    const wsUrl = resolveWsUrl();
-    this.setStatus(
-      this.reconnectAttempts > 0 ? "reconnecting" : "connecting",
-    );
+    this.setStatus(this.reconnectAttempts > 0 ? "reconnecting" : "connecting");
 
     try {
-      this.socket = new WebSocket(wsUrl);
+      const url = resolveWsUrl();
+      this.socket = new WebSocket(url);
 
       this.socket.onopen = () => {
         this.reconnectAttempts = 0;
         this.setStatus("connected");
         this.startHeartbeat();
+        this.flushQueue();
+        try {
+          this.presenceAnnouncer?.();
+        } catch (err) {
+          console.error("[WebSocket] Presence announcer error:", err);
+        }
       };
 
-      this.socket.onmessage = (event) => {
+      this.socket.onmessage = (event: MessageEvent) => {
         try {
-          const parsed = parseMessage(event.data);
-          this.dispatchLocal(parsed);
+          const raw = typeof event.data === "string" ? event.data : "";
+          if (!raw) return;
+
+          const payload = parseMessage(raw);
+
+          // Dispatch locally (notifies listeners, type listeners, and custom DOM events)
+          if (payload && typeof payload === "object") {
+            this.dispatchLocal(payload as WSEvent);
+          }
         } catch (err) {
-          console.error("[WS] Error processing message:", err);
+          console.error("[WebSocket] Message parse error:", err);
         }
       };
 
       this.socket.onclose = () => {
         this.stopHeartbeat();
+        this.socket = null;
+
+        if (this.isManuallyClosed) {
+          this.setStatus("disconnected");
+          return;
+        }
+
         this.setStatus("disconnected");
         this.scheduleReconnect();
       };
 
-      this.socket.onerror = () => {
-        // Will trigger onclose
+      this.socket.onerror = (error) => {
+        console.warn("[WebSocket] Connection error:", error);
       };
-    } catch {
+    } catch (err) {
+      console.error("[WebSocket] Failed to connect:", err);
+      this.socket = null;
+      this.setStatus("disconnected");
       this.scheduleReconnect();
     }
   }
 
   private dispatchLocal(event: WSEvent): void {
-    // Notify all listeners
-    for (const listener of this.listeners) {
+    // Notify all global listeners
+    this.listeners.forEach((cb) => {
       try {
-        listener(event);
+        cb(event);
       } catch (err) {
-        console.error("[WS] Listener error:", err);
+        console.error("[WebSocket] Listener error:", err);
       }
-    }
+    });
 
     // Notify type listeners
     if (event.type) {
@@ -238,24 +240,19 @@ class MarketplaceWebSocketService {
         }
       }
 
-      // Also trigger DOM custom events for easy subscription in legacy/standard components
-      if (
-        event.type === "address_updated" &&
-        typeof window !== "undefined"
-      ) {
-        window.dispatchEvent(new CustomEvent("marketplace-address-updated"));
-      } else if (
-        (event.type === "order_created" ||
+      // Also trigger DOM custom events for easy subscription in components
+      if (typeof window !== "undefined") {
+        if (event.type === "address_updated") {
+          window.dispatchEvent(new CustomEvent("marketplace-address-updated"));
+        } else if (
+          event.type === "order_created" ||
           event.type === "order_updated" ||
-          event.type === "payment_submitted") &&
-        typeof window !== "undefined"
-      ) {
-        window.dispatchEvent(new CustomEvent("order-history-updated"));
-      } else if (
-        event.type === "products_updated" &&
-        typeof window !== "undefined"
-      ) {
-        window.dispatchEvent(new CustomEvent("products-updated"));
+          event.type === "payment_submitted"
+        ) {
+          window.dispatchEvent(new CustomEvent("order-history-updated"));
+        } else if (event.type === "products_updated") {
+          window.dispatchEvent(new CustomEvent("products-updated"));
+        }
       }
     }
   }
@@ -269,7 +266,7 @@ class MarketplaceWebSocketService {
     } catch {
       // ignore
     }
-    // Send to other devices via WebSocket if connected
+    // Send to server via WebSocket if connected
     if (this.isConnected()) {
       try {
         this.socket?.send(JSON.stringify(event));
@@ -280,13 +277,26 @@ class MarketplaceWebSocketService {
   }
 
   private scheduleReconnect(): void {
-    if (this.reconnectTimer) return;
+    if (this.isManuallyClosed || this.reconnectTimer !== null) return;
+
+    const baseDelay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 12000);
+    const jitter = Math.random() * 500;
+    const delay = Math.round(baseDelay + jitter);
+
     this.reconnectAttempts++;
-    const delay = Math.min(1000 * 2 ** this.reconnectAttempts, 30000);
+    this.setStatus("reconnecting");
+
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
     }, delay);
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
   }
 
   private startHeartbeat(): void {
@@ -303,11 +313,135 @@ class MarketplaceWebSocketService {
   }
 
   private stopHeartbeat(): void {
-    if (this.pingTimer) {
+    if (this.pingTimer !== null) {
       clearInterval(this.pingTimer);
       this.pingTimer = null;
     }
   }
+
+  private flushQueue(): void {
+    if (!this.isConnected()) return;
+    while (this.messageQueue.length > 0) {
+      const msg = this.messageQueue.shift();
+      if (msg) {
+        try {
+          this.socket?.send(msg);
+        } catch (err) {
+          console.error("[WebSocket] Flush error:", err);
+          this.messageQueue.unshift(msg);
+          break;
+        }
+      }
+    }
+  }
+
+  public on<T = unknown>(eventType: string, callback: WSCallback<T>): () => void {
+    if (!this.typeListeners.has(eventType)) {
+      this.typeListeners.set(eventType, new Set());
+    }
+    const set = this.typeListeners.get(eventType)!;
+    set.add(callback as WSCallback);
+
+    if (!this.socket || this.socket.readyState === WebSocket.CLOSED) {
+      this.connect();
+    }
+
+    return () => {
+      set.delete(callback as WSCallback);
+      if (set.size === 0) {
+        this.typeListeners.delete(eventType);
+      }
+    };
+  }
+
+  public onAny(callback: WSCallback): () => void {
+    this.listeners.add(callback);
+    return () => {
+      this.listeners.delete(callback);
+    };
+  }
+
+  public onChatMessage(callback: (payload: WSChatMessagePayload) => void): () => void {
+    return this.on<WSChatMessagePayload>("chat_message", callback);
+  }
+
+  public onTyping(callback: (payload: WSTypingPayload) => void): () => void {
+    return this.on<WSTypingPayload>("typing", callback);
+  }
+
+  public onPresence(callback: (payload: WSPresencePayload) => void): () => void {
+    return this.on<WSPresencePayload>("presence", callback);
+  }
+
+  public onPresenceQuery(callback: (payload: WSPresenceQueryPayload) => void): () => void {
+    return this.on<WSPresenceQueryPayload>("presence_query", callback);
+  }
+
+  public onReadReceipt(callback: (payload: WSReadReceiptPayload) => void): () => void {
+    return this.on<WSReadReceiptPayload>("read_receipt", callback);
+  }
+
+  public sendReadReceipt(payload: Omit<WSReadReceiptPayload, "type">): void {
+    this.send({
+      type: "read_receipt",
+      ...payload,
+    });
+  }
+
+  public sendTyping(payload: Omit<WSTypingPayload, "type">): void {
+    this.send({
+      type: "typing",
+      ...payload,
+    });
+  }
+
+  public sendPresence(payload: Omit<WSPresencePayload, "type">): void {
+    this.send({
+      type: "presence",
+      ...payload,
+    });
+  }
+
+  public sendPresenceQuery(senderRole: "customer" | "admin" | "agent"): void {
+    this.send({
+      type: "presence_query",
+      sender_role: senderRole,
+    });
+  }
+
+  public send(payload: unknown): boolean {
+    const raw = typeof payload === "string" ? payload : JSON.stringify(payload);
+    if (this.isConnected()) {
+      try {
+        this.socket!.send(raw);
+        return true;
+      } catch (err) {
+        console.error("[WebSocket] Send error, queueing:", err);
+      }
+    }
+
+    if (this.messageQueue.length < 100) {
+      this.messageQueue.push(raw);
+    }
+
+    if (!this.socket || this.socket.readyState === WebSocket.CLOSED) {
+      this.connect();
+    }
+
+    return false;
+  }
+
+  public disconnect(): void {
+    this.isManuallyClosed = true;
+    this.clearReconnectTimer();
+    this.stopHeartbeat();
+    if (this.socket) {
+      this.socket.close();
+      this.socket = null;
+    }
+    this.setStatus("disconnected");
+  }
 }
 
 export const websocketService = new MarketplaceWebSocketService();
+export const WebSocketService = MarketplaceWebSocketService;
