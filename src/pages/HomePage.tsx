@@ -271,6 +271,18 @@ export default function HomePage() {
 
   const categoryParam =
     selectedCategories.length > 0 ? selectedCategories.join(",") : undefined;
+  const categoryUuidParam = selectedCategories
+    .map(
+      (selected) =>
+        categories.find(
+          (category) =>
+            category.slug === selected ||
+            category.id === selected ||
+            category.uuid === selected,
+        )?.uuid,
+    )
+    .filter((categoryUuid): categoryUuid is string => Boolean(categoryUuid))
+    .join(",");
 
   const {
     products: serverProducts,
@@ -283,6 +295,7 @@ export default function HomePage() {
     limit: PAGE_SIZE,
     search: searchQuery,
     category: categoryParam,
+    categoryUuid: categoryUuidParam || undefined,
     minPrice: effectiveMinPrice,
     maxPrice: effectiveMaxPrice,
     discountOnly,
@@ -490,7 +503,7 @@ export default function HomePage() {
   // };
 
   return (
-    <div className="min-h-screen bg-background transition-colors">
+    <div className="flex min-h-screen flex-col bg-background transition-colors">
       <MarketplaceHeader />
 
       {/* {showPromo && <PromoModal onClose={handleClosePromo} />} */}
@@ -498,7 +511,9 @@ export default function HomePage() {
       <PromoBannerSection />
       {/* <PromoBannerSection images={["/banner/slide1.jpg"]} /> */}
 
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <div
+        id="catalog"
+        className="mx-auto max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
         <h1 className="text-3xl font-bold text-text">Katalog Produk</h1>
         {searchQuery ? (
           <p className="mt-1 text-sm text-text-secondary">
@@ -522,7 +537,7 @@ export default function HomePage() {
           <aside
             className={`${
               isMobileFilterOpen ? "block" : "hidden"
-            } w-full shrink-0 lg:sticky lg:top-24 lg:block lg:h-fit lg:w-64`}>
+            } w-full shrink-0 lg:sticky lg:top-24 lg:block lg:h-fit lg:w-64 lg:overflow-clip`}>
             <div className="bg-background lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="flex items-center gap-2 text-sm font-bold text-text">

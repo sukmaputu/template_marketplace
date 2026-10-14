@@ -35,6 +35,7 @@ import {
 } from "@/lib/addresses";
 import { lookupPostalCode } from "@/lib/postalCode";
 import {
+  CHECKOUT_VOUCHERS,
   LOYALTY_REWARD_THRESHOLD,
   LOYALTY_REWARD_VOUCHER,
 } from "@/lib/vouchers";
@@ -50,30 +51,6 @@ interface ShippingMethod {
 const SHIPPING_METHODS: ShippingMethod[] = [
   { id: "standard", label: "Standard", eta: "3-5 hari kerja", cost: 8000 },
   { id: "express", label: "Express", eta: "1-2 hari kerja", cost: 25000 },
-];
-
-const DUMMY_VOUCHERS: Voucher[] = [
-  {
-    id: "1",
-    code: "NEWUSER20",
-    title: "Diskon Pengguna Baru",
-    discount_label: "20% OFF",
-    min_purchase_amount: 100000,
-    min_purchase: "Min. belanja Rp 100.000",
-    expires_at: "31 Des 2026",
-    status: "aktif",
-  },
-  {
-    id: "2",
-    code: "ONGKIR0",
-    title: "Gratis Ongkir",
-    discount_label: "Rp 15.000",
-    discount_amount: 15000,
-    min_purchase_amount: 50000,
-    min_purchase: "Min. belanja Rp 50.000",
-    expires_at: "15 Sep 2026",
-    status: "aktif",
-  },
 ];
 
 const LOYALTY_POINTS_PER_TRANSACTION = 10;
@@ -281,8 +258,8 @@ export default function CheckoutPage() {
 
   const availableVouchers =
     (user?.loyalty_points ?? 0) >= LOYALTY_REWARD_THRESHOLD
-      ? [...DUMMY_VOUCHERS, LOYALTY_REWARD_VOUCHER]
-      : DUMMY_VOUCHERS;
+      ? [...CHECKOUT_VOUCHERS, LOYALTY_REWARD_VOUCHER]
+      : CHECKOUT_VOUCHERS;
 
   function applyVoucherCode() {
     const code = voucherCodeInput.trim().toUpperCase();

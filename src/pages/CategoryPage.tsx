@@ -18,17 +18,17 @@ export default function CategoryPage() {
   const categoryId = params.categoryId ?? "teknologi-informasi";
   const [sortBy, setSortBy] = useState("default");
   const { categories } = useCategories();
-  const { products: serverProducts, loading } = usePaginatedProducts({
-    category: categoryId,
-    limit: 30,
-  });
-
   const category = categories.find(
     (item) =>
       item.slug === categoryId ||
       item.id === categoryId ||
       item.uuid === categoryId,
   );
+  const { products: serverProducts, loading } = usePaginatedProducts({
+    category: categoryId,
+    categoryUuid: category?.uuid,
+    limit: 30,
+  });
 
   const products = useMemo(() => {
     const sorted = [...serverProducts];
@@ -40,10 +40,10 @@ export default function CategoryPage() {
   }, [sortBy, serverProducts]);
 
   return (
-    <div className="min-h-screen bg-background transition-colors">
+    <div className="flex min-h-screen flex-col bg-background transition-colors">
       <MarketplaceHeader />
 
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-center gap-2 text-sm text-text-secondary">
           <Link to="/" className="hover:text-primary">
             Beranda
