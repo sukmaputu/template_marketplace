@@ -364,10 +364,13 @@ export default function ProductDetailPage() {
     window.dispatchEvent(
       new CustomEvent("open-chat-widget", {
         detail: {
+          message: `Halo, saya ingin bertanya tentang produk "${product.name}".`,
           product: {
-            id: product.id,
+            id: String(product.id),
             name: product.name,
-            image: images[0],
+            price: product.basePrice,
+            image: images[0] || product.image,
+            category: product.categoryId,
             priceLabel: formatPrice(unitPrice),
           },
         },

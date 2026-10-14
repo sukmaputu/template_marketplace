@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Loader2, Lock, Mail, MapPin, Phone, User } from "lucide-react";
 import { useAuth } from "@/components/auth/UseAuth";
+import { chatService } from "@/services/chat.service";
 
 interface FormValues {
   full_name: string;
@@ -103,6 +104,13 @@ export default function SignUpPage() {
       );
       return;
     }
+
+    chatService.transferGuestHistory({
+      id: values.username || values.email,
+      email: values.email,
+      phone: values.phone || undefined,
+      full_name: values.full_name,
+    });
 
     navigate("/", { replace: true });
   }
