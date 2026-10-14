@@ -132,10 +132,10 @@ export default function PaymentSuccessPage() {
   );
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex min-h-screen flex-col bg-background">
       <MarketplaceHeader />
 
-      <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-3xl flex-1 px-4 py-12 sm:px-6 lg:px-8">
         <div className="flex flex-col items-center rounded-xl border border-border bg-surface px-6 py-12 text-center">
           <motion.div
             initial={{ scale: 0.5, opacity: 0 }}

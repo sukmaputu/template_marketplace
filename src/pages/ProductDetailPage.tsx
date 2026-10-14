@@ -312,9 +312,9 @@ export default function ProductDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="flex min-h-screen flex-col bg-background">
         <MarketplaceHeader />
-        <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
+        <div className="flex min-h-[60vh] flex-1 flex-col items-center justify-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <p className="text-sm font-medium text-text-secondary">
             Memuat produk...
@@ -327,9 +327,9 @@ export default function ProductDetailPage() {
 
   if (!product) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="flex min-h-screen flex-col bg-background">
         <MarketplaceHeader />
-        <div className="mx-auto max-w-3xl px-4 py-24 text-center">
+        <div className="mx-auto max-w-3xl flex-1 px-4 py-24 text-center">
           <h1 className="text-xl font-bold text-text">
             Produk tidak ditemukan
           </h1>
@@ -421,10 +421,10 @@ export default function ProductDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex min-h-screen flex-col bg-background">
       <MarketplaceHeader />
 
-      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-5xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
         <button
           type="button"
           onClick={() => navigate(-1)}

@@ -1,45 +1,71 @@
-import { useEffect, useState } from "react";
-import { Ticket } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { Plus, Ticket } from "lucide-react";
 import type { Voucher, VoucherStatus } from "@/components/profile/types";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 import { useAuth } from "@/components/auth/UseAuth";
 import Pagination from "@/components/ui/pagination";
 import {
+  CHECKOUT_VOUCHERS,
   LOYALTY_REWARD_THRESHOLD,
   LOYALTY_REWARD_VOUCHER,
 } from "@/lib/vouchers";
+import { showToast } from "@/lib/toast";
 
-const DUMMY_VOUCHERS: Voucher[] = [
-  {
-    id: "1",
-    code: "NEWUSER20",
-    title: "Diskon Pengguna Baru",
-    discount_label: "20% OFF",
-    min_purchase_amount: 100000,
-    min_purchase: "Min. belanja Rp 100.000",
-    expires_at: "31 Des 2026",
-    status: "aktif",
-  },
-  {
-    id: "2",
-    code: "ONGKIR0",
-    title: "Gratis Ongkir",
-    discount_label: "Rp 15.000",
-    discount_amount: 15000,
-    min_purchase_amount: 50000,
-    min_purchase: "Min. belanja Rp 50.000",
-    expires_at: "15 Sep 2026",
-    status: "aktif",
-  },
-  {
-    id: "3",
-    code: "FLASH10",
-    title: "Flash Sale Agustus",
-    discount_label: "10% OFF",
-    expires_at: "31 Agu 2026",
-    status: "kadaluarsa",
-  },
-];
+const EXPIRED_VOUCHER: Voucher = {
+  id: "3",
+  code: "FLASH10",
+  title: "Flash Sale Agustus",
+  discount_label: "10% OFF",
+  expires_at: "31 Agu 2026",
+  status: "kadaluarsa",
+};
+
+function getVoucherStorageKey(email?: string) {
+  return `marketplace-vouchers:${email || "guest"}`;
+}
+
+function getStoredVoucherCodes(email?: string) {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const stored = window.localStorage.getItem(getVoucherStorageKey(email));
+    const codes: unknown = stored ? JSON.parse(stored) : [];
+    return Array.isArray(codes)
+      ? codes.filter((code): code is string => typeof code === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveVoucherCodes(email: string | undefined, codes: string[]) {
+  window.localStorage.setItem(
+    getVoucherStorageKey(email),
+    JSON.stringify(codes),
+  );
+}
+
+function getInitialVouchers(email: string | undefined, loyaltyPoints: number) {
+  const loyaltyVouchers =
+    loyaltyPoints >= LOYALTY_REWARD_THRESHOLD ? [LOYALTY_REWARD_VOUCHER] : [];
+  const availableVouchers = [...CHECKOUT_VOUCHERS, ...loyaltyVouchers];
+  const existingVouchers = [...loyaltyVouchers, EXPIRED_VOUCHER];
+  const storedVouchers = getStoredVoucherCodes(email)
+    .map((code) =>
+      availableVouchers.find(
+        (voucher) => voucher.code.toUpperCase() === code.toUpperCase(),
+      ),
+    )
+    .filter((voucher): voucher is Voucher => voucher !== undefined);
+
+  return [
+    ...existingVouchers,
+    ...storedVouchers.filter(
+      (stored) =>
+        !existingVouchers.some((voucher) => voucher.code === stored.code),
+    ),
+  ];
+}
 
 const STATUS_STYLE: Record<VoucherStatus, string> = {
   aktif: "bg-primary/10 text-primary",
@@ -59,21 +85,67 @@ export function VoucherTab() {
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
-  const { formatPrice } = useCurrency();
+  const [voucherCodeInput, setVoucherCodeInput] = useState("");
+  const [voucherError, setVoucherError] = useState("");
   const { user } = useAuth();
+  const email = user?.email;
+  const loyaltyPoints = user?.loyalty_points ?? 0;
+  const { formatPrice } = useCurrency();
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      const loyaltyVoucher =
-        (user?.loyalty_points ?? 0) >= LOYALTY_REWARD_THRESHOLD
-          ? [LOYALTY_REWARD_VOUCHER]
-          : [];
-      setVouchers([...loyaltyVoucher, ...DUMMY_VOUCHERS]);
+      setVouchers(getInitialVouchers(email, loyaltyPoints));
       setCurrentPage(1);
       setIsLoading(false);
     }, 400);
     return () => clearTimeout(timer);
-  }, [user?.loyalty_points]);
+  }, [email, loyaltyPoints]);
+
+  function handleAddVoucher(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const code = voucherCodeInput.trim().toUpperCase();
+    if (!code) {
+      setVoucherError("Masukkan kode voucher.");
+      return;
+    }
+
+    const availableVouchers =
+      loyaltyPoints >= LOYALTY_REWARD_THRESHOLD
+        ? [...CHECKOUT_VOUCHERS, LOYALTY_REWARD_VOUCHER]
+        : CHECKOUT_VOUCHERS;
+    const found = availableVouchers.find(
+      (voucher) =>
+        voucher.code.toUpperCase() === code && voucher.status === "aktif",
+    );
+
+    if (!found) {
+      setVoucherError("Kode voucher tidak valid atau sudah kedaluwarsa.");
+      return;
+    }
+    if (vouchers.some((voucher) => voucher.code === found.code)) {
+      setVoucherError("Voucher ini sudah ada di daftar Voucher Saya.");
+      return;
+    }
+
+    const storedCodes = getStoredVoucherCodes(email);
+    try {
+      saveVoucherCodes(
+        email,
+        storedCodes.includes(found.code)
+          ? storedCodes
+          : [...storedCodes, found.code],
+      );
+    } catch {
+      setVoucherError("Voucher gagal disimpan. Silakan coba lagi.");
+      return;
+    }
+
+    setVouchers((previous) => [found, ...previous]);
+    setCurrentPage(1);
+    setVoucherCodeInput("");
+    setVoucherError("");
+    showToast("Voucher berhasil ditambahkan.");
+  }
 
   const totalPages = Math.max(1, Math.ceil(vouchers.length / ITEMS_PER_PAGE));
   const paginatedVouchers = vouchers.slice(
@@ -87,6 +159,37 @@ export function VoucherTab() {
       <p className="mt-1 text-sm text-text-secondary">
         Voucher yang kamu punya, termasuk yang sudah tidak berlaku.
       </p>
+
+      <form
+        onSubmit={handleAddVoucher}
+        className="mt-5 flex flex-col gap-2 sm:flex-row">
+        <input
+          type="text"
+          value={voucherCodeInput}
+          onChange={(event) => {
+            setVoucherCodeInput(event.target.value);
+            if (voucherError) setVoucherError("");
+          }}
+          placeholder="Masukkan kode voucher"
+          aria-label="Kode voucher"
+          aria-invalid={Boolean(voucherError)}
+          className={`min-w-0 flex-1 rounded-lg border bg-background px-3.5 py-2.5 text-sm text-text outline-none placeholder:text-text-secondary focus:border-primary ${
+            voucherError ? "border-red-500" : "border-border"
+          }`}
+        />
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
+          <Plus className="h-4 w-4" />
+          Tambah Voucher
+        </button>
+      </form>
+      {voucherError && (
+        <p role="alert" className="mt-1 text-xs text-red-500">
+          {voucherError}
+        </p>
+      )}
 
       <div className="mt-6 space-y-3">
         {isLoading &&

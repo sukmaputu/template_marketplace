@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   Calendar,
@@ -31,7 +31,10 @@ interface DragState {
 
 export default function ProfilePage() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabKey>("data-diri");
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<TabKey>(() =>
+    searchParams.get("tab") === "voucher" ? "voucher" : "data-diri",
+  );
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {

@@ -1159,6 +1159,7 @@ export interface UsePaginatedProductsOptions {
   limit?: number;
   search?: string;
   category?: string;
+  categoryUuid?: string;
   minPrice?: number;
   maxPrice?: number;
   discountOnly?: boolean;
@@ -1177,6 +1178,7 @@ export function usePaginatedProducts({
   limit = 6,
   search = "",
   category,
+  categoryUuid,
   minPrice,
   maxPrice,
   discountOnly = false,
@@ -1213,8 +1215,8 @@ export function usePaginatedProducts({
         if (typeof maxPrice === "number" && maxPrice > 0) {
           params.max_price = maxPrice;
         }
-        if (category && category.trim()) {
-          params.category = category.trim();
+        if (categoryUuid && categoryUuid.trim()) {
+          params.category_uuid = categoryUuid.trim();
         }
         if (discountOnly) {
           params.discount_only = true;
@@ -1297,7 +1299,17 @@ export function usePaginatedProducts({
       cancelled = true;
       controller.abort();
     };
-  }, [page, limit, search, category, minPrice, maxPrice, discountOnly, refreshKey]);
+  }, [
+    page,
+    limit,
+    search,
+    category,
+    categoryUuid,
+    minPrice,
+    maxPrice,
+    discountOnly,
+    refreshKey,
+  ]);
 
   return { products, total, totalPages, currentPage, loading };
 }
