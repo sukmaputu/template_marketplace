@@ -8,6 +8,7 @@ import { MobileMenu } from "@/components/navbar/MobileMenu";
 import { useCart } from "@/components/cart/useCart";
 import { useAuth } from "@/components/auth/UseAuth";
 import { CurrencySwitcher, useCurrency } from "@/components/navbar/CurrencySwitcher";
+import { usePageSettings } from "@/hooks/usePageSettings";
 import {
   PRODUCTS,
   POPULAR_SEARCH_TERMS,
@@ -72,6 +73,7 @@ export function MarketplaceHeader() {
  
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [recentlyViewed, setRecentlyViewed] = useState<Product[]>([]);
+  const { navbarLogo } = usePageSettings();
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const searchWrapperRef = useRef<HTMLDivElement>(null);
   const inputColumnRef = useRef<HTMLDivElement>(null);
@@ -340,7 +342,11 @@ export function MarketplaceHeader() {
       <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6 lg:px-8">
         <Link to="/" className="shrink-0">
           <img
-            src="/logo/logo_nadrical.png"
+            src={navbarLogo}
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = "/logo/logo_nadrical.png";
+            }}
             alt="Logo"
             className="h-10 w-auto object-contain"
           />
@@ -655,6 +661,8 @@ export function MarketplaceHeader() {
         </div>
 
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          <NotificationMenu />
+
           <Link
             to="/cart"
             aria-label="Keranjang"
@@ -668,7 +676,6 @@ export function MarketplaceHeader() {
           </Link>
 
           <div className="hidden items-center gap-1 sm:gap-2 lg:flex">
-            <NotificationMenu />
             <ThemeToggle />
             <CurrencySwitcher />
           </div>

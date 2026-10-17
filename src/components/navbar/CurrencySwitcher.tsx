@@ -75,7 +75,8 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
   }
 
   function formatPrice(value: number) {
-    const convertedValue = currency === "USD" && rate ? value * rate : value;
+    const safeValue = typeof value === "number" && !isNaN(value) && isFinite(value) ? value : 0;
+    const convertedValue = currency === "USD" && rate ? safeValue * rate : safeValue;
     return new Intl.NumberFormat(currency === "USD" ? "en-US" : "id-ID", {
       style: "currency",
       currency,

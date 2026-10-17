@@ -32,6 +32,7 @@ import type { WishlistItem } from "@/components/profile/types";
 import { getProductRatingStats, getProductReviews } from "@/lib/products";
 import { useAuth } from "@/components/auth/AuthContext";
 import { getProductSpecs } from "@/lib/productSpecs";
+import { websocketService } from "@/lib/websocket";
 
 // Khusus produk kelas (bukan barang fisik). Tetap dipertahankan, hanya
 // ditampilkan kalau produk BUKAN bertipe "physical".
@@ -68,6 +69,25 @@ export default function ProductDetailPage() {
   const [isLoginRequiredOpen, setIsLoginRequiredOpen] = useState(false);
   const [backendProduct, setBackendProduct] = useState<Product | null>(null);
   const [isFetchingDetail, setIsFetchingDetail] = useState(false);
+  const [productRefreshKey, setProductRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => setProductRefreshKey((k) => k + 1);
+    window.addEventListener("products-updated", handleUpdate);
+    window.addEventListener("focus", handleUpdate);
+    const unsub1 = websocketService.on("products_updated", handleUpdate);
+    const unsub2 = websocketService.on("product_updated", (payload: any) => {
+      if (!payload || !payload.product_id || payload.product_id === productId) {
+        handleUpdate();
+      }
+    });
+    return () => {
+      window.removeEventListener("products-updated", handleUpdate);
+      window.removeEventListener("focus", handleUpdate);
+      unsub1();
+      unsub2();
+    };
+  }, [productId]);
 
   useEffect(() => {
     if (!productId) {
@@ -95,7 +115,7 @@ export default function ProductDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [productId]);
+  }, [productId, productRefreshKey]);
 
   const product = useMemo(() => {
     if (backendProduct && backendProduct.id === productId) {
@@ -243,7 +263,7 @@ export default function ProductDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [productId]);
+  }, [productId, productRefreshKey]);
 
   const { categories } = useCategories();
   const categoryLabel = useMemo(() => {

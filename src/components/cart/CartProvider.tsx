@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 import { createCartItem, type CartItem } from "@/lib/cart";
 import type { Product } from "@/lib/products";
 import { CartContext } from "@/components/cart/cartContext";
-import { websocketService } from "@/lib/websocket";
 
 const CART_STORAGE_KEY = "marketplace-cart";
 
@@ -21,7 +20,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>(() => loadSavedCart());
   const isInitialMount = useRef(true);
 
-  // Sync to localStorage and broadcast whenever items change
+  // Sync to localStorage whenever items change
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
@@ -29,20 +28,22 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
     try {
       localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
-      websocketService.broadcastLocal({ type: "cart_updated", payload: items });
     } catch {
       // ignore
     }
   }, [items]);
 
-  // Listen for cart changes from other tabs (storage event) and WebSocket
+  // Listen for cart changes from other tabs via native storage event
   useEffect(() => {
     const handleStorage = (e: StorageEvent) => {
       if (e.key === CART_STORAGE_KEY && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
           if (Array.isArray(parsed)) {
-            setItems(parsed);
+            setItems((curr) => {
+              if (JSON.stringify(curr) === e.newValue) return curr;
+              return parsed;
+            });
           }
         } catch {
           // ignore
@@ -51,15 +52,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("storage", handleStorage);
 
-    const unsubscribe = websocketService.on("cart_updated", (payload) => {
-      if (Array.isArray(payload)) {
-        setItems(payload as CartItem[]);
-      }
-    });
-
     return () => {
       window.removeEventListener("storage", handleStorage);
-      unsubscribe();
     };
   }, []);
 

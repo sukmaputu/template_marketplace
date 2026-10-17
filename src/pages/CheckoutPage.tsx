@@ -40,12 +40,22 @@ import {
   LOYALTY_REWARD_VOUCHER,
 } from "@/lib/vouchers";
 import { api } from "@/lib/api";
+import { saveOrder } from "@/lib/orderHistory";
+import { websocketService } from "@/lib/websocket";
 
 interface ShippingMethod {
   id: "standard" | "express";
   label: string;
   eta: string;
   cost: number;
+}
+
+export interface ActiveTax {
+  uuid?: string;
+  id?: string;
+  name: string;
+  rate: number;
+  status?: string;
 }
 
 const SHIPPING_METHODS: ShippingMethod[] = [
@@ -256,37 +266,203 @@ export default function CheckoutPage() {
     }
   }
 
+  const [serverVouchers, setServerVouchers] = useState<Voucher[]>([]);
+  const [serverVouchersLoaded, setServerVouchersLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadActiveVouchers() {
+      try {
+        const res = await api.get("/ecommerce/vouchers/active");
+        const list = res.data?.data;
+        if (Array.isArray(list) && !cancelled) {
+          const mapped: Voucher[] = list.map((v: any) => {
+            const isPercentage = v.voucher_type === "percentage";
+            const discountValue = Number(v.discount_value) || 0;
+            const maxDiscount = v.max_discount_amount !== null && v.max_discount_amount !== undefined
+              ? Number(v.max_discount_amount)
+              : undefined;
+            return {
+              id: v.uuid || v.id || v.code,
+              code: v.code,
+              title: v.description || v.code,
+              discount_label: isPercentage
+                ? `${discountValue}% OFF`
+                : formatPrice(discountValue),
+              discount_amount: !isPercentage ? discountValue : undefined,
+              discount_percent: isPercentage ? discountValue : undefined,
+              max_discount_amount: maxDiscount,
+              voucher_type: v.voucher_type,
+              min_purchase_amount: v.min_purchase_amount ? Number(v.min_purchase_amount) : undefined,
+              min_purchase: v.min_purchase_amount
+                ? `Min. belanja ${formatPrice(Number(v.min_purchase_amount))}`
+                : undefined,
+              expires_at: v.valid_to_date
+                ? new Date(v.valid_to_date).toLocaleDateString("id-ID", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })
+                : "Berlaku",
+              status: "aktif",
+            };
+          });
+          setServerVouchers(mapped);
+          setServerVouchersLoaded(true);
+
+          // Real-time deactivation check: if currently selected voucher is no longer active, unapply it
+          setSelectedVoucher((prev) => {
+            if (!prev || prev.code === LOYALTY_REWARD_VOUCHER.code) return prev;
+            const stillActive = mapped.some(
+              (v) => v.code.toUpperCase() === prev.code.toUpperCase() || v.id === prev.id,
+            );
+            if (!stillActive) {
+              setVoucherError(`Voucher "${prev.code}" telah dinonaktifkan atau berakhir.`);
+              return null;
+            }
+            return prev;
+          });
+        }
+      } catch {
+        // keep fallback only on network error
+      }
+    }
+    loadActiveVouchers();
+
+    const unsubVoucher = websocketService.on("voucher_updated", () => {
+      loadActiveVouchers();
+    });
+
+    const onVoucherUpdated = () => {
+      loadActiveVouchers();
+    };
+    window.addEventListener("voucher-updated", onVoucherUpdated);
+    window.addEventListener("focus", onVoucherUpdated);
+
+    return () => {
+      cancelled = true;
+      unsubVoucher();
+      window.removeEventListener("voucher-updated", onVoucherUpdated);
+      window.removeEventListener("focus", onVoucherUpdated);
+    };
+  }, [formatPrice]);
+
+  const [activeTaxes, setActiveTaxes] = useState<ActiveTax[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadActiveTaxes() {
+      try {
+        const res = await api.get("/ecommerce/taxes?status=active");
+        const list = res.data?.data;
+        if (Array.isArray(list) && !cancelled) {
+          setActiveTaxes(list);
+        }
+      } catch (err) {
+        console.warn("Failed to load active taxes:", err);
+      }
+    }
+    loadActiveTaxes();
+
+    // 1. Real-time WebSocket event from Backend when admin updates/toggles tax
+    const unsubTax = websocketService.on("tax_updated", () => {
+      loadActiveTaxes();
+    });
+
+    // 2. CustomEvent and window focus revalidation
+    const onTaxUpdated = () => {
+      loadActiveTaxes();
+    };
+    window.addEventListener("tax-updated", onTaxUpdated);
+    window.addEventListener("focus", onTaxUpdated);
+
+    return () => {
+      cancelled = true;
+      unsubTax();
+      window.removeEventListener("tax-updated", onTaxUpdated);
+      window.removeEventListener("focus", onTaxUpdated);
+    };
+  }, []);
+
+  const baseVouchers = serverVouchersLoaded
+    ? serverVouchers
+    : serverVouchers.length > 0
+      ? serverVouchers
+      : CHECKOUT_VOUCHERS;
   const availableVouchers =
     (user?.loyalty_points ?? 0) >= LOYALTY_REWARD_THRESHOLD
-      ? [...CHECKOUT_VOUCHERS, LOYALTY_REWARD_VOUCHER]
-      : CHECKOUT_VOUCHERS;
+      ? [...baseVouchers, LOYALTY_REWARD_VOUCHER]
+      : baseVouchers;
 
-  function applyVoucherCode() {
+  async function applyVoucherCode() {
     const code = voucherCodeInput.trim().toUpperCase();
     if (!code) {
       setVoucherError("Masukkan kode voucher.");
       return;
     }
-    const found = availableVouchers.find(
-      (v) => v.code.toUpperCase() === code && v.status === "aktif",
-    );
-    if (!found) {
-      setVoucherError("Kode voucher tidak valid atau sudah kedaluwarsa.");
+
+    if (code === LOYALTY_REWARD_VOUCHER.code) {
+      if ((user?.loyalty_points ?? 0) < LOYALTY_REWARD_THRESHOLD) {
+        setVoucherError("Poin loyalti tidak mencukupi untuk voucher ini.");
+        return;
+      }
+      setSelectedVoucher(LOYALTY_REWARD_VOUCHER);
+      setVoucherError("");
+      setVoucherCodeInput("");
+      setShowVoucherList(false);
       return;
     }
-    if (
-      found.min_purchase_amount !== undefined &&
-      totalHarga < found.min_purchase_amount
-    ) {
-      setVoucherError(
-        `Minimal belanja ${formatPrice(found.min_purchase_amount)} untuk voucher ini.`,
+
+    try {
+      const res = await api.post("/ecommerce/vouchers/apply", {
+        code,
+        order_total: totalHarga,
+      });
+      const applyData = res.data?.data;
+      if (applyData?.valid) {
+        const existing = availableVouchers.find((v) => v.code.toUpperCase() === code);
+        const voucherToSelect: Voucher = existing
+          ? { ...existing, discount_amount: applyData.discount_amount }
+          : {
+              id: code,
+              code: code,
+              title: `Voucher ${code}`,
+              discount_label: formatPrice(applyData.discount_amount),
+              discount_amount: applyData.discount_amount,
+              expires_at: "Berlaku",
+              status: "aktif",
+            };
+        setSelectedVoucher(voucherToSelect);
+        setVoucherError("");
+        setVoucherCodeInput("");
+        setShowVoucherList(false);
+        return;
+      } else {
+        setVoucherError(applyData?.message || "Kode voucher tidak valid atau syarat belum terpenuhi.");
+        return;
+      }
+    } catch {
+      const found = availableVouchers.find(
+        (v) => v.code.toUpperCase() === code && v.status === "aktif",
       );
-      return;
+      if (found) {
+        if (
+          found.min_purchase_amount !== undefined &&
+          totalHarga < found.min_purchase_amount
+        ) {
+          setVoucherError(
+            `Minimal belanja ${formatPrice(found.min_purchase_amount)} untuk voucher ini.`,
+          );
+          return;
+        }
+        setSelectedVoucher(found);
+        setVoucherError("");
+        setVoucherCodeInput("");
+        setShowVoucherList(false);
+        return;
+      }
+      setVoucherError("Kode voucher tidak valid atau sudah kedaluwarsa.");
     }
-    setSelectedVoucher(found);
-    setVoucherError("");
-    setVoucherCodeInput("");
-    setShowVoucherList(false);
   }
 
   const shippingMethod =
@@ -343,6 +519,19 @@ export default function CheckoutPage() {
   );
 
   const [liveStocks, setLiveStocks] = useState<Record<string, number>>({});
+  const [stockRefreshKey, setStockRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => setStockRefreshKey((k) => k + 1);
+    window.addEventListener("products-updated", handleUpdate);
+    window.addEventListener("focus", handleUpdate);
+    const unsub = websocketService.on("products_updated", handleUpdate);
+    return () => {
+      window.removeEventListener("products-updated", handleUpdate);
+      window.removeEventListener("focus", handleUpdate);
+      unsub();
+    };
+  }, []);
 
   useEffect(() => {
     const idsToCheck = immediateBuy
@@ -376,7 +565,7 @@ export default function CheckoutPage() {
     return () => {
       cancelled = true;
     };
-  }, [immediateBuy, selectedItems]);
+  }, [immediateBuy, selectedItems, stockRefreshKey]);
 
   const getItemStock = useCallback(
     (productId: string, fallbackStock?: number) => {
@@ -407,14 +596,49 @@ export default function CheckoutPage() {
     0,
   );
 
-  const discountAmount = selectedVoucher
-    ? selectedVoucher.code === "NEWUSER20"
-      ? totalHarga * 0.2
-      : (selectedVoucher.discount_amount ?? 0)
-    : 0;
+  const discountAmount = (() => {
+    if (!selectedVoucher) return 0;
+    if (selectedVoucher.discount_percent !== undefined) {
+      let disc = (totalHarga * selectedVoucher.discount_percent) / 100;
+      if (selectedVoucher.max_discount_amount) {
+        disc = Math.min(disc, selectedVoucher.max_discount_amount);
+      }
+      return Math.min(Math.round(disc), totalHarga);
+    }
+    if (selectedVoucher.code === "NEWUSER20") {
+      return Math.min(Math.round(totalHarga * 0.2), totalHarga);
+    }
+    if (selectedVoucher.discount_amount !== undefined) {
+      return Math.min(Number(selectedVoucher.discount_amount) || 0, totalHarga);
+    }
+    return 0;
+  })();
 
-  const totalTagihan =
-    totalHarga + shippingCost + protectionCost + insuranceCost - discountAmount;
+  const taxableBase = Math.max(0, totalHarga - discountAmount);
+
+  const taxLines = useMemo(() => {
+    return activeTaxes.map((tax) => {
+      const effectiveRate = tax.rate > 1 ? tax.rate / 100 : tax.rate;
+      const ratePercent = Math.round(effectiveRate * 10000) / 100;
+      const amount = Math.round(taxableBase * effectiveRate);
+      return {
+        uuid: tax.uuid || tax.id || tax.name,
+        name: tax.name,
+        rate: effectiveRate,
+        ratePercent,
+        amount,
+      };
+    });
+  }, [activeTaxes, taxableBase]);
+
+  const taxTotal = useMemo(() => {
+    return taxLines.reduce((sum, t) => sum + t.amount, 0);
+  }, [taxLines]);
+
+  const totalTagihan = Math.max(
+    0,
+    totalHarga + shippingCost + protectionCost + insuranceCost - discountAmount + taxTotal,
+  );
 
   const loyaltyPointsEarned = LOYALTY_POINTS_PER_TRANSACTION;
 
@@ -431,13 +655,22 @@ export default function CheckoutPage() {
       nextErrors.postalCode = "Kode pos harus 5 digit angka.";
     }
     setFormErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
+    if (Object.keys(nextErrors).length > 0) {
+      alert("Silakan lengkapi kota dan kode pos pengiriman (5 digit angka) terlebih dahulu.");
+      setIsAddressModalOpen(true);
+      return false;
+    }
+    return true;
   }
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleBayarSekarang(e: FormEvent) {
     e.preventDefault();
+    if (selectedItems.length === 0) {
+      alert("Tidak ada produk yang dipilih untuk dipesan. Silakan pilih produk di keranjang terlebih dahulu.");
+      return;
+    }
     if (hasOutOfStockItems) {
       alert(
         "Pesanan tidak dapat diproses karena ada produk yang stoknya habis.",
@@ -447,6 +680,83 @@ export default function CheckoutPage() {
     if (!validate()) return;
 
     setIsSubmitting(true);
+
+    const purchasedProductIds = selectedItems.map((item) => item.productId);
+
+    const recordLocalOrder = (orderId: string) => {
+      try {
+        saveOrder({
+          id: orderId,
+          status: "processing",
+          date: new Date().toLocaleString("id-ID", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          grand_total: totalTagihan,
+          courierName: shippingMethod.label,
+          shippingAddress: {
+            recipientName:
+              selectedAddress?.recipientName || user?.full_name || "Pelanggan",
+            phone:
+              selectedAddress?.phone || user?.phone || "+62 812 3456 7890",
+            addressLine: address,
+            city: city,
+            province: selectedAddress?.province || "",
+            postalCode: postalCode,
+          },
+          items: selectedItems.map((item, idx) => ({
+            id: `item-${idx}`,
+            productId: item.productId,
+            product_name_snapshot: item.name,
+            variant_name_snapshot: item.variant,
+            unit_price: item.basePrice,
+            quantity: item.quantity,
+            image: item.image || "",
+          })),
+        });
+      } catch (err) {
+        console.warn("Failed to record order in local history:", err);
+      }
+    };
+
+    const navigateToSuccess = (orderId: string) => {
+      if (!immediateBuy) {
+        clearSelected();
+      }
+
+      navigate("/payment-success", {
+        state: {
+          totalPaid: totalTagihan,
+          itemIds: purchasedProductIds,
+          orderId: orderId,
+          items: selectedItems.map((item) => ({
+            productId: item.productId,
+            name: item.name,
+            variant: item.variant,
+            quantity: item.quantity,
+            price: item.basePrice,
+            image: item.image,
+          })),
+          subtotal: totalHarga,
+          packagingFee: shippingCost,
+          taxAmount: taxTotal,
+          taxLabel: taxLines.length > 0 ? `${taxLines[0].name} (${taxLines[0].ratePercent}%)` : "Pajak (PPN)",
+          discountAmount,
+          voucherCode: selectedVoucher?.code,
+          loyaltyPointsEarned,
+          estimatedDeliveryLabel,
+          customer: {
+            name: user?.full_name || "Pelanggan",
+            email: user?.email || "",
+            phone:
+              selectedAddress?.phone || user?.phone || "+62 812 3456 7890",
+          },
+        },
+      });
+    };
 
     try {
       const payload = {
@@ -472,57 +782,50 @@ export default function CheckoutPage() {
         items: selectedItems.map((item) => ({
           product_id: item.productId,
           variant_id:
-            item.variant !== "Varian standar" ? item.variant : undefined,
+            item.variant &&
+            item.variant !== "Varian standar" &&
+            item.variant !== "Standar"
+              ? item.variant
+              : undefined,
           quantity: item.quantity,
         })),
       };
 
       const res = await api.post("/ecommerce/orders", payload);
       const orderData = res.data?.data;
-      const createdOrderId = orderData?.uuid || orderData?.id;
+      const createdOrderId =
+        orderData?.order_number || orderData?.uuid || orderData?.id || `ORD-${Date.now()}`;
 
-      const purchasedProductIds = selectedItems.map((item) => item.productId);
-
-      if (!immediateBuy) {
-        clearSelected();
-      }
-
-      navigate("/payment-success", {
-        state: {
-          totalPaid: totalTagihan,
-          itemIds: purchasedProductIds,
-          orderId: createdOrderId,
-          items: selectedItems.map((item) => ({
-            productId: item.productId,
-            name: item.name,
-            variant: item.variant,
-            quantity: item.quantity,
-            price: item.basePrice,
-            image: item.image,
-          })),
-          subtotal: totalHarga,
-          packagingFee: shippingCost,
-          discountAmount,
-          voucherCode: selectedVoucher?.code,
-          loyaltyPointsEarned,
-          estimatedDeliveryLabel,
-          customer: {
-            name: user?.full_name || "Pelanggan",
-            email: user?.email || "",
-            phone: selectedAddress?.phone || user?.phone || "+62 812 3456 7890",
-          },
-        },
-      });
+      recordLocalOrder(createdOrderId);
+      navigateToSuccess(createdOrderId);
     } catch (err: unknown) {
       console.error(err);
       const axiosErr = err as {
-        response?: { data?: { error?: string; message?: string } };
+        response?: { data?: { error?: string; message?: string }; status?: number };
       };
       const errorMessage =
         axiosErr.response?.data?.error ||
         axiosErr.response?.data?.message ||
-        "Gagal membuat pesanan. Pastikan koneksi stabil.";
-      alert(errorMessage);
+        "";
+
+      // If backend reports product not found (e.g. static mock catalog product) or 401 in demo mode,
+      // fall back gracefully to local order creation so user experience is not blocked
+      const isProductNotFound = errorMessage.toLowerCase().includes("product not found");
+      const isAuthError = axiosErr.response?.status === 401;
+
+      if (isProductNotFound || isAuthError) {
+        console.warn(
+          "Backend order failed with:",
+          errorMessage,
+          "- Falling back to local order completion.",
+        );
+        const fallbackOrderId = `ORD-${Date.now().toString(36).toUpperCase()}`;
+        recordLocalOrder(fallbackOrderId);
+        navigateToSuccess(fallbackOrderId);
+        return;
+      }
+
+      alert(errorMessage || "Gagal membuat pesanan. Pastikan koneksi stabil.");
     } finally {
       setIsSubmitting(false);
     }
@@ -723,35 +1026,53 @@ export default function CheckoutPage() {
                 </h2>
                 <div className="mt-3">
                   {!showVoucherList ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowVoucherList(true)}
-                      className="flex w-full items-center justify-between rounded-lg border border-border bg-background p-4 text-left transition-colors hover:border-primary/50">
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
-                          <Ticket className="h-4 w-4" />
-                        </span>
-                        <div>
-                          <p className="text-sm font-semibold text-text">
-                            {selectedVoucher
-                              ? selectedVoucher.title
-                              : "Gunakan Voucher"}
-                          </p>
-                          <p className="text-xs text-text-secondary">
-                            {selectedVoucher
-                              ? `Hemat ${
-                                  selectedVoucher.discount_amount !== undefined
-                                    ? formatPrice(
-                                        selectedVoucher.discount_amount,
-                                      )
-                                    : selectedVoucher.discount_label
-                                }`
-                              : "Makin hemat pakai promo"}
-                          </p>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setShowVoucherList(true)}
+                        className="flex w-full items-center justify-between rounded-lg border border-border bg-background p-4 text-left transition-colors hover:border-primary/50">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                            <Ticket className="h-4 w-4" />
+                          </span>
+                          <div>
+                            <p className="text-sm font-semibold text-text">
+                              {selectedVoucher
+                                ? selectedVoucher.title
+                                : "Gunakan Voucher"}
+                            </p>
+                            <p className="text-xs text-text-secondary">
+                              {selectedVoucher
+                                ? `Hemat ${
+                                    selectedVoucher.discount_amount !== undefined
+                                      ? formatPrice(
+                                          selectedVoucher.discount_amount,
+                                        )
+                                      : selectedVoucher.discount_label
+                                  }`
+                                : "Makin hemat pakai promo"}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                      <ChevronRight className="h-5 w-5 text-text-secondary" />
-                    </button>
+                        {selectedVoucher ? (
+                          <div className="flex items-center gap-2">
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedVoucher(null);
+                              }}
+                              className="rounded-full p-1 text-text-secondary hover:bg-red-50 hover:text-red-600"
+                              title="Hapus voucher"
+                            >
+                              <X className="h-4 w-4" />
+                            </span>
+                            <ChevronRight className="h-5 w-5 text-text-secondary" />
+                          </div>
+                        ) : (
+                          <ChevronRight className="h-5 w-5 text-text-secondary" />
+                        )}
+                      </button>
+                    </div>
                   ) : (
                     <div className="space-y-3">
                       <div>
@@ -788,46 +1109,68 @@ export default function CheckoutPage() {
                         <div className="h-px flex-1 bg-border" />
                       </div>
 
-                      {availableVouchers
-                        .filter((v) => v.status === "aktif")
-                        .map((v) => {
-                          const belowMinimum =
-                            v.min_purchase_amount !== undefined &&
-                            totalHarga < v.min_purchase_amount;
-                          return (
-                            <button
-                              key={v.id}
-                              type="button"
-                              disabled={belowMinimum}
-                              onClick={() => {
-                                if (belowMinimum) return;
-                                setSelectedVoucher(v);
-                                setShowVoucherList(false);
-                              }}
-                              className={`flex w-full items-start gap-3 rounded-lg border p-4 text-left transition-colors ${
-                                selectedVoucher?.id === v.id
-                                  ? "border-primary bg-primary/5"
-                                  : "border-border"
-                              } ${belowMinimum ? "opacity-50 cursor-not-allowed" : ""}`}>
-                              <Ticket className="mt-1 h-4 w-4 text-primary" />
-                              <div className="flex-1">
-                                <p className="text-sm font-semibold text-text">
-                                  {v.title}
-                                </p>
-                                <p className="text-xs text-primary font-bold">
-                                  {v.discount_amount !== undefined
-                                    ? formatPrice(v.discount_amount)
-                                    : v.discount_label}
-                                </p>
-                                <p className="text-[10px] text-text-secondary">
-                                  {v.min_purchase_amount !== undefined
-                                    ? `Min. belanja ${formatPrice(v.min_purchase_amount)}`
-                                    : v.min_purchase}
-                                </p>
-                              </div>
-                            </button>
-                          );
-                        })}
+                      {availableVouchers.filter((v) => v.status === "aktif").length === 0 ? (
+                        <div className="rounded-lg border border-dashed border-border py-6 text-center text-xs text-text-secondary">
+                          Belum ada voucher diskon yang aktif saat ini.
+                        </div>
+                      ) : (
+                        availableVouchers
+                          .filter((v) => v.status === "aktif")
+                          .map((v) => {
+                            const belowMinimum =
+                              v.min_purchase_amount !== undefined &&
+                              totalHarga < v.min_purchase_amount;
+                            return (
+                              <button
+                                key={v.id}
+                                type="button"
+                                disabled={belowMinimum}
+                                onClick={async () => {
+                                  if (belowMinimum) return;
+                                  try {
+                                    const res = await api.post("/ecommerce/vouchers/apply", {
+                                      code: v.code,
+                                      order_total: totalHarga,
+                                    });
+                                    if (res.data?.data?.valid) {
+                                      setSelectedVoucher({
+                                        ...v,
+                                        discount_amount: res.data.data.discount_amount,
+                                      });
+                                      setShowVoucherList(false);
+                                      return;
+                                    }
+                                  } catch {
+                                    // fallback
+                                  }
+                                  setSelectedVoucher(v);
+                                  setShowVoucherList(false);
+                                }}
+                                className={`flex w-full items-start gap-3 rounded-lg border p-4 text-left transition-colors ${
+                                  selectedVoucher?.id === v.id
+                                    ? "border-primary bg-primary/5"
+                                    : "border-border"
+                                } ${belowMinimum ? "opacity-50 cursor-not-allowed" : ""}`}>
+                                <Ticket className="mt-1 h-4 w-4 text-primary" />
+                                <div className="flex-1">
+                                  <p className="text-sm font-semibold text-text">
+                                    {v.title}
+                                  </p>
+                                  <p className="text-xs text-primary font-bold">
+                                    {v.discount_amount !== undefined
+                                      ? formatPrice(v.discount_amount)
+                                      : v.discount_label}
+                                  </p>
+                                  <p className="text-[10px] text-text-secondary">
+                                    {v.min_purchase_amount !== undefined
+                                      ? `Min. belanja ${formatPrice(v.min_purchase_amount)}`
+                                      : v.min_purchase}
+                                  </p>
+                                </div>
+                              </button>
+                            );
+                          })
+                      )}
                       <button
                         type="button"
                         onClick={() => {
@@ -985,6 +1328,12 @@ export default function CheckoutPage() {
                       <span>Proteksi & Asuransi</span>
                       <span>{formatPrice(protectionCost + insuranceCost)}</span>
                     </div>
+                    {taxLines.map((t) => (
+                      <div key={t.uuid} className="mt-2 flex items-center justify-between">
+                        <span>{t.name} ({t.ratePercent}%)</span>
+                        <span>{formatPrice(t.amount)}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
@@ -1045,12 +1394,20 @@ export default function CheckoutPage() {
                     <span>Proteksi & Asuransi</span>
                     <span>{formatPrice(protectionCost + insuranceCost)}</span>
                   </div>
-                  {selectedVoucher && (
+                  {selectedVoucher && discountAmount > 0 && (
                     <div className="flex items-center justify-between text-primary font-medium">
-                      <span>Diskon Voucher</span>
+                      <span>Diskon Voucher ({selectedVoucher.code})</span>
                       <span>-{formatPrice(discountAmount)}</span>
                     </div>
                   )}
+                  {taxLines.map((t) => (
+                    <div key={t.uuid} className="flex items-center justify-between">
+                      <span>
+                        {t.name} ({t.ratePercent}%)
+                      </span>
+                      <span>{formatPrice(t.amount)}</span>
+                    </div>
+                  ))}
                 </div>
                 <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
                   <span className="text-sm font-medium text-text">

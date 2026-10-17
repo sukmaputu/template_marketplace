@@ -10,6 +10,8 @@ import {
   LOYALTY_REWARD_VOUCHER,
 } from "@/lib/vouchers";
 import { showToast } from "@/lib/toast";
+import { api } from "@/lib/api";
+import { websocketService } from "@/lib/websocket";
 
 const EXPIRED_VOUCHER: Voucher = {
   id: "3",
@@ -24,7 +26,7 @@ function getVoucherStorageKey(email?: string) {
   return `marketplace-vouchers:${email || "guest"}`;
 }
 
-function getStoredVoucherCodes(email?: string) {
+function getStoredVoucherCodes(email?: string): string[] {
   if (typeof window === "undefined") return [];
 
   try {
@@ -43,28 +45,6 @@ function saveVoucherCodes(email: string | undefined, codes: string[]) {
     getVoucherStorageKey(email),
     JSON.stringify(codes),
   );
-}
-
-function getInitialVouchers(email: string | undefined, loyaltyPoints: number) {
-  const loyaltyVouchers =
-    loyaltyPoints >= LOYALTY_REWARD_THRESHOLD ? [LOYALTY_REWARD_VOUCHER] : [];
-  const availableVouchers = [...CHECKOUT_VOUCHERS, ...loyaltyVouchers];
-  const existingVouchers = [...loyaltyVouchers, EXPIRED_VOUCHER];
-  const storedVouchers = getStoredVoucherCodes(email)
-    .map((code) =>
-      availableVouchers.find(
-        (voucher) => voucher.code.toUpperCase() === code.toUpperCase(),
-      ),
-    )
-    .filter((voucher): voucher is Voucher => voucher !== undefined);
-
-  return [
-    ...existingVouchers,
-    ...storedVouchers.filter(
-      (stored) =>
-        !existingVouchers.some((voucher) => voucher.code === stored.code),
-    ),
-  ];
 }
 
 const STATUS_STYLE: Record<VoucherStatus, string> = {
@@ -87,19 +67,119 @@ export function VoucherTab() {
   const [isLoading, setIsLoading] = useState(true);
   const [voucherCodeInput, setVoucherCodeInput] = useState("");
   const [voucherError, setVoucherError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+
   const { user } = useAuth();
   const email = user?.email;
   const loyaltyPoints = user?.loyalty_points ?? 0;
   const { formatPrice } = useCurrency();
 
+  // Listen to real-time voucher updates from WebSocket
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setVouchers(getInitialVouchers(email, loyaltyPoints));
-      setCurrentPage(1);
-      setIsLoading(false);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [email, loyaltyPoints]);
+    const handleUpdate = () => setRefreshKey((k) => k + 1);
+    window.addEventListener("voucher-updated", handleUpdate);
+    window.addEventListener("focus", handleUpdate);
+    const unsub = websocketService.on("voucher_updated", handleUpdate);
+    return () => {
+      window.removeEventListener("voucher-updated", handleUpdate);
+      window.removeEventListener("focus", handleUpdate);
+      unsub();
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadVouchers() {
+      setIsLoading(true);
+      const loyaltyVoucher =
+        loyaltyPoints >= LOYALTY_REWARD_THRESHOLD
+          ? [LOYALTY_REWARD_VOUCHER]
+          : [];
+
+      try {
+        const res = await api.get("/ecommerce/vouchers/active");
+        const list = res.data?.data;
+        if (Array.isArray(list) && !cancelled) {
+          const mapped: Voucher[] = list.map((v: any) => {
+            const isPercentage = v.voucher_type === "percentage";
+            const discountValue = Number(v.discount_value) || 0;
+            const maxDiscount =
+              v.max_discount_amount !== null && v.max_discount_amount !== undefined
+                ? Number(v.max_discount_amount)
+                : undefined;
+            return {
+              id: v.uuid || v.id || v.code,
+              code: v.code,
+              title: v.description || v.code,
+              discount_label: isPercentage
+                ? `${discountValue}% OFF`
+                : formatPrice(discountValue),
+              discount_amount: !isPercentage ? discountValue : undefined,
+              discount_percent: isPercentage ? discountValue : undefined,
+              max_discount_amount: maxDiscount,
+              voucher_type: v.voucher_type,
+              min_purchase_amount: v.min_purchase_amount
+                ? Number(v.min_purchase_amount)
+                : undefined,
+              min_purchase: v.min_purchase_amount
+                ? `Min. belanja ${formatPrice(Number(v.min_purchase_amount))}`
+                : undefined,
+              expires_at: v.valid_to_date
+                ? new Date(v.valid_to_date).toLocaleDateString("id-ID", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })
+                : "Berlaku",
+              status: "aktif",
+            };
+          });
+
+          // Also check stored custom voucher codes
+          const storedCodes = getStoredVoucherCodes(email);
+          const allAvailable = [...CHECKOUT_VOUCHERS, ...mapped, ...loyaltyVoucher];
+          const storedVouchers = storedCodes
+            .map((code) =>
+              allAvailable.find(
+                (v) => v.code.toUpperCase() === code.toUpperCase(),
+              ),
+            )
+            .filter((v): v is Voucher => v !== undefined);
+
+          const combined = [
+            ...loyaltyVoucher,
+            ...mapped,
+            ...storedVouchers.filter(
+              (s) =>
+                !mapped.some((m) => m.code === s.code) &&
+                !loyaltyVoucher.some((l) => l.code === s.code),
+            ),
+            EXPIRED_VOUCHER,
+          ];
+
+          setVouchers(combined);
+          setCurrentPage(1);
+          setIsLoading(false);
+          return;
+        }
+      } catch {
+        // Fallback on network error
+      }
+
+      if (!cancelled) {
+        const fallback = [...loyaltyVoucher, ...CHECKOUT_VOUCHERS, EXPIRED_VOUCHER];
+        setVouchers(fallback);
+        setCurrentPage(1);
+        setIsLoading(false);
+      }
+    }
+
+    loadVouchers();
+    return () => {
+      cancelled = true;
+    };
+  }, [email, loyaltyPoints, formatPrice, refreshKey]);
 
   function handleAddVoucher(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -168,97 +248,96 @@ export function VoucherTab() {
           value={voucherCodeInput}
           onChange={(event) => {
             setVoucherCodeInput(event.target.value);
-            if (voucherError) setVoucherError("");
+            if (voucherError) {
+              setVoucherError("");
+            }
           }}
           placeholder="Masukkan kode voucher"
-          aria-label="Kode voucher"
-          aria-invalid={Boolean(voucherError)}
-          className={`min-w-0 flex-1 rounded-lg border bg-background px-3.5 py-2.5 text-sm text-text outline-none placeholder:text-text-secondary focus:border-primary ${
-            voucherError ? "border-red-500" : "border-border"
-          }`}
+          className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm uppercase text-text outline-none placeholder:normal-case focus:border-primary"
         />
         <button
           type="submit"
-          disabled={isLoading}
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:opacity-90">
           <Plus className="h-4 w-4" />
           Tambah Voucher
         </button>
       </form>
-      {voucherError && (
-        <p role="alert" className="mt-1 text-xs text-red-500">
-          {voucherError}
-        </p>
-      )}
 
-      <div className="mt-6 space-y-3">
-        {isLoading &&
-          Array.from({ length: 2 }).map((_, i) => (
+      {voucherError ? (
+        <p className="mt-2 text-xs text-red-500">{voucherError}</p>
+      ) : null}
+
+      {isLoading ? (
+        <div className="mt-4 flex flex-col gap-3">
+          {[1, 2, 3].map((skeleton) => (
             <div
-              key={i}
-              className="h-20 animate-pulse rounded-lg border border-border bg-background"
+              key={skeleton}
+              className="h-20 animate-pulse rounded-xl border border-border bg-background"
             />
           ))}
-
-        {!isLoading && vouchers.length === 0 && (
-          <p className="py-8 text-center text-sm text-text-secondary">
-            Belum ada voucher yang tersedia.
+        </div>
+      ) : vouchers.length === 0 ? (
+        <div className="mt-6 flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-12 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <Ticket className="h-6 w-6" />
+          </div>
+          <p className="mt-3 text-sm font-medium text-text">
+            Belum ada voucher
           </p>
-        )}
-
-        {!isLoading &&
-          paginatedVouchers.map((v) => (
+          <p className="mt-1 text-xs text-text-secondary">
+            Voucher diskon atau gratis ongkir yang kamu klaim akan muncul di
+            sini.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-4 flex flex-col gap-3">
+          {paginatedVouchers.map((voucher) => (
             <div
-              key={v.id}
-              className={`flex items-start gap-3 rounded-lg border border-border p-4 ${
-                v.status === "kadaluarsa" ? "opacity-60" : ""
-              }`}>
-              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-background border border-border">
-                <Ticket className="h-4 w-4 text-text-secondary" />
-              </span>
-
-              <div className="flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-text">{v.title}</p>
-                  <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_STYLE[v.status]}`}>
-                    {STATUS_LABEL[v.status]}
-                  </span>
+              key={voucher.id}
+              className="flex flex-col items-start justify-between gap-3 rounded-xl border border-border bg-background p-4 sm:flex-row sm:items-center">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Ticket className="h-5 w-5" />
                 </div>
-                <p className="mt-0.5 text-sm text-primary font-semibold">
-                  {v.discount_amount !== undefined
-                    ? formatPrice(v.discount_amount)
-                    : v.discount_label}
-                </p>
-                {v.min_purchase && (
-                  <p className="text-xs text-text-secondary">
-                    {v.min_purchase_amount !== undefined
-                      ? `Min. belanja ${formatPrice(v.min_purchase_amount)}`
-                      : v.min_purchase}
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-bold tracking-wider text-primary">
+                      {voucher.code}
+                    </span>
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                        STATUS_STYLE[voucher.status]
+                      }`}>
+                      {STATUS_LABEL[voucher.status]}
+                    </span>
+                  </div>
+                  <p className="text-sm font-semibold text-text">
+                    {voucher.title}
                   </p>
-                )}
-                <div className="mt-2 flex items-center justify-between">
-                  <code className="rounded bg-background px-2 py-1 text-xs font-medium text-text">
-                    {v.code}
-                  </code>
                   <p className="text-xs text-text-secondary">
-                    Berlaku s/d {v.expires_at}
+                    {voucher.min_purchase}
                   </p>
                 </div>
               </div>
+              <div className="flex w-full items-center justify-between border-t border-border pt-2 text-right sm:w-auto sm:flex-col sm:items-end sm:border-0 sm:pt-0">
+                <span className="text-xs font-bold text-accent sm:text-sm">
+                  {voucher.discount_label}
+                </span>
+                <span className="text-[11px] text-text-secondary">
+                  Berlaku s/d {voucher.expires_at}
+                </span>
+              </div>
             </div>
           ))}
-      </div>
+        </div>
+      )}
 
-      {!isLoading && vouchers.length > 0 && (
-        <div className="mt-6 border-t border-border">
+      {totalPages > 1 && !isLoading && (
+        <div className="mt-6 flex justify-center">
           <Pagination
             currentPage={currentPage}
             totalPages={totalPages}
-            onPageChange={(page) => {
-              setCurrentPage(page);
-              window.scrollTo({ top: 0, behavior: "smooth" });
-            }}
+            onPageChange={setCurrentPage}
           />
         </div>
       )}

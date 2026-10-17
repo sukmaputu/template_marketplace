@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { AppLoader } from "@/components/Apploader";
 import { ChatWidget } from "@/components/ChatWidget";
 import { ToastContainer } from "@/components/ToastContainer";
+import { PromoPopupModal } from "@/components/PromoPopupModal";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { CurrencyProvider } from "@/components/navbar/CurrencySwitcher";
 import SettingsPage from "@/pages/SettingsPage";
@@ -98,6 +99,7 @@ export default function App() {
                 </Routes>
               </Suspense>
               {shouldShowChatWidget && <ChatWidget />}
+              <PromoPopupModal />
               <ToastContainer />
             </motion.div>
           )}
