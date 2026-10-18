@@ -61,6 +61,7 @@ export interface WSChatMessagePayload {
   type: "chat_message";
   conversation_id: string;
   customer_email?: string | null;
+  customer_phone?: string | null;
   customer_user_id?: string | null;
   conversation?: Partial<ChatConversation>;
   message: ChatMessage;

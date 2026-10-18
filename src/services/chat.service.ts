@@ -14,6 +14,13 @@ const GUEST_ID_KEY = "marketplace_chat_guest_id";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api/v1";
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isValidUUID(id?: string | null): boolean {
+  if (!id) return false;
+  return UUID_REGEX.test(id.trim());
+}
+
 export function generateUUID(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -424,6 +431,9 @@ class ChatService {
     const payload: WSChatMessagePayload = {
       type: "chat_message",
       conversation_id: conversation.id,
+      customer_email: identity.customer_email || conversation.customer_email || undefined,
+      customer_phone: identity.customer_phone || conversation.customer_phone || undefined,
+      customer_user_id: identity.customer_user_id || conversation.customer_user_id || undefined,
       conversation: updatedConv,
       message: newMsg,
     };
@@ -459,7 +469,17 @@ class ChatService {
     replyToId?: string,
   ): Promise<void> {
     try {
-      await fetch(`${API_BASE}/ecommerce/chats/${conversationId}/messages`, {
+      let targetConvId = conversationId;
+      if (!isValidUUID(targetConvId)) {
+        const synced = await this.ensureConversationAsync(identity);
+        if (synced && isValidUUID(synced.id)) {
+          targetConvId = synced.id;
+        } else {
+          return;
+        }
+      }
+
+      await fetch(`${API_BASE}/ecommerce/chats/${targetConvId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
