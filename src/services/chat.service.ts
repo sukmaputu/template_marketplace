@@ -1,4 +1,5 @@
 import { websocketService } from "@/lib/websocket";
+import { api } from "@/lib/api";
 import type {
   ChatConversation,
   ChatIdentity,
@@ -695,15 +696,11 @@ class ChatService {
     });
 
     // Also persist transfer to backend PostgreSQL DB
-    fetch(`${API_BASE}/ecommerce/chats/transfer`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: user.email,
-        phone: user.phone || "",
-        customer_user_id: user.id || "00000000-0000-0000-0000-000000000000",
-        customer_name: user.full_name,
-      }),
+    api.post("/ecommerce/chats/transfer", {
+      email: user.email,
+      phone: user.phone || "",
+      customer_user_id: user.id || "00000000-0000-0000-0000-000000000000",
+      customer_name: user.full_name,
     }).catch((err) => {
       console.warn("[ChatService] Backend transfer error:", err);
     });
