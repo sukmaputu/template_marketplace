@@ -359,6 +359,16 @@ export function ChatWidget() {
         return true;
       }
 
+      const incomingPhone = payload.customer_phone || payload.conversation?.customer_phone;
+      const myPhone = currentConv.customer_phone || ident.customer_phone;
+      if (
+        incomingPhone &&
+        myPhone &&
+        incomingPhone.trim() === myPhone.trim()
+      ) {
+        return true;
+      }
+
       return false;
     };
 
