@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { websocketService } from "@/lib/websocket";
 
 export type ProductType = "physical" | "digital" | "service";
 
@@ -1052,7 +1053,15 @@ export function useMarketplaceProducts(limit = 6) {
   useEffect(() => {
     const handleUpdate = () => setRefreshKey((k) => k + 1);
     window.addEventListener("products-updated", handleUpdate);
-    return () => window.removeEventListener("products-updated", handleUpdate);
+    window.addEventListener("categories-updated", handleUpdate);
+    window.addEventListener("focus", handleUpdate);
+    const unsub = websocketService.on("products_updated", handleUpdate);
+    return () => {
+      window.removeEventListener("products-updated", handleUpdate);
+      window.removeEventListener("categories-updated", handleUpdate);
+      window.removeEventListener("focus", handleUpdate);
+      unsub();
+    };
   }, []);
 
   useEffect(() => {
@@ -1064,14 +1073,9 @@ export function useMarketplaceProducts(limit = 6) {
           params: { limit },
         });
         const items = res.data?.data;
-        if (Array.isArray(items) && items.length > 0 && !cancelled) {
+        if (Array.isArray(items) && !cancelled) {
           const backendItems = items.map(mapBackendToProduct);
-          const backendIdSet = new Set(backendItems.map((b) => b.id));
-          const combined = [
-            ...backendItems,
-            ...PRODUCTS.filter((p) => !backendIdSet.has(p.id)),
-          ];
-          setProducts(combined);
+          setProducts(backendItems);
         }
       } catch {
         // Fallback to static PRODUCTS
@@ -1115,6 +1119,21 @@ export function useCategories() {
     })),
   );
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => setRefreshKey((k) => k + 1);
+    window.addEventListener("categories-updated", handleUpdate);
+    window.addEventListener("focus", handleUpdate);
+    const unsub1 = websocketService.on("categories_updated", handleUpdate);
+    const unsub2 = websocketService.on("category_updated", handleUpdate);
+    return () => {
+      window.removeEventListener("categories-updated", handleUpdate);
+      window.removeEventListener("focus", handleUpdate);
+      unsub1();
+      unsub2();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1123,7 +1142,7 @@ export function useCategories() {
       try {
         const res = await api.get("/ecommerce/categories");
         const items = res.data?.data;
-        if (Array.isArray(items) && items.length > 0 && !cancelled) {
+        if (Array.isArray(items) && !cancelled) {
           const mapped: CategoryItem[] = (items as BackendCategory[])
             .filter((cat) => cat.is_active !== false)
             .map((cat) => {
@@ -1149,7 +1168,7 @@ export function useCategories() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshKey]);
 
   return { categories, loading };
 }
@@ -1193,7 +1212,15 @@ export function usePaginatedProducts({
   useEffect(() => {
     const handleUpdate = () => setRefreshKey((k) => k + 1);
     window.addEventListener("products-updated", handleUpdate);
-    return () => window.removeEventListener("products-updated", handleUpdate);
+    window.addEventListener("categories-updated", handleUpdate);
+    window.addEventListener("focus", handleUpdate);
+    const unsub = websocketService.on("products_updated", handleUpdate);
+    return () => {
+      window.removeEventListener("products-updated", handleUpdate);
+      window.removeEventListener("categories-updated", handleUpdate);
+      window.removeEventListener("focus", handleUpdate);
+      unsub();
+    };
   }, []);
 
   useEffect(() => {

@@ -7,6 +7,7 @@ import { calculateCartSummary } from "@/lib/cart";
 import { getDiscountPercent } from "@/lib/products";
 import { api } from "@/lib/api";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
+import { websocketService } from "@/lib/websocket";
 
 export default function CartPage() {
   const navigate = useNavigate();
@@ -20,12 +21,29 @@ export default function CartPage() {
   const { formatPrice } = useCurrency();
   const [liveStocks, setLiveStocks] = useState<Record<string, number>>({});
   const [pendingRemovalId, setPendingRemovalId] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const productIdsKey = Array.from(new Set(items.map((i) => i.productId))).sort().join(",");
 
   useEffect(() => {
-    if (items.length === 0) return;
+    const handleUpdate = () => setRefreshKey((k) => k + 1);
+    window.addEventListener("products-updated", handleUpdate);
+    window.addEventListener("focus", handleUpdate);
+    const unsub1 = websocketService.on("products_updated", handleUpdate);
+    const unsub2 = websocketService.on("product_updated", handleUpdate);
+    return () => {
+      window.removeEventListener("products-updated", handleUpdate);
+      window.removeEventListener("focus", handleUpdate);
+      unsub1();
+      unsub2();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!productIdsKey) return;
     let cancelled = false;
 
-    const uniqueIds = Array.from(new Set(items.map((i) => i.productId)));
+    const uniqueIds = productIdsKey.split(",").filter(Boolean);
     Promise.all(
       uniqueIds.map(async (id) => {
         try {
@@ -49,7 +67,7 @@ export default function CartPage() {
     return () => {
       cancelled = true;
     };
-  }, [items]);
+  }, [productIdsKey, refreshKey]);
 
   const getItemStock = (item: (typeof items)[number]) => {
     return liveStocks[item.productId] ?? item.stock;

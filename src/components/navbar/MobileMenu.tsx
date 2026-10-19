@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Bell,
@@ -16,8 +16,34 @@ import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/components/auth/UseAuth";
 import { CURRENCIES, useCurrency } from "@/components/navbar/CurrencySwitcher";
 import { ConfirmSignOutModal } from "@/components/navbar/ConfirmSignOutModal";
-import { NotificationList } from "./NotificationMenu";
-import { NOTIFICATIONS } from "./notifications-data";
+import {
+  NotificationList,
+  type UnifiedNotificationItem,
+} from "./NotificationMenu";
+import {
+  NOTIFICATIONS,
+  getReadNotificationIds,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+} from "./notifications-data";
+import { useAnnouncements } from "@/lib/announcements";
+
+function formatRelativeTime(dateStr?: string): string {
+  if (!dateStr) return "Baru saja";
+  try {
+    const diff = (Date.now() - new Date(dateStr).getTime()) / 1000;
+    if (diff < 60) return "Baru saja";
+    if (diff < 3600) return `${Math.floor(diff / 60)} menit lalu`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} jam lalu`;
+    if (diff < 86400 * 7) return `${Math.floor(diff / 86400)} hari lalu`;
+    return new Date(dateStr).toLocaleDateString("id-ID", {
+      day: "numeric",
+      month: "short",
+    });
+  } catch {
+    return "Baru saja";
+  }
+}
 
 export function MobileMenu() {
   const { theme, toggleTheme } = useTheme();
@@ -27,7 +53,102 @@ export function MobileMenu() {
   const isDark = theme === "dark";
   const [showNotifications, setShowNotifications] = useState(false);
   const [showConfirmSignOut, setShowConfirmSignOut] = useState(false);
-  const unreadCount = NOTIFICATIONS.filter((item) => !item.is_read).length;
+
+  const { announcements, readIds, markRead, markAllRead } = useAnnouncements();
+  const [readNotifIds, setReadNotifIds] = useState<Set<string>>(() => getReadNotificationIds());
+
+  useEffect(() => {
+    const handleSync = () => {
+      setReadNotifIds(getReadNotificationIds());
+    };
+    window.addEventListener("notifications-read-updated", handleSync);
+    window.addEventListener("announcement-read-updated", handleSync);
+    window.addEventListener("storage", handleSync);
+    window.addEventListener("focus", handleSync);
+    return () => {
+      window.removeEventListener("notifications-read-updated", handleSync);
+      window.removeEventListener("announcement-read-updated", handleSync);
+      window.removeEventListener("storage", handleSync);
+      window.removeEventListener("focus", handleSync);
+    };
+  }, []);
+
+  const items: UnifiedNotificationItem[] = useMemo(() => {
+    const liveItems: UnifiedNotificationItem[] = announcements.map((ann) => {
+      const lowerUuid = (ann.uuid || "").toLowerCase();
+      const isRead =
+        readIds.has(ann.uuid) ||
+        readIds.has(lowerUuid) ||
+        readNotifIds.has(lowerUuid) ||
+        readNotifIds.has(`ann-${lowerUuid}`);
+
+      return {
+        id: `ann-${ann.uuid}`,
+        title: ann.title,
+        description: ann.content,
+        time: formatRelativeTime(ann.created_at),
+        is_read: isRead,
+        notification_type: "announcement",
+        announcement: ann,
+      };
+    });
+
+    const mockItems: UnifiedNotificationItem[] = NOTIFICATIONS.map((m) => {
+      const idStr = String(m.id).toLowerCase();
+      const isRead = readNotifIds.has(idStr) || m.is_read;
+      return {
+        id: m.id,
+        title: m.title,
+        description: m.description,
+        time: m.time,
+        is_read: isRead,
+        notification_type: (m.notification_type as any) || "system",
+      };
+    });
+
+    return [...liveItems, ...mockItems];
+  }, [announcements, readIds, readNotifIds]);
+
+  const unreadCount = useMemo(() => {
+    return items.filter((item) => !item.is_read).length;
+  }, [items]);
+
+  function handleMarkAllAsRead() {
+    const allIds = items.map((i) => i.id);
+    markAllNotificationsAsRead(allIds);
+    markAllRead();
+    setReadNotifIds((prev) => {
+      const next = new Set(prev);
+      allIds.forEach((id) => {
+        const str = String(id).toLowerCase();
+        next.add(str);
+        if (str.startsWith("ann-")) {
+          next.add(str.replace(/^ann-/, ""));
+        } else {
+          next.add(`ann-${str}`);
+        }
+      });
+      return next;
+    });
+  }
+
+  function handleNotificationClick(item: UnifiedNotificationItem) {
+    markNotificationAsRead(item.id);
+    if (item.announcement) {
+      markRead(item.announcement.uuid);
+    }
+    setReadNotifIds((prev) => {
+      const next = new Set(prev);
+      const str = String(item.id).toLowerCase();
+      next.add(str);
+      if (str.startsWith("ann-")) {
+        next.add(str.replace(/^ann-/, ""));
+      } else {
+        next.add(`ann-${str}`);
+      }
+      return next;
+    });
+  }
 
   return (
     <>
@@ -150,10 +271,10 @@ export function MobileMenu() {
             )}
 
             {showNotifications && (
-              <div className="absolute right-0 top-0 z-50 flex h-fit w-[280px] flex-col rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] shadow-2xl animate-in fade-in zoom-in duration-200">
+              <div className="absolute right-0 top-0 z-50 flex h-fit w-[280px] sm:w-[320px] flex-col rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] shadow-2xl animate-in fade-in zoom-in duration-200">
                 <div className="flex items-center justify-between border-b border-[color:var(--color-border)] p-3">
                   <span className="text-sm font-bold text-[color:var(--color-text)]">
-                    Notifikasi
+                    Notifikasi & Pengumuman
                   </span>
                   <button
                     onClick={(e) => {
@@ -165,7 +286,11 @@ export function MobileMenu() {
                   </button>
                 </div>
                 <div className="max-h-80 overflow-y-auto p-1">
-                  <NotificationList />
+                  <NotificationList
+                    notifications={items}
+                    onNotificationClick={handleNotificationClick}
+                    onMarkAllAsRead={handleMarkAllAsRead}
+                  />
                 </div>
               </div>
             )}

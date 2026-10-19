@@ -129,6 +129,9 @@ export interface Voucher {
   title: string;
   discount_label: string;
   discount_amount?: number;
+  discount_percent?: number;
+  max_discount_amount?: number;
+  voucher_type?: string;
   min_purchase?: string;
   min_purchase_amount?: number;
   expires_at: string;

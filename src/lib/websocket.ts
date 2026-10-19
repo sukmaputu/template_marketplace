@@ -240,18 +240,95 @@ class MarketplaceWebSocketService {
         }
       }
 
+      // Also trigger specific listeners when receiving a generic data_updated event
+      if (event.type === "data_updated" && typeof event.resource === "string") {
+        const resourceListenersMap: Record<string, string[]> = {
+          vouchers: ["voucher_updated", "vouchers_updated"],
+          voucher: ["voucher_updated", "vouchers_updated"],
+          products: ["products_updated", "product_updated"],
+          product: ["products_updated", "product_updated"],
+          categories: ["categories_updated", "category_updated"],
+          category: ["categories_updated", "category_updated"],
+          taxes: ["tax_updated", "taxes_updated"],
+          tax: ["tax_updated", "taxes_updated"],
+          settings: ["settings_updated"],
+          banners: ["banners_updated"],
+          orders: ["order_updated", "order_status_updated"],
+          order: ["order_updated", "order_status_updated"],
+          addresses: ["address_updated"],
+          announcements: ["announcement_updated", "announcements_updated", "announcement"],
+          pengumuman: ["announcement_updated", "announcements_updated", "announcement"],
+        };
+        const mappedTypes = resourceListenersMap[event.resource] || [];
+        for (const mappedType of mappedTypes) {
+          const mappedSet = this.typeListeners.get(mappedType);
+          if (mappedSet) {
+            for (const listener of mappedSet) {
+              try {
+                listener(event.payload ?? event);
+              } catch (err) {
+                console.error(`[WS] Mapped type listener error (${mappedType}):`, err);
+              }
+            }
+          }
+        }
+      }
+
       // Also trigger DOM custom events for easy subscription in components
       if (typeof window !== "undefined") {
-        if (event.type === "address_updated") {
+        if (
+          event.type === "address_updated" ||
+          (event.type === "data_updated" && event.resource === "addresses")
+        ) {
           window.dispatchEvent(new CustomEvent("marketplace-address-updated"));
         } else if (
           event.type === "order_created" ||
           event.type === "order_updated" ||
-          event.type === "payment_submitted"
+          event.type === "order_status_updated" ||
+          event.type === "payment_submitted" ||
+          (event.type === "data_updated" && event.resource === "orders")
         ) {
           window.dispatchEvent(new CustomEvent("order-history-updated"));
-        } else if (event.type === "products_updated") {
+        } else if (
+          event.type === "products_updated" ||
+          event.type === "product_updated" ||
+          (event.type === "data_updated" && event.resource === "products")
+        ) {
           window.dispatchEvent(new CustomEvent("products-updated"));
+        } else if (
+          event.type === "categories_updated" ||
+          event.type === "category_updated" ||
+          (event.type === "data_updated" && event.resource === "categories")
+        ) {
+          window.dispatchEvent(new CustomEvent("categories-updated"));
+          window.dispatchEvent(new CustomEvent("products-updated"));
+        } else if (
+          event.type === "voucher_updated" ||
+          event.type === "vouchers_updated" ||
+          (event.type === "data_updated" && event.resource === "vouchers")
+        ) {
+          window.dispatchEvent(new CustomEvent("voucher-updated"));
+        } else if (
+          event.type === "tax_updated" ||
+          event.type === "taxes_updated" ||
+          (event.type === "data_updated" && event.resource === "taxes")
+        ) {
+          window.dispatchEvent(new CustomEvent("tax-updated"));
+        } else if (
+          event.type === "banners_updated" ||
+          event.type === "settings_updated" ||
+          (event.type === "data_updated" &&
+            (event.resource === "settings" || event.resource === "banners"))
+        ) {
+          window.dispatchEvent(new CustomEvent("banners-updated"));
+        } else if (
+          event.type === "announcement_updated" ||
+          event.type === "announcement" ||
+          event.type === "announcements_updated" ||
+          (event.type === "data_updated" &&
+            (event.resource === "announcements" || event.resource === "pengumuman"))
+        ) {
+          window.dispatchEvent(new CustomEvent("announcements-updated"));
         }
       }
     }
@@ -266,10 +343,12 @@ class MarketplaceWebSocketService {
     } catch {
       // ignore
     }
-    // Send to server via WebSocket if connected
+  }
+
+  public sendToServer(data: unknown): void {
     if (this.isConnected()) {
       try {
-        this.socket?.send(JSON.stringify(event));
+        this.socket?.send(typeof data === "string" ? data : JSON.stringify(data));
       } catch {
         // ignore
       }

@@ -51,6 +51,8 @@ export default function PaymentSuccessPage() {
         items?: PurchasedItem[];
         subtotal?: number;
         packagingFee?: number;
+        taxAmount?: number;
+        taxLabel?: string;
         discountAmount?: number;
         voucherCode?: string;
         customer?: InvoiceCustomer;
@@ -63,7 +65,8 @@ export default function PaymentSuccessPage() {
   const invoiceSubtotal = orderState?.subtotal ?? 0;
   const invoicePackagingFee = orderState?.packagingFee ?? 0;
   const discountAmount = orderState?.discountAmount ?? 0;
-  const extraFees = totalPaid - (invoiceSubtotal + invoicePackagingFee);
+  const taxAmount = orderState?.taxAmount ?? 0;
+  const extraFees = totalPaid - (invoiceSubtotal + invoicePackagingFee + taxAmount);
 
   const invoiceCustomer = orderState?.customer ?? {
     name: "-",
@@ -221,8 +224,10 @@ export default function PaymentSuccessPage() {
                   items={invoiceItems}
                   subtotal={invoiceSubtotal}
                   packagingFee={
-                    invoicePackagingFee + extraFees + discountAmount
+                    invoicePackagingFee + Math.max(0, extraFees) + discountAmount
                   }
+                  taxAmount={taxAmount}
+                  taxLabel={orderState?.taxLabel}
                   discountAmount={discountAmount}
                   voucherCode={orderState?.voucherCode}
                 />

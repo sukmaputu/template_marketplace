@@ -1,5 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
+import {
+  usePageSettings,
+  resolveAssetUrl,
+  sanitizeUrl,
+} from "@/hooks/usePageSettings";
 
 export type BannerSlide = {
   image: string;
@@ -9,6 +14,18 @@ export type BannerSlide = {
   ctaLabel: string;
   ctaHref: string;
 };
+
+interface RawSlideItem {
+  image?: unknown;
+  url?: unknown;
+  src?: unknown;
+  badge?: unknown;
+  title?: unknown;
+  subtitle?: unknown;
+  ctaLabel?: unknown;
+  ctaHref?: unknown;
+  href?: unknown;
+}
 
 const DEFAULT_SLIDES: BannerSlide[] = [
   {
@@ -38,79 +55,242 @@ const DEFAULT_SLIDES: BannerSlide[] = [
   },
 ];
 
+function parseDynamicBannerSlides(rawValue?: string): BannerSlide[] | null {
+  if (!rawValue) return null;
+
+  const resolveBannerPath = (url: string): string => {
+    if (!url) return "";
+    if (url.startsWith("/uploads/") || url.startsWith("uploads/")) {
+      return resolveAssetUrl(url);
+    }
+    if (/^https?:\/\//i.test(url) || /^data:image\//i.test(url) || url.startsWith("/")) {
+      return url;
+    }
+    return resolveAssetUrl(url);
+  };
+
+  try {
+    const parsed: unknown = JSON.parse(rawValue);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      if (typeof parsed[0] === "object" && parsed[0] !== null) {
+        const slidesFromApi = parsed
+          .map((entry): BannerSlide | null => {
+            if (typeof entry !== "object" || entry === null) return null;
+            const item = entry as RawSlideItem;
+            const rawImg =
+              typeof item.image === "string"
+                ? item.image
+                : typeof item.url === "string"
+                  ? item.url
+                  : typeof item.src === "string"
+                    ? item.src
+                    : "";
+            const img = resolveBannerPath(rawImg);
+            if (!img) return null;
+            const rawHref =
+              typeof item.ctaHref === "string"
+                ? item.ctaHref
+                : typeof item.href === "string"
+                  ? item.href
+                  : "#catalog";
+            return {
+              image: img,
+              badge: typeof item.badge === "string" ? item.badge.trim() : "",
+              title: typeof item.title === "string" ? item.title.trim() : "",
+              subtitle:
+                typeof item.subtitle === "string" ? item.subtitle.trim() : "",
+              ctaLabel:
+                typeof item.ctaLabel === "string" ? item.ctaLabel.trim() : "",
+              ctaHref: sanitizeUrl(rawHref, "#catalog"),
+            };
+          })
+          .filter((s): s is BannerSlide => s !== null);
+
+        if (slidesFromApi.length > 0) {
+          return slidesFromApi;
+        }
+      }
+
+      if (typeof parsed[0] === "string") {
+        const imgUrls = parsed
+          .filter((u): u is string => typeof u === "string" && Boolean(u.trim()))
+          .map(resolveBannerPath)
+          .filter(Boolean);
+        if (imgUrls.length > 0) {
+          return imgUrls.map((img) => ({
+            image: img,
+            badge: "",
+            title: "",
+            subtitle: "",
+            ctaLabel: "",
+            ctaHref: "#catalog",
+          }));
+        }
+      }
+    } else if (typeof parsed === "string" && parsed.trim()) {
+      const img = resolveBannerPath(parsed.trim());
+      if (img) {
+        return [
+          {
+            image: img,
+            badge: "",
+            title: "",
+            subtitle: "",
+            ctaLabel: "",
+            ctaHref: "#catalog",
+          },
+        ];
+      }
+    }
+  } catch {
+    const img = resolveBannerPath(rawValue.trim());
+    if (img) {
+      return [
+        {
+          image: img,
+          badge: "",
+          title: "",
+          subtitle: "",
+          ctaLabel: "",
+          ctaHref: "#catalog",
+        },
+      ];
+    }
+  }
+
+  return null;
+}
+
 type PromoBannerSectionProps = {
   slides?: BannerSlide[];
+  images?: string[];
 };
 
 export function PromoBannerSection({
-  slides = DEFAULT_SLIDES,
+  slides,
+  images,
 }: PromoBannerSectionProps) {
-  const bannerSlides = slides.length > 0 ? slides : DEFAULT_SLIDES;
+  const { settingsMap } = usePageSettings();
+  const [isPaused, setIsPaused] = useState(false);
+
+  const dynamicSlides = useMemo(() => {
+    const rawVal = settingsMap.home_hero_banners || settingsMap.hero_banner;
+    return parseDynamicBannerSlides(rawVal);
+  }, [settingsMap.home_hero_banners, settingsMap.hero_banner]);
+
+  let bannerSlides: BannerSlide[] = DEFAULT_SLIDES;
+  if (slides && slides.length > 0) {
+    bannerSlides = slides;
+  } else if (dynamicSlides && dynamicSlides.length > 0) {
+    bannerSlides = dynamicSlides;
+  } else if (images && images.length > 0) {
+    bannerSlides = images.map((img) => ({
+      image: img,
+      badge: "",
+      title: "",
+      subtitle: "",
+      ctaLabel: "",
+      ctaHref: "#catalog",
+    }));
+  }
+
   const slideCount = bannerSlides.length;
   const isSlideshow = slideCount > 1;
   const [index, setIndex] = useState(0);
 
+  // Clamp index if slide count decreases dynamically
+  useEffect(() => {
+    if (index >= slideCount) {
+      setIndex(0);
+    }
+  }, [index, slideCount]);
+
+  const safeIndex = index >= slideCount ? 0 : index;
+
   function goTo(i: number) {
+    if (slideCount <= 0) return;
     setIndex(((i % slideCount) + slideCount) % slideCount);
   }
 
   function next() {
-    goTo(index + 1);
+    goTo(safeIndex + 1);
   }
 
   function prev() {
-    goTo(index - 1);
+    goTo(safeIndex - 1);
   }
 
   useEffect(() => {
-    if (!isSlideshow) return;
+    if (!isSlideshow || isPaused) return;
     const id = setInterval(() => {
-      setIndex((prev) => (prev + 1) % slideCount);
+      setIndex((prevIdx) => (prevIdx + 1) % slideCount);
     }, 5000);
     return () => clearInterval(id);
-  }, [isSlideshow, slideCount]);
+  }, [isSlideshow, isPaused, slideCount]);
 
   return (
-    <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <div className="group relative aspect-16/9 w-full overflow-hidden rounded-xl bg-neutral-200 dark:bg-neutral-700">
+    <section className="w-full mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <div
+        onMouseEnter={() => setIsPaused(true)}
+        onMouseLeave={() => setIsPaused(false)}
+        className="group relative w-full aspect-16/9 overflow-hidden rounded-xl bg-neutral-200 dark:bg-neutral-700 select-none"
+        style={{ width: "100%" }}>
         <div
           className="flex h-full transition-transform duration-500 ease-out"
           style={{
-            transform: isSlideshow ? `translateX(-${index * 100}%)` : "none",
+            transform: isSlideshow ? `translateX(-${safeIndex * 100}%)` : "none",
           }}>
-          {bannerSlides.map((slide, i) => (
-            <div
-              key={slide.image}
-              className="relative flex h-full w-full shrink-0 items-center justify-center bg-neutral-200 dark:bg-neutral-700">
-              <img
-                src={slide.image}
-                alt={`Banner promo ${i + 1}`}
-                className="absolute inset-0 h-full w-full object-cover"
-              />
+          {bannerSlides.map((slide, i) => {
+            const hasContent = Boolean(
+              slide.badge || slide.title || slide.subtitle || slide.ctaLabel
+            );
 
-              <div className="absolute inset-0 bg-black/50" />
+            return (
+              <div
+                key={`${slide.image}-${i}`}
+                className="relative flex h-full w-full shrink-0 items-center justify-center bg-neutral-200 dark:bg-neutral-700">
+                <img
+                  src={slide.image}
+                  alt={`Banner promo ${i + 1}`}
+                  className="absolute inset-0 h-full w-full object-cover object-center"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = "/banner/slide1.jpg";
+                  }}
+                />
 
-              <div className="relative z-10 mx-auto flex max-w-2xl flex-col items-center px-6 text-center sm:px-10">
-                {slide.badge && (
-                  <span className="mb-2 inline-block rounded-full bg-amber-400 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-neutral-900 sm:mb-3 sm:text-xs">
-                    {slide.badge}
-                  </span>
+                {hasContent && <div className="absolute inset-0 bg-black/50" />}
+
+                {hasContent && (
+                  <div className="relative z-10 mx-auto flex max-w-2xl flex-col items-center px-6 text-center sm:px-10">
+                    {slide.badge && (
+                      <span className="mb-2 inline-block rounded-full bg-amber-400 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-neutral-900 sm:mb-3 sm:text-xs">
+                        {slide.badge}
+                      </span>
+                    )}
+                    {slide.title && (
+                      <h2 className="text-lg font-extrabold leading-tight text-white sm:text-3xl lg:text-4xl">
+                        {slide.title}
+                      </h2>
+                    )}
+                    {slide.subtitle && (
+                      <p className="mt-1.5 line-clamp-2 text-xs text-white/85 sm:mt-3 sm:text-base">
+                        {slide.subtitle}
+                      </p>
+                    )}
+                    {slide.ctaLabel && (
+                      <a
+                        href={sanitizeUrl(slide.ctaHref, "#catalog")}
+                        className="mt-3 inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-xs font-semibold text-neutral-900 shadow-lg transition hover:scale-105 hover:bg-amber-400 sm:mt-6 sm:px-6 sm:py-3 sm:text-sm">
+                        {slide.ctaLabel}
+                        <ArrowRight className="h-4 w-4" />
+                      </a>
+                    )}
+                  </div>
                 )}
-                <h2 className="text-lg font-extrabold leading-tight text-white sm:text-3xl lg:text-4xl">
-                  {slide.title}
-                </h2>
-                <p className="mt-1.5 line-clamp-2 text-xs text-white/85 sm:mt-3 sm:text-base">
-                  {slide.subtitle}
-                </p>
-                <a
-                  href={slide.ctaHref}
-                  className="mt-3 inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-xs font-semibold text-neutral-900 shadow-lg transition hover:scale-105 hover:bg-amber-400 sm:mt-6 sm:px-6 sm:py-3 sm:text-sm">
-                  {slide.ctaLabel}
-                  <ArrowRight className="h-4 w-4" />
-                </a>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {isSlideshow && (
@@ -131,11 +311,11 @@ export function PromoBannerSection({
             <div className="absolute bottom-2.5 left-1/2 z-20 flex -translate-x-1/2 gap-1.5">
               {bannerSlides.map((slide, i) => (
                 <button
-                  key={slide.image}
+                  key={`${slide.image}-${i}`}
                   onClick={() => goTo(i)}
                   aria-label={`Ke slide ${i + 1}`}
                   className={`h-1.5 rounded-full transition-all ${
-                    i === index
+                    i === safeIndex
                       ? "w-5 bg-white"
                       : "w-1.5 bg-white/60 hover:bg-white/80"
                   }`}

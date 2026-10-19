@@ -26,6 +26,8 @@ export interface InvoiceDocumentProps {
   items: InvoiceItem[];
   subtotal: number;
   packagingFee: number;
+  taxAmount?: number;
+  taxLabel?: string;
   discountAmount?: number;
   voucherCode?: string;
 }
@@ -159,10 +161,12 @@ export function InvoiceDocument({
   items,
   subtotal,
   packagingFee,
+  taxAmount = 0,
+  taxLabel = "Pajak (PPN)",
   discountAmount = 0,
   voucherCode,
 }: InvoiceDocumentProps) {
-  const grandTotal = subtotal + packagingFee - discountAmount;
+  const grandTotal = subtotal + packagingFee + taxAmount - discountAmount;
 
   return (
     <Document>
@@ -228,6 +232,14 @@ export function InvoiceDocument({
               {formatRupiah(packagingFee)}
             </Text>
           </View>
+          {taxAmount > 0 && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>{taxLabel}</Text>
+              <Text style={styles.summaryValue}>
+                {formatRupiah(taxAmount)}
+              </Text>
+            </View>
+          )}
           {discountAmount > 0 && (
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>
