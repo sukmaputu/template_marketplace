@@ -1,5 +1,20 @@
-import { useEffect, useRef, useState, useCallback, useLayoutEffect } from "react";
-import { CheckCheck, LoaderCircle, MessageCircle, Minus, Reply, Send, User, X } from "lucide-react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useLayoutEffect,
+} from "react";
+import {
+  CheckCheck,
+  LoaderCircle,
+  MessageCircle,
+  Minus,
+  Reply,
+  Send,
+  User,
+  X,
+} from "lucide-react";
 import { useAuth } from "@/components/auth/UseAuth";
 import { chatService } from "@/services/chat.service";
 import { websocketService } from "@/lib/websocket";
@@ -55,7 +70,8 @@ function formatTime(isoString: string): string {
 
 function formatAvatarUrl(path?: string | null): string | null {
   if (!path) return null;
-  const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api/v1";
+  const apiBase =
+    import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api/v1";
   const baseUrl = apiBase.replace("/api/v1", "");
   if (path.startsWith("http") && path.includes("/uploads/")) {
     const cleanPath = path.substring(path.indexOf("uploads/"));
@@ -83,12 +99,15 @@ export function ChatWidget() {
 
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [conversation, setConversation] = useState<ChatConversation | null>(null);
+  const [conversation, setConversation] = useState<ChatConversation | null>(
+    null,
+  );
   const conversationRef = useRef<ChatConversation | null>(null);
-  conversationRef.current = conversation;
 
   const [draft, setDraft] = useState("");
-  const [attachedProduct, setAttachedProduct] = useState<(ProductChatContext & { priceLabel?: string }) | null>(null);
+  const [attachedProduct, setAttachedProduct] = useState<
+    (ProductChatContext & { priceLabel?: string }) | null
+  >(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
 
@@ -97,7 +116,9 @@ export function ChatWidget() {
   const [isAdminTyping, setIsAdminTyping] = useState(false);
   const lastAdminSeenRef = useRef<number>(0);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const adminTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const adminTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const lastTypingSentRef = useRef<number>(0);
 
   // Guest identity
@@ -108,7 +129,9 @@ export function ChatWidget() {
   const [guestEmailInput, setGuestEmailInput] = useState("");
   const [guestPhoneInput, setGuestPhoneInput] = useState("");
   const [guestFormError, setGuestFormError] = useState<string | null>(null);
-  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<
+    string | null
+  >(null);
 
   const scrollToMessage = useCallback((messageId: string) => {
     const el = document.getElementById(`marketplace-msg-${messageId}`);
@@ -126,12 +149,13 @@ export function ChatWidget() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const isOpenRef = useRef(isOpen);
-  isOpenRef.current = isOpen;
 
   const getCustomerIdentity = useCallback((): ChatIdentity => {
     if (isAuthenticated && user) {
       return {
-        customer_user_id: user.id ? String(user.id) : (user.username || user.email || null),
+        customer_user_id: user.id
+          ? String(user.id)
+          : user.username || user.email || null,
         customer_name: user.full_name || "Pelanggan Member",
         customer_email: user.email || null,
         customer_phone: user.phone || null,
@@ -174,32 +198,49 @@ export function ChatWidget() {
   const isPrependingRef = useRef<boolean>(false);
   const prevMessagesLengthRef = useRef<number>(messages.length);
 
-  // Load / ensure conversation (page 1: latest 20 messages)
+  useLayoutEffect(() => {
+    conversationRef.current = conversation;
+    isOpenRef.current = isOpen;
+  }, [conversation, isOpen]);
+
   useEffect(() => {
-    if (isIdentified) {
+    if (!isIdentified) return;
+    let cancelled = false;
+
+    async function loadConversation() {
       const identity = getCustomerIdentity();
-      // 1. Instant local render
       const localConv = chatService.ensureConversation(identity);
-      setConversation(localConv);
       const local = chatService.getLocalMessagesPage(localConv.id, 20);
+
+      await Promise.resolve();
+      if (cancelled) return;
+
+      setConversation(localConv);
       if (local.messages.length > 0) {
         setMessages(local.messages);
         setHasMore(local.hasMore);
         hasMoreRef.current = local.hasMore;
       }
 
-      // 2. Sync canonical UUID and messages from remote DB
-      chatService.ensureConversationAsync(identity).then((syncedConv) => {
-        setConversation(syncedConv);
-        chatService.fetchMessagesPage(syncedConv.id, 20).then((page) => {
-          if (page.messages.length > 0 || local.messages.length === 0) {
-            setMessages(page.messages);
-            setHasMore(page.hasMore);
-            hasMoreRef.current = page.hasMore;
-          }
-        });
-      });
+      const syncedConv = await chatService.ensureConversationAsync(identity);
+      if (cancelled) return;
+      setConversation(syncedConv);
+
+      const page = await chatService.fetchMessagesPage(syncedConv.id, 20);
+      if (
+        !cancelled &&
+        (page.messages.length > 0 || local.messages.length === 0)
+      ) {
+        setMessages(page.messages);
+        setHasMore(page.hasMore);
+        hasMoreRef.current = page.hasMore;
+      }
     }
+
+    void loadConversation();
+    return () => {
+      cancelled = true;
+    };
   }, [isIdentified, getCustomerIdentity]);
 
   // Initial scroll to bottom when opening
@@ -212,7 +253,8 @@ export function ChatWidget() {
   // Load older messages trigger
   const loadMoreMessages = useCallback(async (): Promise<boolean> => {
     const currentConv = conversationRef.current;
-    if (!currentConv || isLoadingMoreRef.current || !hasMoreRef.current) return false;
+    if (!currentConv || isLoadingMoreRef.current || !hasMoreRef.current)
+      return false;
     const currentMessages = messagesRef.current;
     if (currentMessages.length === 0) return false;
 
@@ -223,7 +265,11 @@ export function ChatWidget() {
     setIsLoadingMore(true);
 
     try {
-      const page = await chatService.fetchMessagesPage(currentConv.id, 20, before);
+      const page = await chatService.fetchMessagesPage(
+        currentConv.id,
+        20,
+        before,
+      );
       if (page.messages.length > 0) {
         setMessages((prev) => {
           const existingIds = new Set(prev.map((m) => m.id));
@@ -305,7 +351,12 @@ export function ChatWidget() {
   const handleScroll = () => {
     const container = scrollRef.current;
     if (!container) return;
-    if (container.scrollTop <= 50 && hasMore && !isLoadingMore && !isPrependingRef.current) {
+    if (
+      container.scrollTop <= 50 &&
+      hasMore &&
+      !isLoadingMore &&
+      !isPrependingRef.current
+    ) {
       void handleLoadMore();
     }
   };
@@ -326,19 +377,22 @@ export function ChatWidget() {
       conversation_id?: string;
       conversation?: Partial<ChatConversation>;
       message?: ChatMessage;
-      customer_email?: string;
-      customer_user_id?: string;
+      customer_email?: string | null;
+      customer_user_id?: string | null;
     }) => {
       const currentConv = conversationRef.current;
       if (!currentConv) return false;
 
       const targetId =
-        payload.conversation_id || payload.message?.conversation_id || payload.conversation?.id;
+        payload.conversation_id ||
+        payload.message?.conversation_id ||
+        payload.conversation?.id;
       if (targetId && targetId === currentConv.id) {
         return true;
       }
 
-      const incomingEmail = payload.customer_email || payload.conversation?.customer_email;
+      const incomingEmail =
+        payload.customer_email || payload.conversation?.customer_email;
       const myEmail = currentConv.customer_email || ident.customer_email;
       if (
         incomingEmail &&
@@ -348,7 +402,8 @@ export function ChatWidget() {
         return true;
       }
 
-      const incomingUserId = payload.customer_user_id || payload.conversation?.customer_user_id;
+      const incomingUserId =
+        payload.customer_user_id || payload.conversation?.customer_user_id;
       const myUserId = currentConv.customer_user_id || ident.customer_user_id;
       if (
         incomingUserId &&
@@ -384,89 +439,111 @@ export function ChatWidget() {
     announcePresence();
     websocketService.sendPresenceQuery("customer");
 
-    const unsubChat = websocketService.onChatMessage((payload: WSChatMessagePayload) => {
-      if (!payload?.message) return;
-      // CRITICAL: Ignore messages that belong to other customer conversations!
-      if (!matchesMyConversation(payload)) return;
-
-      if (
-        payload.message.sender_role === "admin" ||
-        payload.message.sender_role === "agent" ||
-        payload.message.sender_role === "bot"
-      ) {
-        const currentConv = conversationRef.current;
-        const activeConvId = currentConv?.id || payload.conversation_id;
-        const normalizedPayload: WSChatMessagePayload = {
-          ...payload,
-          conversation_id: activeConvId,
-          message: {
-            ...payload.message,
-            conversation_id: activeConvId,
-          },
-        };
-
-        chatService.handleIncomingWSMessage(normalizedPayload);
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === payload.message.id)) return prev;
-          return [...prev, normalizedPayload.message];
-        });
-
-        // Admin replied -> clear typing
-        setIsAdminTyping(false);
-        lastAdminSeenRef.current = Date.now();
-        setIsAdminOnline(true);
-
-        if (!isOpenRef.current) {
-          setUnreadCount((prev) => prev + 1);
-        } else if (conversationRef.current) {
-          chatService.markAsRead(activeConvId, "customer");
-        }
-      }
-    });
-
-    const unsubTyping = websocketService.onTyping((payload: WSTypingPayload) => {
-      if (!payload) return;
-      if (payload.sender_role === "admin" || payload.sender_role === "agent") {
+    const unsubChat = websocketService.onChatMessage(
+      (payload: WSChatMessagePayload) => {
+        if (!payload?.message) return;
+        // CRITICAL: Ignore messages that belong to other customer conversations!
         if (!matchesMyConversation(payload)) return;
 
-        setIsAdminTyping(payload.is_typing);
-        lastAdminSeenRef.current = Date.now();
-        setIsAdminOnline(true);
+        if (
+          payload.message.sender_role === "admin" ||
+          payload.message.sender_role === "agent" ||
+          payload.message.sender_role === "bot"
+        ) {
+          const currentConv = conversationRef.current;
+          const activeConvId = currentConv?.id || payload.conversation_id;
+          const normalizedPayload: WSChatMessagePayload = {
+            ...payload,
+            conversation_id: activeConvId,
+            message: {
+              ...payload.message,
+              conversation_id: activeConvId,
+            },
+          };
 
-        if (adminTypingTimeoutRef.current) {
-          clearTimeout(adminTypingTimeoutRef.current);
+          chatService.handleIncomingWSMessage(normalizedPayload);
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === payload.message.id)) return prev;
+            return [...prev, normalizedPayload.message];
+          });
+
+          // Admin replied -> clear typing
+          setIsAdminTyping(false);
+          lastAdminSeenRef.current = Date.now();
+          setIsAdminOnline(true);
+
+          if (!isOpenRef.current) {
+            setUnreadCount((prev) => prev + 1);
+          } else if (conversationRef.current) {
+            chatService.markAsRead(activeConvId, "customer");
+          }
         }
-        if (payload.is_typing) {
-          adminTypingTimeoutRef.current = setTimeout(() => {
-            setIsAdminTyping(false);
-          }, 3500);
+      },
+    );
+
+    const unsubTyping = websocketService.onTyping(
+      (payload: WSTypingPayload) => {
+        if (!payload) return;
+        if (
+          payload.sender_role === "admin" ||
+          payload.sender_role === "agent"
+        ) {
+          if (!matchesMyConversation(payload)) return;
+
+          setIsAdminTyping(payload.is_typing);
+          lastAdminSeenRef.current = Date.now();
+          setIsAdminOnline(true);
+
+          if (adminTypingTimeoutRef.current) {
+            clearTimeout(adminTypingTimeoutRef.current);
+          }
+          if (payload.is_typing) {
+            adminTypingTimeoutRef.current = setTimeout(() => {
+              setIsAdminTyping(false);
+            }, 3500);
+          }
         }
-      }
-    });
+      },
+    );
 
-    const unsubPresence = websocketService.onPresence((payload: WSPresencePayload) => {
-      if (!payload) return;
-      if (payload.role === "admin" || payload.role === "agent") {
-        lastAdminSeenRef.current = Date.now();
-        setIsAdminOnline(payload.status === "online");
-      }
-    });
+    const unsubPresence = websocketService.onPresence(
+      (payload: WSPresencePayload) => {
+        if (!payload) return;
+        if (payload.role === "admin" || payload.role === "agent") {
+          lastAdminSeenRef.current = Date.now();
+          setIsAdminOnline(payload.status === "online");
+        }
+      },
+    );
 
-    const unsubPresenceQuery = websocketService.onPresenceQuery((payload: WSPresenceQueryPayload) => {
-      if (payload && (payload.sender_role === "admin" || payload.sender_role === "agent")) {
-        announcePresence();
-      }
-    });
+    const unsubPresenceQuery = websocketService.onPresenceQuery(
+      (payload: WSPresenceQueryPayload) => {
+        if (
+          payload &&
+          (payload.sender_role === "admin" || payload.sender_role === "agent")
+        ) {
+          announcePresence();
+        }
+      },
+    );
 
-    const unsubReadReceipt = websocketService.onReadReceipt((payload: WSReadReceiptPayload) => {
-      if (!payload || (payload.reader_role !== "admin" && payload.reader_role !== "agent")) return;
-      if (!matchesMyConversation(payload)) return;
+    const unsubReadReceipt = websocketService.onReadReceipt(
+      (payload: WSReadReceiptPayload) => {
+        if (
+          !payload ||
+          (payload.reader_role !== "admin" && payload.reader_role !== "agent")
+        )
+          return;
+        if (!matchesMyConversation(payload)) return;
 
-      setMessages((prev) =>
-        prev.map((m) => (m.sender_role === "customer" ? { ...m, is_read: true } : m)),
-      );
-      chatService.handleIncomingReadReceipt(payload);
-    });
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.sender_role === "customer" ? { ...m, is_read: true } : m,
+          ),
+        );
+        chatService.handleIncomingReadReceipt(payload);
+      },
+    );
 
     // 20s presence heartbeat
     const heartbeatTimer = setInterval(() => {
@@ -475,7 +552,10 @@ export function ChatWidget() {
 
     // 5s sweep dead-peer timeout
     const sweepTimer = setInterval(() => {
-      if (lastAdminSeenRef.current > 0 && Date.now() - lastAdminSeenRef.current > 35000) {
+      if (
+        lastAdminSeenRef.current > 0 &&
+        Date.now() - lastAdminSeenRef.current > 35000
+      ) {
         setIsAdminOnline(false);
       }
     }, 5000);
@@ -511,7 +591,12 @@ export function ChatWidget() {
     function handleExternalOpen(e: Event) {
       setIsOpen(true);
       markConversationRead();
-      const detail = (e as CustomEvent<{ message?: string; product?: ProductChatContext & { priceLabel?: string } }>).detail;
+      const detail = (
+        e as CustomEvent<{
+          message?: string;
+          product?: ProductChatContext & { priceLabel?: string };
+        }>
+      ).detail;
       if (detail?.product) {
         setAttachedProduct(detail.product);
       }
@@ -520,7 +605,8 @@ export function ChatWidget() {
       }
     }
     window.addEventListener("open-chat-widget", handleExternalOpen);
-    return () => window.removeEventListener("open-chat-widget", handleExternalOpen);
+    return () =>
+      window.removeEventListener("open-chat-widget", handleExternalOpen);
   }, [markConversationRead]);
 
   function openWidget() {
@@ -571,7 +657,9 @@ export function ChatWidget() {
       return;
     }
     if (!/^(\+62|62|0)8[1-9][0-9]{7,11}$/.test(phone)) {
-      setGuestFormError("Format nomor telepon tidak valid. Gunakan format nomor seluler Indonesia yang valid (contoh: 08123456789 atau +628123456789).");
+      setGuestFormError(
+        "Format nomor telepon tidak valid. Gunakan format nomor seluler Indonesia yang valid (contoh: 08123456789 atau +628123456789).",
+      );
       return;
     }
 
@@ -665,7 +753,7 @@ export function ChatWidget() {
             category: productSnapshot.category,
           }
         : undefined,
-      replyingTo
+      replyingTo,
     );
     setAttachedProduct(null);
 
@@ -708,16 +796,15 @@ export function ChatWidget() {
                   {isAdminTyping
                     ? "Sedang mengetik..."
                     : isAdminOnline
-                    ? "Online • Membalas dengan cepat"
-                    : "Offline • Biasanya membalas beberapa menit"}
+                      ? "Online • Membalas dengan cepat"
+                      : "Offline • Biasanya membalas beberapa menit"}
                 </p>
               </div>
             </div>
             <button
               type="button"
               onClick={closeWidget}
-              className="rounded-full p-1 hover:bg-white/20 transition-colors cursor-pointer"
-            >
+              className="rounded-full p-1 hover:bg-white/20 transition-colors cursor-pointer">
               <Minus className="h-5 w-5" />
             </button>
           </div>
@@ -726,8 +813,7 @@ export function ChatWidget() {
           {needsGuestForm ? (
             <form
               onSubmit={handleGuestFormSubmit}
-              className="flex flex-1 flex-col justify-center gap-3 bg-background p-5 overflow-y-auto"
-            >
+              className="flex flex-1 flex-col justify-center gap-3 bg-background p-5 overflow-y-auto">
               <div>
                 <p className="text-sm font-semibold text-text">
                   Sebelum mulai chat, isi dulu ya
@@ -747,8 +833,7 @@ export function ChatWidget() {
                       type="button"
                       onClick={() => setAttachedProduct(null)}
                       aria-label="Hapus produk"
-                      className="rounded-full p-1 text-text-secondary hover:bg-background hover:text-text cursor-pointer"
-                    >
+                      className="rounded-full p-1 text-text-secondary hover:bg-background hover:text-text cursor-pointer">
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
@@ -823,8 +908,7 @@ export function ChatWidget() {
 
               <button
                 type="submit"
-                className="mt-1 w-full rounded-full bg-primary py-2.5 text-sm font-semibold text-white transition-transform hover:scale-[1.02] active:scale-95 cursor-pointer"
-              >
+                className="mt-1 w-full rounded-full bg-primary py-2.5 text-sm font-semibold text-white transition-transform hover:scale-[1.02] active:scale-95 cursor-pointer">
                 Mulai Chat
               </button>
             </form>
@@ -834,9 +918,13 @@ export function ChatWidget() {
               <div
                 ref={scrollRef}
                 onScroll={handleScroll}
-                className="flex-1 space-y-1.5 overflow-y-auto bg-background p-4"
-              >
-                {hasMore && <div ref={topSentinelRef} className="h-1 w-full pointer-events-none" />}
+                className="flex-1 space-y-1.5 overflow-y-auto bg-background p-4">
+                {hasMore && (
+                  <div
+                    ref={topSentinelRef}
+                    className="h-1 w-full pointer-events-none"
+                  />
+                )}
 
                 {isLoadingMore && (
                   <div className="flex items-center justify-center py-2 text-xs text-text-secondary gap-2">
@@ -854,7 +942,10 @@ export function ChatWidget() {
                   const isCustomer = msg.sender_role === "customer";
                   const isHighlighted = highlightedMessageId === msg.id;
                   const adminName =
-                    msg.sender_name || (msg.sender_role === "bot" ? "Bot Asisten" : "Admin Support");
+                    msg.sender_name ||
+                    (msg.sender_role === "bot"
+                      ? "Bot Asisten"
+                      : "Admin Support");
                   const avatarUrl = formatAvatarUrl(msg.sender_avatar);
                   const initials = getInitials(adminName);
 
@@ -864,15 +955,20 @@ export function ChatWidget() {
                     prevMsg.sender_role === msg.sender_role &&
                     (isCustomer
                       ? true
-                      : (msg.sender_user_id && prevMsg.sender_user_id
-                          ? msg.sender_user_id === prevMsg.sender_user_id
-                          : (msg.sender_name || "Admin") === (prevMsg.sender_name || "Admin")));
+                      : msg.sender_user_id && prevMsg.sender_user_id
+                        ? msg.sender_user_id === prevMsg.sender_user_id
+                        : (msg.sender_name || "Admin") ===
+                          (prevMsg.sender_name || "Admin"));
 
                   const timeDiff =
                     prevMsg && msg.created_at && prevMsg.created_at
-                      ? Math.abs(new Date(msg.created_at).getTime() - new Date(prevMsg.created_at).getTime())
+                      ? Math.abs(
+                          new Date(msg.created_at).getTime() -
+                            new Date(prevMsg.created_at).getTime(),
+                        )
                       : 0;
-                  const isGroupedWithPrev = isSameSender && timeDiff < 5 * 60 * 1000;
+                  const isGroupedWithPrev =
+                    isSameSender && timeDiff < 5 * 60 * 1000;
                   const showAdminInfo = !isCustomer && !isGroupedWithPrev;
 
                   return (
@@ -880,19 +976,21 @@ export function ChatWidget() {
                       key={msg.id}
                       className={`group flex items-start gap-2 ${
                         isCustomer ? "justify-end" : "justify-start"
-                      } ${!isGroupedWithPrev && idx > 0 ? "pt-2.5" : ""}`}
-                    >
+                      } ${!isGroupedWithPrev && idx > 0 ? "pt-2.5" : ""}`}>
                       {/* Foto Admin di sebelah kiri bubble chat - hanya muncul 1x per rangkaian pesan */}
-                      {!isCustomer && (
-                        showAdminInfo ? (
-                          <div className="shrink-0 mt-1 select-none" title={adminName}>
+                      {!isCustomer &&
+                        (showAdminInfo ? (
+                          <div
+                            className="shrink-0 mt-1 select-none"
+                            title={adminName}>
                             {avatarUrl ? (
                               <img
                                 src={avatarUrl}
                                 alt={adminName}
                                 className="size-7.5 rounded-full object-cover ring-1 ring-border shadow-xs"
                                 onError={(e) => {
-                                  (e.target as HTMLElement).style.display = "none";
+                                  (e.target as HTMLElement).style.display =
+                                    "none";
                                 }}
                               />
                             ) : (
@@ -902,26 +1000,28 @@ export function ChatWidget() {
                             )}
                           </div>
                         ) : (
-                          <div className="size-7.5 shrink-0 select-none" aria-hidden="true" />
-                        )
-                      )}
+                          <div
+                            className="size-7.5 shrink-0 select-none"
+                            aria-hidden="true"
+                          />
+                        ))}
 
                       {isCustomer && (
                         <button
                           type="button"
                           title="Balas pesan"
                           onClick={() => setReplyingTo(msg)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity rounded-full p-1 text-text-secondary hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer shrink-0 self-end"
-                        >
+                          className="opacity-0 group-hover:opacity-100 transition-opacity rounded-full p-1 text-text-secondary hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer shrink-0 self-end">
                           <Reply className="size-3.5" />
                         </button>
                       )}
 
                       <div
                         className={`flex flex-col ${
-                          isCustomer ? "items-end max-w-[80%]" : "items-start max-w-[78%]"
-                        }`}
-                      >
+                          isCustomer
+                            ? "items-end max-w-[80%]"
+                            : "items-start max-w-[78%]"
+                        }`}>
                         {/* Nama Admin di sebelah kiri/atas bubble chat - hanya muncul 1x per rangkaian pesan */}
                         {showAdminInfo && (
                           <span className="text-[11px] font-semibold text-text-secondary mb-1 px-1 leading-tight">
@@ -941,8 +1041,7 @@ export function ChatWidget() {
                             isCustomer
                               ? "rounded-br-sm bg-primary text-white"
                               : "rounded-tl-xs rounded-bl-sm border border-border bg-surface text-text"
-                          }`}
-                        >
+                          }`}>
                           {msg.reply_to && (
                             <div
                               role="button"
@@ -950,7 +1049,8 @@ export function ChatWidget() {
                               title="Menuju ke pesan asli"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const targetId = msg.reply_to_id || msg.reply_to?.id;
+                                const targetId =
+                                  msg.reply_to_id || msg.reply_to?.id;
                                 if (targetId) {
                                   scrollToMessage(targetId);
                                 }
@@ -959,10 +1059,11 @@ export function ChatWidget() {
                                 isCustomer
                                   ? "border-white/80 bg-white/15 text-white/90 hover:bg-white/25"
                                   : "border-primary bg-primary/5 text-text-secondary hover:bg-primary/10"
-                              }`}
-                            >
+                              }`}>
                               <p className="font-semibold text-[10px]">
-                                {msg.reply_to.sender_role === "customer" ? "Anda" : "Admin Support"}
+                                {msg.reply_to.sender_role === "customer"
+                                  ? "Anda"
+                                  : "Admin Support"}
                               </p>
                               <p className="line-clamp-1 italic text-[11px]">
                                 {msg.reply_to.message}
@@ -975,8 +1076,7 @@ export function ChatWidget() {
                                 isCustomer
                                   ? "bg-white/15 text-white"
                                   : "border border-border bg-background text-text"
-                              }`}
-                            >
+                              }`}>
                               {msg.product_context.image && (
                                 <img
                                   src={msg.product_context.image}
@@ -992,20 +1092,25 @@ export function ChatWidget() {
                                   <p
                                     className={`text-xs font-semibold ${
                                       isCustomer ? "text-white" : "text-primary"
-                                    }`}
-                                  >
-                                    Rp {msg.product_context.price.toLocaleString("id-ID")}
+                                    }`}>
+                                    Rp{" "}
+                                    {msg.product_context.price.toLocaleString(
+                                      "id-ID",
+                                    )}
                                   </p>
                                 ) : null}
                               </div>
                             </div>
                           )}
-                          <p className="whitespace-pre-wrap break-words">{msg.message}</p>
+                          <p className="whitespace-pre-wrap break-words">
+                            {msg.message}
+                          </p>
                           <div
                             className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${
-                              isCustomer ? "text-white/70" : "text-text-secondary"
-                            }`}
-                          >
+                              isCustomer
+                                ? "text-white/70"
+                                : "text-text-secondary"
+                            }`}>
                             <span>{formatTime(msg.created_at)}</span>
                             {isCustomer && (
                               <CheckCheck
@@ -1023,8 +1128,7 @@ export function ChatWidget() {
                           type="button"
                           title="Balas pesan"
                           onClick={() => setReplyingTo(msg)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity rounded-full p-1 text-text-secondary hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer shrink-0 self-end"
-                        >
+                          className="opacity-0 group-hover:opacity-100 transition-opacity rounded-full p-1 text-text-secondary hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer shrink-0 self-end">
                           <Reply className="size-3.5" />
                         </button>
                       )}
@@ -1053,8 +1157,7 @@ export function ChatWidget() {
                         type="button"
                         onClick={() => setAttachedProduct(null)}
                         aria-label="Hapus produk"
-                        className="rounded-full p-1 text-text-secondary hover:bg-black/5 hover:text-text cursor-pointer"
-                      >
+                        className="rounded-full p-1 text-text-secondary hover:bg-black/5 hover:text-text cursor-pointer">
                         <X className="size-3.5" />
                       </button>
                     </div>
@@ -1089,16 +1192,21 @@ export function ChatWidget() {
                       <Reply className="size-3.5 shrink-0 text-primary" />
                       <div className="truncate">
                         <span className="font-semibold text-text">
-                          Membalas {replyingTo.sender_role === "customer" ? "Anda" : "Admin Support"}:
+                          Membalas{" "}
+                          {replyingTo.sender_role === "customer"
+                            ? "Anda"
+                            : "Admin Support"}
+                          :
                         </span>{" "}
-                        <span className="italic text-text-secondary truncate">{replyingTo.message}</span>
+                        <span className="italic text-text-secondary truncate">
+                          {replyingTo.message}
+                        </span>
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => setReplyingTo(null)}
-                      className="rounded-full p-1 text-text-secondary hover:bg-black/5 hover:text-text cursor-pointer"
-                    >
+                      className="rounded-full p-1 text-text-secondary hover:bg-black/5 hover:text-text cursor-pointer">
                       <X className="size-3.5" />
                     </button>
                   </div>
@@ -1123,8 +1231,7 @@ export function ChatWidget() {
                       type="button"
                       onClick={handleSend}
                       disabled={!draft.trim()}
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-white transition-transform hover:scale-105 disabled:opacity-40 cursor-pointer"
-                    >
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-white transition-transform hover:scale-105 disabled:opacity-40 cursor-pointer">
                       <Send className="h-4 w-4" />
                     </button>
                   </div>
@@ -1141,8 +1248,7 @@ export function ChatWidget() {
         onClick={handleToggle}
         className={`relative flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all duration-300 hover:scale-110 active:scale-95 ${
           isOpen ? "bg-red-500 rotate-90" : "bg-primary"
-        } text-white cursor-pointer`}
-      >
+        } text-white cursor-pointer`}>
         {isOpen ? (
           <X className="h-6 w-6" />
         ) : (

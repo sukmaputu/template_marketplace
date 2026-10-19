@@ -338,12 +338,15 @@ export function MarketplaceHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
       <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6 lg:px-8">
-        <Link to="/" className="shrink-0">
+        <Link to="/" className="flex shrink-0 items-center gap-2">
           <img
             src="/logo/logo_nadrical.png"
             alt="Logo"
             className="h-10 w-auto object-contain"
           />
+          <span className="text-lg font-bold tracking-tight text-text">
+            Nadrical
+          </span>
         </Link>
 
         {/* Wrapper luar: hanya untuk deteksi klik-di-luar, BUKAN pembungkus dropdown */}

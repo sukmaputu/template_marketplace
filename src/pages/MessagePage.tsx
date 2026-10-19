@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, CheckCheck, Send, User } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
@@ -57,7 +57,6 @@ export default function MessagePage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [conversation, setConversation] = useState<ChatConversation | null>(null);
   const conversationRef = useRef<ChatConversation | null>(null);
-  conversationRef.current = conversation;
 
   const [draft, setDraft] = useState("");
 
@@ -88,12 +87,30 @@ export default function MessagePage() {
     };
   }, [isAuthenticated, user]);
 
+  useLayoutEffect(() => {
+    conversationRef.current = conversation;
+  }, [conversation]);
+
   // Load conversation
   useEffect(() => {
-    const conv = chatService.ensureConversation(identity);
-    setConversation(conv);
-    setMessages(chatService.getMessages(conv.id));
-    chatService.markAsRead(conv.id, "customer");
+    let cancelled = false;
+
+    async function loadConversation() {
+      const conv = chatService.ensureConversation(identity);
+      const initialMessages = chatService.getMessages(conv.id);
+      chatService.markAsRead(conv.id, "customer");
+
+      await Promise.resolve();
+      if (cancelled) return;
+
+      setConversation(conv);
+      setMessages(initialMessages);
+    }
+
+    void loadConversation();
+    return () => {
+      cancelled = true;
+    };
   }, [identity]);
 
   // WebSocket listeners
@@ -102,8 +119,8 @@ export default function MessagePage() {
       conversation_id?: string;
       conversation?: Partial<ChatConversation>;
       message?: ChatMessage;
-      customer_email?: string;
-      customer_user_id?: string;
+      customer_email?: string | null;
+      customer_user_id?: string | null;
     }) => {
       const currentConv = conversationRef.current;
       if (!currentConv) return false;

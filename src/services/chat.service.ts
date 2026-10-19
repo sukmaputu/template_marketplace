@@ -279,7 +279,7 @@ class ChatService {
     return activeConv;
   }
 
-  private async syncConversationRemote(identity: ChatIdentity, localConv: ChatConversation): Promise<void> {
+  private async syncConversationRemote(identity: ChatIdentity, localConv: ChatConversation): Promise<ChatConversation> {
     try {
       const res = await fetch(`${API_BASE}/ecommerce/chats`, {
         method: "POST",
@@ -295,10 +295,10 @@ class ChatService {
         }),
       });
 
-      if (!res.ok) return;
+      if (!res.ok) return localConv;
       const data = await res.json();
       const remoteConv = data?.data;
-      if (!remoteConv || !remoteConv.id) return;
+      if (!remoteConv || !remoteConv.id) return localConv;
 
       const { conversations, messages } = loadStorage();
       const oldId = localConv.id;
@@ -363,12 +363,7 @@ class ChatService {
 
   public async ensureConversationAsync(identity: ChatIdentity): Promise<ChatConversation> {
     const local = this.ensureConversation(identity);
-    try {
-      const synced = await this.syncConversationRemote(identity, local);
-      return synced || local;
-    } catch {
-      return local;
-    }
+    return this.syncConversationRemote(identity, local);
   }
 
   public sendCustomerMessage(
