@@ -24,8 +24,15 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      sessionStorage.removeItem('token');
+      const url = String(error.config?.url || '');
+      if (!url.includes('/auth/login')) {
+        localStorage.removeItem('token');
+        sessionStorage.removeItem('token');
+        localStorage.removeItem('auth-user');
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('auth_updated'));
+        }
+      }
     }
     return Promise.reject(error);
   }

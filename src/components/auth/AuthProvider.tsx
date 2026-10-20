@@ -91,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (token && akun) {
         setAuthToken(token);
         const nextUser: AuthUser = {
+          id: akun.uuid,
           full_name: akun.full_name || akun.username || DEMO_ACCOUNT.full_name,
           email: akun.email,
           phone: akun.phone || DEMO_ACCOUNT.phone,
