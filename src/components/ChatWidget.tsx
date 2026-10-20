@@ -204,6 +204,35 @@ export function ChatWidget() {
   }, [conversation, isOpen]);
 
   useEffect(() => {
+    function handleSynced(e: Event) {
+      const detail = (
+        e as CustomEvent<{ oldId: string; conversation: ChatConversation }>
+      ).detail;
+      if (detail?.conversation) {
+        setConversation((prev) => {
+          if (
+            !prev ||
+            prev.id === detail.oldId ||
+            prev.id === detail.conversation.id
+          ) {
+            return detail.conversation;
+          }
+          return prev;
+        });
+      }
+    }
+    window.addEventListener(
+      "marketplace-chat-conversation-synced",
+      handleSynced,
+    );
+    return () =>
+      window.removeEventListener(
+        "marketplace-chat-conversation-synced",
+        handleSynced,
+      );
+  }, []);
+
+  useEffect(() => {
     if (!isIdentified) return;
     let cancelled = false;
 
@@ -379,24 +408,32 @@ export function ChatWidget() {
       message?: ChatMessage;
       customer_email?: string | null;
       customer_user_id?: string | null;
+      customer_phone?: string | null;
     }) => {
       const currentConv = conversationRef.current;
-      if (!currentConv) return false;
-
       const targetId =
         payload.conversation_id ||
         payload.message?.conversation_id ||
         payload.conversation?.id;
-      if (targetId && targetId === currentConv.id) {
+
+      if (currentConv && targetId && targetId === currentConv.id) {
+        return true;
+      }
+
+      // Check if targetId matches any conversation belonging to this customer session
+      const storedConvs = chatService.getConversations();
+      if (targetId && storedConvs.some((c) => c.id === targetId)) {
         return true;
       }
 
       const incomingEmail =
         payload.customer_email || payload.conversation?.customer_email;
-      const myEmail = currentConv.customer_email || ident.customer_email;
+      const myEmail = currentConv?.customer_email || ident.customer_email;
       if (
         incomingEmail &&
+        incomingEmail.trim() &&
         myEmail &&
+        myEmail.trim() &&
         incomingEmail.trim().toLowerCase() === myEmail.trim().toLowerCase()
       ) {
         return true;
@@ -404,7 +441,7 @@ export function ChatWidget() {
 
       const incomingUserId =
         payload.customer_user_id || payload.conversation?.customer_user_id;
-      const myUserId = currentConv.customer_user_id || ident.customer_user_id;
+      const myUserId = currentConv?.customer_user_id || ident.customer_user_id;
       if (
         incomingUserId &&
         myUserId &&
@@ -414,11 +451,14 @@ export function ChatWidget() {
         return true;
       }
 
-      const incomingPhone = payload.customer_phone || payload.conversation?.customer_phone;
-      const myPhone = currentConv.customer_phone || ident.customer_phone;
+      const incomingPhone =
+        payload.customer_phone || payload.conversation?.customer_phone;
+      const myPhone = currentConv?.customer_phone || ident.customer_phone;
       if (
         incomingPhone &&
+        incomingPhone.trim() &&
         myPhone &&
+        myPhone.trim() &&
         incomingPhone.trim() === myPhone.trim()
       ) {
         return true;
@@ -461,7 +501,19 @@ export function ChatWidget() {
           payload.message.sender_role === "bot"
         ) {
           const currentConv = conversationRef.current;
-          const activeConvId = currentConv?.id || payload.conversation_id;
+          const activeConvId = payload.conversation_id || currentConv?.id || "";
+
+          // Auto-heal local conversation ID if synced to canonical backend UUID
+          if (
+            currentConv &&
+            payload.conversation_id &&
+            currentConv.id !== payload.conversation_id
+          ) {
+            setConversation((prev) =>
+              prev ? { ...prev, id: payload.conversation_id } : prev,
+            );
+          }
+
           const normalizedPayload: WSChatMessagePayload = {
             ...payload,
             conversation_id: activeConvId,
@@ -778,7 +830,10 @@ export function ChatWidget() {
     });
 
     setConversation(result.conversation);
-    setMessages((prev) => [...prev, result.message]);
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === result.message.id)) return prev;
+      return [...prev, result.message];
+    });
     setDraft("");
     setReplyingTo(null);
   }

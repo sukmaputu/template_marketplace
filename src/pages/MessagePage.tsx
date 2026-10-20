@@ -52,6 +52,25 @@ function getInitials(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
+interface GuestIdentity {
+  name: string;
+  email: string;
+  phone: string;
+}
+
+const GUEST_STORAGE_KEY = "marketplace_chat_guest_identity";
+
+function getStoredGuestIdentity(): GuestIdentity | null {
+  try {
+    const raw = localStorage.getItem(GUEST_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as GuestIdentity;
+    return parsed?.name && parsed?.email ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function MessagePage() {
   const { user, isAuthenticated } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -79,9 +98,18 @@ export default function MessagePage() {
         customer_phone: user.phone || null,
       };
     }
+    const guest = getStoredGuestIdentity();
+    if (guest) {
+      return {
+        customer_user_id: null,
+        customer_name: guest.name,
+        customer_email: guest.email || null,
+        customer_phone: guest.phone || null,
+      };
+    }
     return {
-      customer_user_id: chatService.getGuestId(),
-      customer_name: "Pelanggan Tamu",
+      customer_user_id: null,
+      customer_name: "Tamu",
       customer_email: null,
       customer_phone: null,
     };
@@ -91,20 +119,33 @@ export default function MessagePage() {
     conversationRef.current = conversation;
   }, [conversation]);
 
-  // Load conversation
+  // Load conversation and sync with PostgreSQL DB
   useEffect(() => {
     let cancelled = false;
 
     async function loadConversation() {
-      const conv = chatService.ensureConversation(identity);
-      const initialMessages = chatService.getMessages(conv.id);
-      chatService.markAsRead(conv.id, "customer");
+      const localConv = chatService.ensureConversation(identity);
+      const local = chatService.getLocalMessagesPage(localConv.id, 50);
 
       await Promise.resolve();
       if (cancelled) return;
 
-      setConversation(conv);
-      setMessages(initialMessages);
+      setConversation(localConv);
+      if (local.messages.length > 0) {
+        setMessages(local.messages);
+      }
+      chatService.markAsRead(localConv.id, "customer");
+
+      // Remote sync with backend DB
+      const syncedConv = await chatService.ensureConversationAsync(identity);
+      if (cancelled) return;
+      setConversation(syncedConv);
+
+      const page = await chatService.fetchMessagesPage(syncedConv.id, 50);
+      if (!cancelled && (page.messages.length > 0 || local.messages.length === 0)) {
+        setMessages(page.messages);
+      }
+      chatService.markAsRead(syncedConv.id, "customer");
     }
 
     void loadConversation();
@@ -112,6 +153,45 @@ export default function MessagePage() {
       cancelled = true;
     };
   }, [identity]);
+
+  // Listen for conversation synced & updated events
+  useEffect(() => {
+    function handleSynced(e: Event) {
+      const detail = (e as CustomEvent<{ oldId: string; conversation: ChatConversation }>).detail;
+      if (detail?.conversation) {
+        setConversation((prev) => {
+          if (!prev || prev.id === detail.oldId || prev.id === detail.conversation.id) {
+            return detail.conversation;
+          }
+          return prev;
+        });
+        setMessages((prev) => {
+          const fresh = chatService.getMessages(detail.conversation.id);
+          if (fresh.length >= prev.length) return fresh;
+          return prev;
+        });
+      }
+    }
+
+    function handleChatUpdated() {
+      const currentConv = conversationRef.current;
+      if (currentConv) {
+        const fresh = chatService.getMessages(currentConv.id);
+        if (fresh.length > 0) {
+          setMessages(fresh);
+        }
+      }
+    }
+
+    window.addEventListener("marketplace-chat-conversation-synced", handleSynced);
+    window.addEventListener("marketplace-chat-updated", handleChatUpdated);
+    window.addEventListener("storage", handleChatUpdated);
+    return () => {
+      window.removeEventListener("marketplace-chat-conversation-synced", handleSynced);
+      window.removeEventListener("marketplace-chat-updated", handleChatUpdated);
+      window.removeEventListener("storage", handleChatUpdated);
+    };
+  }, []);
 
   // WebSocket listeners
   useEffect(() => {
@@ -121,33 +201,53 @@ export default function MessagePage() {
       message?: ChatMessage;
       customer_email?: string | null;
       customer_user_id?: string | null;
+      customer_phone?: string | null;
     }) => {
       const currentConv = conversationRef.current;
-      if (!currentConv) return false;
-
       const targetId =
         payload.conversation_id || payload.message?.conversation_id || payload.conversation?.id;
-      if (targetId && targetId === currentConv.id) {
+
+      if (currentConv && targetId && targetId === currentConv.id) {
+        return true;
+      }
+
+      // Check if targetId matches any conversation belonging to this customer session
+      const storedConvs = chatService.getConversations();
+      if (targetId && storedConvs.some((c) => c.id === targetId)) {
         return true;
       }
 
       const incomingEmail = payload.customer_email || payload.conversation?.customer_email;
-      const myEmail = currentConv.customer_email || identity.customer_email;
+      const myEmail = currentConv?.customer_email || identity.customer_email;
       if (
         incomingEmail &&
+        incomingEmail.trim() &&
         myEmail &&
+        myEmail.trim() &&
         incomingEmail.trim().toLowerCase() === myEmail.trim().toLowerCase()
       ) {
         return true;
       }
 
       const incomingUserId = payload.customer_user_id || payload.conversation?.customer_user_id;
-      const myUserId = currentConv.customer_user_id || identity.customer_user_id;
+      const myUserId = currentConv?.customer_user_id || identity.customer_user_id;
       if (
         incomingUserId &&
         myUserId &&
         !incomingUserId.startsWith("guest-") &&
         incomingUserId === myUserId
+      ) {
+        return true;
+      }
+
+      const incomingPhone = payload.customer_phone || payload.conversation?.customer_phone;
+      const myPhone = currentConv?.customer_phone || identity.customer_phone;
+      if (
+        incomingPhone &&
+        incomingPhone.trim() &&
+        myPhone &&
+        myPhone.trim() &&
+        incomingPhone.trim() === myPhone.trim()
       ) {
         return true;
       }
@@ -187,7 +287,19 @@ export default function MessagePage() {
         payload.message.sender_role === "bot"
       ) {
         const currentConv = conversationRef.current;
-        const activeConvId = currentConv?.id || payload.conversation_id;
+        const activeConvId = payload.conversation_id || currentConv?.id || "";
+
+        // Auto-heal local conversation ID if synced to canonical backend UUID
+        if (
+          currentConv &&
+          payload.conversation_id &&
+          currentConv.id !== payload.conversation_id
+        ) {
+          setConversation((prev) =>
+            prev ? { ...prev, id: payload.conversation_id } : prev,
+          );
+        }
+
         const normalizedPayload: WSChatMessagePayload = {
           ...payload,
           conversation_id: activeConvId,
@@ -367,7 +479,10 @@ export default function MessagePage() {
     });
 
     setConversation(result.conversation);
-    setMessages((prev) => [...prev, result.message]);
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === result.message.id)) return prev;
+      return [...prev, result.message];
+    });
     setDraft("");
   }
 
@@ -492,6 +607,53 @@ export default function MessagePage() {
                           : "rounded-tl-xs rounded-bl-sm border border-border bg-surface text-text"
                       }`}
                     >
+                      {msg.reply_to && (
+                        <div
+                          className={`mb-1.5 rounded-lg border-l-2 p-1.5 text-xs ${
+                            isCustomer
+                              ? "border-white/80 bg-white/15 text-white/90"
+                              : "border-primary bg-primary/5 text-text-secondary"
+                          }`}
+                        >
+                          <p className="font-semibold text-[10px]">
+                            {msg.reply_to.sender_role === "customer" ? "Anda" : "Admin Support"}
+                          </p>
+                          <p className="line-clamp-1 italic text-[11px]">{msg.reply_to.message}</p>
+                        </div>
+                      )}
+
+                      {msg.product_context && (
+                        <div
+                          className={`mb-2 flex items-center gap-2 rounded-xl p-2 ${
+                            isCustomer
+                              ? "bg-white/15 text-white"
+                              : "border border-border bg-background text-text"
+                          }`}
+                        >
+                          {msg.product_context.image && (
+                            <img
+                              src={msg.product_context.image}
+                              alt={msg.product_context.name}
+                              className="h-10 w-10 shrink-0 rounded-lg object-cover"
+                            />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-medium">
+                              {msg.product_context.name}
+                            </p>
+                            {msg.product_context.price ? (
+                              <p
+                                className={`text-xs font-semibold ${
+                                  isCustomer ? "text-white" : "text-primary"
+                                }`}
+                              >
+                                Rp {msg.product_context.price.toLocaleString("id-ID")}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      )}
+
                       <p className="whitespace-pre-wrap break-words">{msg.message}</p>
                       <div
                         className={`mt-1 flex items-center justify-end gap-1 text-[11px] ${
