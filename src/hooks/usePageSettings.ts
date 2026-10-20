@@ -13,6 +13,7 @@ export interface PageSettingsData {
   contactAddress: string;
   navbarLogo: string;
   popupBanner: string;
+  isPopupEnabled: boolean;
   siteTitle: string;
   siteTagline: string;
   settingsMap: Record<string, string>;
@@ -235,7 +236,16 @@ export function usePageSettings(): PageSettingsData {
     settingsMap.site_popup_banner ||
     settingsMap.popup_banner ||
     settingsMap.site_popup;
-  const popupBanner = rawPopup ? resolveAssetUrl(rawPopup) : "";
+
+  const rawPopupEnabled =
+    settingsMap.site_popup_enabled ??
+    settingsMap.popup_enabled ??
+    "true";
+  const isPopupEnabled =
+    rawPopupEnabled === "true" ||
+    rawPopupEnabled === "1";
+
+  const popupBanner = (rawPopup && isPopupEnabled) ? resolveAssetUrl(rawPopup) : "";
 
   return {
     contactEmail,
@@ -243,6 +253,7 @@ export function usePageSettings(): PageSettingsData {
     contactAddress,
     navbarLogo,
     popupBanner,
+    isPopupEnabled,
     siteTitle,
     siteTagline,
     settingsMap,

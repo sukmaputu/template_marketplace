@@ -3,25 +3,28 @@ import { X, Sparkles } from "lucide-react";
 import { usePageSettings } from "@/hooks/usePageSettings";
 
 export function PromoPopupModal() {
-  const { popupBanner } = usePageSettings();
+  const { popupBanner, isPopupEnabled } = usePageSettings();
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
-    if (!popupBanner) return;
+    if (!popupBanner || !isPopupEnabled) {
+      setIsOpen(false);
+      return;
+    }
     const isClosed = sessionStorage.getItem("marketplace_promo_popup_closed");
     if (!isClosed) {
       // Delay slightly for smooth entrance after initial page load
       const timer = setTimeout(() => setIsOpen(true), 1200);
       return () => clearTimeout(timer);
     }
-  }, [popupBanner]);
+  }, [popupBanner, isPopupEnabled]);
 
   const handleClose = () => {
     setIsOpen(false);
     sessionStorage.setItem("marketplace_promo_popup_closed", "true");
   };
 
-  if (!isOpen || !popupBanner) return null;
+  if (!isOpen || !popupBanner || !isPopupEnabled) return null;
 
   return (
     <div
