@@ -10,6 +10,7 @@ export interface PageSettingItem {
 export interface PageSettingsData {
   contactEmail: string;
   contactPhone: string;
+  contactAddress: string;
   navbarLogo: string;
   popupBanner: string;
   siteTitle: string;
@@ -72,11 +73,7 @@ export async function fetchPageSettingsMap(
   force = false
 ): Promise<Record<string, string>> {
   const now = Date.now();
-  if (
-    !force &&
-    cachedSettingsMap &&
-    now - cacheTimestamp < CACHE_TTL_MS
-  ) {
+  if (!force && cachedSettingsMap && now - cacheTimestamp < CACHE_TTL_MS) {
     return cachedSettingsMap;
   }
 
@@ -87,21 +84,32 @@ export async function fetchPageSettingsMap(
   sharedSettingsPromise = api
     .get("/cms/page-settings")
     .then((res) => {
-      const list: unknown = res.data?.data;
+      const rawPayload = res.data?.data ?? res.data?.result ?? res.data;
+      const list = Array.isArray(rawPayload)
+        ? rawPayload
+        : Array.isArray(rawPayload?.result)
+        ? rawPayload.result
+        : [];
+
       const map: Record<string, string> = {};
-      if (Array.isArray(list)) {
-        list.forEach((raw) => {
-          if (typeof raw === "object" && raw !== null) {
-            const item = raw as PageSettingItem;
-            if (typeof item.key === "string" && typeof item.value === "string") {
-              map[item.key] = item.value;
-            }
+      list.forEach((raw: unknown) => {
+        if (typeof raw === "object" && raw !== null) {
+          const item = raw as Record<string, unknown>;
+          const key = String(item.key ?? item.nama_key ?? item.name ?? "").trim();
+          if (key) {
+            const val = item.value ?? item.val ?? "";
+            map[key] = typeof val === "string" ? val : String(val ?? "");
           }
-        });
-      }
+        }
+      });
+
       cachedSettingsMap = map;
       cacheTimestamp = Date.now();
       return map;
+    })
+    .catch((err) => {
+      console.warn("[PageSettings] Failed to fetch settings from API:", err);
+      return cachedSettingsMap || {};
     })
     .finally(() => {
       sharedSettingsPromise = null;
@@ -149,6 +157,18 @@ export function usePageSettings(): PageSettingsData {
     window.addEventListener("banners-updated", onRealtimeUpdate);
     const unsub1 = websocketService.on("settings_updated", onRealtimeUpdate);
     const unsub2 = websocketService.on("banners_updated", onRealtimeUpdate);
+    const unsub3 = websocketService.on("data_updated", (payload: unknown) => {
+      const p = payload as { resource?: string } | undefined;
+      if (
+        !p ||
+        p.resource === "settings" ||
+        p.resource === "banners" ||
+        p.resource === "page-settings" ||
+        p.resource === "page-setting"
+      ) {
+        onRealtimeUpdate();
+      }
+    });
 
     return () => {
       cancelled = true;
@@ -156,26 +176,71 @@ export function usePageSettings(): PageSettingsData {
       window.removeEventListener("banners-updated", onRealtimeUpdate);
       unsub1();
       unsub2();
+      unsub3();
     };
   }, []);
 
-  const contactEmail = settingsMap.contact_email || "contact@nadrical.my.id";
-  const contactPhone = settingsMap.contact_phone || "+6281234567890";
-  const siteTitle = settingsMap.site_title || "Nadrical Official";
-  const siteTagline =
-    settingsMap.site_tagline || "Leading Corporate and E-Commerce Solutions";
+  const contactEmail =
+    (
+      settingsMap.contact_email ||
+      settingsMap.site_email ||
+      settingsMap.email ||
+      ""
+    ).trim() || "contact@nadrical.my.id";
 
-  const rawLogo = settingsMap.site_navbar_logo || settingsMap.logo_url;
+  const contactPhone =
+    (
+      settingsMap.contact_phone ||
+      settingsMap.site_phone ||
+      settingsMap.phone ||
+      settingsMap.contact_whatsapp ||
+      ""
+    ).trim() || "+6281234567890";
+
+  const contactAddress =
+    (
+      settingsMap.contact_address ||
+      settingsMap.site_address ||
+      settingsMap.address ||
+      settingsMap.alamat ||
+      ""
+    ).trim() || "Jln Testing Jawa Barat no 19 RT 12";
+
+  const siteTitle =
+    (
+      settingsMap.site_title ||
+      settingsMap.title ||
+      settingsMap.app_name ||
+      ""
+    ).trim() || "Nadrical";
+
+  const siteTagline =
+    (
+      settingsMap.site_tagline ||
+      settingsMap.tagline ||
+      settingsMap.description ||
+      ""
+    ).trim() ||
+    "Solusi e-commerce terpercaya untuk semua kebutuhan template, produk digital, dan gaya hidup Anda.";
+
+  const rawLogo =
+    settingsMap.site_navbar_logo ||
+    settingsMap.logo_url ||
+    settingsMap.site_logo;
   const navbarLogo = rawLogo
     ? resolveAssetUrl(rawLogo)
     : "/logo/logo_nadrical.png";
 
-  const rawPopup = settingsMap.site_popup_banner || settingsMap.popup_banner;
+  const rawPopup =
+    settingsMap.site_popup_banner ||
+    settingsMap.popup_banner ||
+    settingsMap.site_popup;
   const popupBanner = rawPopup ? resolveAssetUrl(rawPopup) : "";
 
   return {
     contactEmail,
     contactPhone,
+    contactAddress,
     navbarLogo,
     popupBanner,
     siteTitle,

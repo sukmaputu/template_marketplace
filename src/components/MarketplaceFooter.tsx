@@ -2,8 +2,6 @@ import { Mail, MapPin, Phone } from "lucide-react";
 import { Link } from "react-router-dom";
 import { usePageSettings } from "@/hooks/usePageSettings";
 
-const address = "Jln Testing Jawa Barat no 19 RT 12";
-
 const importantPages = [
   { label: "Bantuan & FAQ", to: "/help" },
   { label: "Keranjang Belanja", to: "/cart" },
@@ -13,19 +11,27 @@ const importantPages = [
 
 export function MarketplaceFooter() {
   const year = new Date().getFullYear();
-  const { contactEmail, contactPhone, navbarLogo, siteTitle, siteTagline } =
-    usePageSettings();
+  const {
+    contactEmail,
+    contactPhone,
+    contactAddress,
+    navbarLogo,
+    siteTitle,
+    siteTagline,
+  } = usePageSettings();
 
-  const safeEmail =
-    contactEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim())
-      ? contactEmail.trim()
-      : "";
-  const cleanPhone = contactPhone ? contactPhone.replace(/[^0-9]/g, "") : "";
+  const displayEmail = (contactEmail || "").trim();
+  const displayPhone = (contactPhone || "").trim();
+  const cleanPhone = displayPhone.replace(/[^0-9]/g, "");
   const waUrl = cleanPhone
     ? cleanPhone.startsWith("0")
       ? `https://wa.me/62${cleanPhone.slice(1)}`
+      : cleanPhone.startsWith("62")
+      ? `https://wa.me/${cleanPhone}`
       : `https://wa.me/${cleanPhone}`
     : "";
+  const displayAddress =
+    (contactAddress || "").trim() || "Jln Testing Jawa Barat no 19 RT 12";
 
   return (
     <footer className="border-t border-[color:var(--color-border)] bg-[color:var(--color-surface)]">
@@ -59,7 +65,7 @@ export function MarketplaceFooter() {
             <ul className="space-y-2 text-sm text-[color:var(--color-text-secondary)]">
               <li>
                 <a
-                  href="#catalog"
+                  href="/#catalog"
                   className="transition-colors hover:text-[color:var(--color-primary)]"
                 >
                   Katalog Template
@@ -84,43 +90,45 @@ export function MarketplaceFooter() {
             </h2>
             <address className="not-italic">
               <ul className="space-y-2.5 text-sm text-[color:var(--color-text-secondary)]">
-                {safeEmail && (
+                {displayEmail && (
                   <li>
                     <a
-                      href={`mailto:${safeEmail}`}
+                      href={`mailto:${displayEmail}`}
                       className="flex items-center gap-2 transition-colors hover:text-[color:var(--color-primary)]"
                     >
                       <Mail
                         aria-hidden="true"
                         className="size-4 shrink-0 text-[color:var(--color-primary)]"
                       />
-                      <span className="truncate">{safeEmail}</span>
+                      <span className="truncate">{displayEmail}</span>
                     </a>
                   </li>
                 )}
-                {cleanPhone && (
+                {displayPhone && (
                   <li>
                     <a
-                      href={waUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      href={waUrl || `tel:${displayPhone}`}
+                      target={waUrl ? "_blank" : undefined}
+                      rel={waUrl ? "noopener noreferrer" : undefined}
                       className="flex items-center gap-2 transition-colors hover:text-[color:var(--color-primary)]"
                     >
                       <Phone
                         aria-hidden="true"
                         className="size-4 shrink-0 text-[color:var(--color-primary)]"
                       />
-                      <span>{contactPhone}</span>
+                      <span>{displayPhone}</span>
                     </a>
                   </li>
                 )}
-                <li className="flex items-start gap-2">
-                  <MapPin
-                    aria-hidden="true"
-                    className="mt-0.5 size-4 shrink-0 text-[color:var(--color-primary)]"
-                  />
-                  <span>{address}</span>
-                </li>
+                {displayAddress && (
+                  <li className="flex items-start gap-2">
+                    <MapPin
+                      aria-hidden="true"
+                      className="mt-0.5 size-4 shrink-0 text-[color:var(--color-primary)]"
+                    />
+                    <span>{displayAddress}</span>
+                  </li>
+                )}
               </ul>
             </address>
           </div>
