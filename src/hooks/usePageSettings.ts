@@ -13,6 +13,7 @@ export interface PageSettingsData {
   contactAddress: string;
   navbarLogo: string;
   popupBanner: string;
+  popupBannerLink: string;
   isPopupEnabled: boolean;
   siteTitle: string;
   siteTagline: string;
@@ -245,7 +246,25 @@ export function usePageSettings(): PageSettingsData {
     rawPopupEnabled === "true" ||
     rawPopupEnabled === "1";
 
-  const popupBanner = (rawPopup && isPopupEnabled) ? resolveAssetUrl(rawPopup) : "";
+  let popupImageRaw = "";
+  let popupLinkRaw = "";
+
+  if (rawPopup) {
+    try {
+      const parsed = JSON.parse(rawPopup);
+      if (typeof parsed === "object" && parsed !== null) {
+        popupImageRaw = parsed.image || parsed.img || parsed.url || "";
+        popupLinkRaw = parsed.link || parsed.url_target || parsed.href || "";
+      } else if (typeof parsed === "string") {
+        popupImageRaw = parsed;
+      }
+    } catch {
+      popupImageRaw = rawPopup;
+    }
+  }
+
+  const popupBanner = (popupImageRaw && isPopupEnabled) ? resolveAssetUrl(popupImageRaw) : "";
+  const popupBannerLink = popupLinkRaw ? sanitizeUrl(popupLinkRaw, "#catalog") : "#catalog";
 
   return {
     contactEmail,
@@ -253,6 +272,7 @@ export function usePageSettings(): PageSettingsData {
     contactAddress,
     navbarLogo,
     popupBanner,
+    popupBannerLink,
     isPopupEnabled,
     siteTitle,
     siteTagline,

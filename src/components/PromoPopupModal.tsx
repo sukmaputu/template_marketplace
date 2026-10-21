@@ -3,7 +3,7 @@ import { X, Sparkles } from "lucide-react";
 import { usePageSettings } from "@/hooks/usePageSettings";
 
 export function PromoPopupModal() {
-  const { popupBanner, isPopupEnabled } = usePageSettings();
+  const { popupBanner, popupBannerLink, isPopupEnabled } = usePageSettings();
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
@@ -47,14 +47,18 @@ export function PromoPopupModal() {
           <X className="size-4.5" />
         </button>
 
-        {/* Promo Image */}
-        <div className="relative aspect-[4/3] sm:aspect-[16/10] w-full overflow-hidden bg-black/10">
+        {/* Promo Image (Clickable) */}
+        <a
+          href={popupBannerLink}
+          onClick={handleClose}
+          className="block relative aspect-[4/3] sm:aspect-[16/10] w-full overflow-hidden bg-black/10 cursor-pointer group"
+        >
           <img
             src={popupBanner}
             alt="Promo Spesial"
-            className="h-full w-full object-cover"
+            className="h-full w-full object-cover transition duration-300 group-hover:scale-102"
           />
-        </div>
+        </a>
 
         {/* Footer Action */}
         <div className="p-4 sm:p-5 flex items-center justify-between gap-3 bg-[color:var(--color-surface)]">
@@ -71,7 +75,7 @@ export function PromoPopupModal() {
               Nanti Saja
             </button>
             <a
-              href="#catalog"
+              href={popupBannerLink}
               onClick={handleClose}
               className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-[color:var(--color-primary)] text-white hover:opacity-90 shadow-sm transition"
             >
