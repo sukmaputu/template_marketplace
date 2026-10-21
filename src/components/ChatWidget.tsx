@@ -268,10 +268,10 @@ export function ChatWidget() {
       ) {
         setMessages((prev) => {
           const map = new Map<string, ChatMessage>();
-          page.messages.forEach((m) => map.set(m.id, m));
+          page.messages.forEach((m) => map.set(String(m.id), m));
           prev.forEach((m) => {
             const alreadyInMap =
-              map.has(m.id) ||
+              map.has(String(m.id)) ||
               (m.client_temp_id &&
                 Array.from(map.values()).some(
                   (pm) =>
@@ -279,7 +279,7 @@ export function ChatWidget() {
                     pm.client_temp_id === m.client_temp_id,
                 ));
             if (!alreadyInMap) {
-              map.set(m.id, m);
+              map.set(String(m.id), m);
             }
           });
           return Array.from(map.values()).sort(

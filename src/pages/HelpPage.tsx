@@ -18,9 +18,9 @@ interface FaqCategory {
 // mengecek mode toko (misal dari env var, feature flag, atau response API).
 // false = tampilkan FAQ versi jualan kelas (sebelum konek backend produk)
 // true  = tampilkan FAQ versi jualan barang fisik (setelah konek backend produk)
-const IS_BACKEND_CONNECTED = false;
+export const IS_BACKEND_CONNECTED = false;
 
-const FAQ_CATEGORIES_KELAS: FaqCategory[] = [
+export const FAQ_CATEGORIES_KELAS: FaqCategory[] = [
   {
     title: "Sebelum Beli",
     items: [

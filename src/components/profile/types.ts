@@ -91,6 +91,8 @@ export interface ShippingAddress {
 
 export interface Order {
   id: string;
+  uuid?: string;
+  orderNumber?: string;
   status: OrderStatus;
   date: string;
   grand_total: number;
@@ -104,6 +106,21 @@ export interface Order {
   estimatedDelivery?: string;
   refundReason?: string;
   refundNote?: string;
+  payment?: {
+    uuid?: string;
+    status?: string;
+    payment_status?: string;
+    payment_method?: string;
+    sender_name?: string;
+    sender_bank?: string;
+    amount?: number;
+    amount_paid?: number;
+    payment_proof?: string;
+    payment_proof_url?: string;
+    rejection_reason?: string;
+    verified_at?: string;
+    paid_at?: string;
+  };
 }
 
 export const REFUND_REASONS = [

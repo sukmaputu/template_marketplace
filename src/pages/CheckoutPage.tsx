@@ -20,6 +20,9 @@ import {
   Loader2,
   Plus,
   X,
+  Copy,
+  Check,
+  Info,
 } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { useCart } from "@/components/cart/useCart";
@@ -42,12 +45,47 @@ import {
 import { api } from "@/lib/api";
 import { saveOrder } from "@/lib/orderHistory";
 import { websocketService } from "@/lib/websocket";
+import { showToast } from "@/lib/toast";
 
-interface ShippingMethod {
-  id: "standard" | "express";
+export interface ShippingMethod {
+  id: string;
   label: string;
   eta: string;
   cost: number;
+  courier_code?: string;
+  courier_name?: string;
+}
+
+export interface GatewayPaymentMethod {
+  uuid: string;
+  gateway_code: string;
+  code: string;
+  name: string;
+  category: string;
+  logo_url?: string;
+  is_enabled: boolean;
+  fee_type: "FIXED" | "PERCENTAGE";
+  additional_fee: number;
+  default_gateway_fee: number;
+  bank_name?: string;
+  account_number?: string;
+  account_holder?: string;
+  account_holder_name?: string;
+  instructions?: string;
+}
+
+export interface GatewayShippingMethod {
+  uuid: string;
+  gateway_code: string;
+  courier_code: string;
+  courier_name: string;
+  service_code: string;
+  service_name: string;
+  is_enabled: boolean;
+  additional_fee: number;
+  default_gateway_fee: number;
+  base_cost?: number;
+  etd?: string;
 }
 
 export interface ActiveTax {
@@ -59,8 +97,8 @@ export interface ActiveTax {
 }
 
 const SHIPPING_METHODS: ShippingMethod[] = [
-  { id: "standard", label: "Standard", eta: "3-5 hari kerja", cost: 8000 },
-  { id: "express", label: "Express", eta: "1-2 hari kerja", cost: 25000 },
+  { id: "standard", label: "Standard", eta: "3-5 hari kerja", cost: 8000, courier_name: "Internal" },
+  { id: "express", label: "Express", eta: "1-2 hari kerja", cost: 25000, courier_name: "Internal Express" },
 ];
 
 const LOYALTY_POINTS_PER_TRANSACTION = 10;
@@ -165,7 +203,12 @@ export default function CheckoutPage() {
   const city = selectedAddress?.city ?? "";
   const address = selectedAddress?.addressLine ?? "";
   const [shippingMethodId, setShippingMethodId] =
-    useState<ShippingMethod["id"]>("standard");
+    useState<string>("standard");
+  const [availableShippingMethods, setAvailableShippingMethods] =
+    useState<ShippingMethod[]>(SHIPPING_METHODS);
+  const [paymentMethods, setPaymentMethods] = useState<GatewayPaymentMethod[]>([]);
+  const [selectedPaymentMethodUuid, setSelectedPaymentMethodUuid] = useState<string>("");
+  const [copiedAccount, setCopiedAccount] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<FormErrors>({});
 
   const [selectedVoucher, setSelectedVoucher] = useState<Voucher | null>(null);
@@ -384,6 +427,59 @@ export default function CheckoutPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadGateways() {
+      try {
+        const [payRes, shipRes] = await Promise.allSettled([
+          api.get("/ecommerce/payment-methods?is_enabled=true"),
+          api.get("/ecommerce/shipping-methods?is_enabled=true"),
+        ]);
+
+        if (!cancelled && payRes.status === "fulfilled") {
+          const list: GatewayPaymentMethod[] = payRes.value.data?.data || [];
+          if (Array.isArray(list) && list.length > 0) {
+            setPaymentMethods(list);
+            setSelectedPaymentMethodUuid((prev) => {
+              if (prev && list.some((p) => p.uuid === prev)) return prev;
+              return list[0].uuid;
+            });
+          }
+        }
+
+        if (!cancelled && shipRes.status === "fulfilled") {
+          const list: GatewayShippingMethod[] = shipRes.value.data?.data || [];
+          if (Array.isArray(list) && list.length > 0) {
+            const mapped: ShippingMethod[] = list.map((m) => {
+              const cost = (m.base_cost && m.base_cost > 0 ? m.base_cost : 9000) + (m.additional_fee || 0);
+              const eta = m.etd ? `${m.etd} hari kerja` : "2-4 hari kerja";
+              const label = `${m.courier_name} (${m.service_name})`;
+              return {
+                id: m.uuid,
+                label,
+                eta,
+                cost,
+                courier_code: m.courier_code,
+                courier_name: m.courier_name,
+              };
+            });
+            setAvailableShippingMethods(mapped);
+            setShippingMethodId((prev) => {
+              if (prev && mapped.some((m) => m.id === prev)) return prev;
+              return mapped[0].id;
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to load gateways:", err);
+      }
+    }
+    loadGateways();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const baseVouchers = serverVouchersLoaded
     ? serverVouchers
     : serverVouchers.length > 0
@@ -466,10 +562,11 @@ export default function CheckoutPage() {
   }
 
   const shippingMethod =
-    SHIPPING_METHODS.find((m) => m.id === shippingMethodId) ??
+    availableShippingMethods.find((m) => m.id === shippingMethodId) ??
+    availableShippingMethods[0] ??
     SHIPPING_METHODS[0];
-  const shippingCost = shippingMethod.cost;
-  const estimatedDeliveryLabel = getEstimatedDeliveryLabel(shippingMethod.eta);
+  const shippingCost = shippingMethod?.cost ?? 8000;
+  const estimatedDeliveryLabel = getEstimatedDeliveryLabel(shippingMethod?.eta ?? "3-5 hari kerja");
 
   const immediateBuy = location.state?.immediateBuy as
     | {
@@ -635,9 +732,36 @@ export default function CheckoutPage() {
     return taxLines.reduce((sum, t) => sum + t.amount, 0);
   }, [taxLines]);
 
+  const selectedPaymentMethod = paymentMethods.find(
+    (p) => p.uuid === selectedPaymentMethodUuid,
+  );
+
+  const paymentFee = useMemo(() => {
+    if (!selectedPaymentMethod) return 0;
+    if (selectedPaymentMethod.fee_type === "PERCENTAGE") {
+      return Math.round(
+        (totalHarga * (selectedPaymentMethod.additional_fee || 0)) / 100,
+      );
+    }
+    return Math.round(selectedPaymentMethod.additional_fee || 0);
+  }, [selectedPaymentMethod, totalHarga]);
+
+  const isManualFallback = useMemo(() => {
+    if (paymentMethods.length === 0) return false;
+    return paymentMethods.every(
+      (p) => p.gateway_code === "manual" || p.category === "BANK_TRANSFER",
+    );
+  }, [paymentMethods]);
+
   const totalTagihan = Math.max(
     0,
-    totalHarga + shippingCost + protectionCost + insuranceCost - discountAmount + taxTotal,
+    totalHarga +
+      shippingCost +
+      protectionCost +
+      insuranceCost +
+      paymentFee -
+      discountAmount +
+      taxTotal,
   );
 
   const loyaltyPointsEarned = LOYALTY_POINTS_PER_TRANSACTION;
@@ -682,12 +806,23 @@ export default function CheckoutPage() {
     setIsSubmitting(true);
 
     const purchasedProductIds = selectedItems.map((item) => item.productId);
+    const isManualOrder =
+      isManualFallback || selectedPaymentMethod?.gateway_code === "manual";
 
     const recordLocalOrder = (orderId: string) => {
       try {
         saveOrder({
           id: orderId,
-          status: "processing",
+          status: isManualOrder ? "pending_payment" : "processing",
+          payment: selectedPaymentMethod
+            ? {
+                payment_method: selectedPaymentMethod.name,
+                payment_status: isManualOrder ? "pending" : "paid",
+                sender_bank:
+                  selectedPaymentMethod.bank_name || selectedPaymentMethod.name,
+                amount_paid: totalTagihan,
+              }
+            : undefined,
           date: new Date().toLocaleString("id-ID", {
             day: "numeric",
             month: "short",
@@ -730,6 +865,9 @@ export default function CheckoutPage() {
       navigate("/payment-success", {
         state: {
           totalPaid: totalTagihan,
+          paymentMethod: selectedPaymentMethod,
+          isManual: isManualOrder,
+          paymentFee: paymentFee,
           itemIds: purchasedProductIds,
           orderId: orderId,
           items: selectedItems.map((item) => ({
@@ -772,11 +910,11 @@ export default function CheckoutPage() {
         shipping_postal_code: postalCode,
         city: city,
         shipping_city: city,
-        shipping_courier: "Kurir Internal",
+        shipping_courier: shippingMethod.courier_name || "Kurir Internal",
         shipping_method: shippingMethod.label,
         shipping_method_id: shippingMethod.id,
         shipping_cost: shippingCost,
-        service_fee: protectionCost + insuranceCost,
+        service_fee: protectionCost + insuranceCost + paymentFee,
         discount: discountAmount,
         voucher_code: selectedVoucher?.code || undefined,
         items: selectedItems.map((item) => ({
@@ -1191,8 +1329,13 @@ export default function CheckoutPage() {
                   Metode Pengiriman <span className="text-red-600">*</span>
                 </h2>
                 <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {SHIPPING_METHODS.map((method) => {
-                    const Icon = method.id === "express" ? Zap : Truck;
+                  {availableShippingMethods.map((method) => {
+                    const isExpress =
+                      method.id.toLowerCase().includes("express") ||
+                      method.label.toLowerCase().includes("express") ||
+                      method.label.toLowerCase().includes("kilat") ||
+                      method.label.toLowerCase().includes("next");
+                    const Icon = isExpress ? Zap : Truck;
                     const isSelected = shippingMethodId === method.id;
                     return (
                       <button
@@ -1345,35 +1488,134 @@ export default function CheckoutPage() {
                   <h2 className="text-sm font-semibold text-text">
                     Metode Pembayaran
                   </h2>
-                  <button
-                    type="button"
-                    className="text-sm font-medium text-primary hover:opacity-80">
-                    Lihat Semua
-                  </button>
                 </div>
+
+                {isManualFallback && (
+                  <div className="mt-3 flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200">
+                    <Info className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                    <div>
+                      <p className="font-semibold">Mode Transfer Bank Manual Aktif</p>
+                      <p className="mt-0.5 text-text-secondary text-[11px]">
+                        Gateway otomatis belum aktif. Lakukan transfer ke salah satu rekening resmi kami di bawah ini dan unggah bukti bayar setelah checkout.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-3 space-y-2">
-                  {[
-                    "BCA Virtual Account",
-                    "BRI Virtual Account",
-                    "Alfamart",
-                  ].map((method) => (
-                    <label
-                      key={method}
-                      className="flex cursor-pointer items-center justify-between rounded-lg border border-border px-3 py-3 text-sm text-text">
-                      <span className="flex items-center gap-3">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-md bg-background">
-                          <Building2 className="h-4 w-4 text-text-secondary" />
+                  {paymentMethods.length > 0 ? (
+                    paymentMethods.map((method) => {
+                      const isSelected = selectedPaymentMethodUuid === method.uuid;
+                      const hasAdditionalFee = (method.additional_fee || 0) > 0;
+                      return (
+                        <div
+                          key={method.uuid}
+                          onClick={() => setSelectedPaymentMethodUuid(method.uuid)}
+                          className={`cursor-pointer rounded-lg border p-3 transition-colors ${
+                            isSelected
+                              ? "border-primary bg-primary/5"
+                              : "border-border hover:border-primary/50"
+                          }`}>
+                          <div className="flex items-center justify-between">
+                            <span className="flex items-center gap-3">
+                              <span className="flex h-8 w-8 items-center justify-center rounded-md bg-background border border-border overflow-hidden">
+                                {method.logo_url ? (
+                                  <img
+                                    src={method.logo_url}
+                                    alt={method.name}
+                                    className="h-5 w-auto object-contain"
+                                  />
+                                ) : (
+                                  <Building2 className="h-4 w-4 text-text-secondary" />
+                                )}
+                              </span>
+                              <div>
+                                <span className="text-sm font-medium text-text block">
+                                  {method.name}
+                                </span>
+                                {hasAdditionalFee && (
+                                  <span className="text-[11px] text-text-secondary">
+                                    +Biaya:{" "}
+                                    {method.fee_type === "PERCENTAGE"
+                                      ? `${method.additional_fee}%`
+                                      : formatPrice(method.additional_fee)}
+                                  </span>
+                                )}
+                              </div>
+                            </span>
+                            <input
+                              type="radio"
+                              name="payment-method"
+                              checked={isSelected}
+                              onChange={() => setSelectedPaymentMethodUuid(method.uuid)}
+                              className="h-4 w-4 accent-primary"
+                            />
+                          </div>
+
+                          {isSelected && method.account_number && (
+                            <div className="mt-2.5 rounded-lg border border-border bg-background p-2.5 text-xs text-text">
+                              <div className="flex items-center justify-between font-mono font-semibold">
+                                <span>{method.account_number}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigator.clipboard.writeText(method.account_number || "");
+                                    setCopiedAccount(method.account_number || "");
+                                    showToast("Nomor rekening disalin!");
+                                    setTimeout(() => setCopiedAccount(null), 2000);
+                                  }}
+                                  className="inline-flex items-center gap-1 rounded bg-surface px-1.5 py-0.5 text-[11px] font-sans font-medium text-primary hover:bg-border/30">
+                                  {copiedAccount === method.account_number ? (
+                                    <>
+                                      <Check className="h-3 w-3 text-emerald-600" />
+                                      Tersalin
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy className="h-3 w-3" />
+                                      Salin
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                              <p className="mt-1 text-[11px] text-text-secondary">
+                                a.n. {method.account_holder || method.account_holder_name || "Official Store"}
+                              </p>
+                              {method.instructions && (
+                                <p className="mt-1 text-[10px] text-text-secondary italic">
+                                  {method.instructions}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    [
+                      "BCA Virtual Account",
+                      "BRI Virtual Account",
+                      "Alfamart",
+                    ].map((method) => (
+                      <label
+                        key={method}
+                        className="flex cursor-pointer items-center justify-between rounded-lg border border-border px-3 py-3 text-sm text-text">
+                        <span className="flex items-center gap-3">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-background">
+                            <Building2 className="h-4 w-4 text-text-secondary" />
+                          </span>
+                          {method}
                         </span>
-                        {method}
-                      </span>
-                      <input
-                        type="radio"
-                        name="payment-method"
-                        className="h-4 w-4 accent-primary"
-                        defaultChecked={method === "BCA Virtual Account"}
-                      />
-                    </label>
-                  ))}
+                        <input
+                          type="radio"
+                          name="payment-method"
+                          className="h-4 w-4 accent-primary"
+                          defaultChecked={method === "BCA Virtual Account"}
+                        />
+                      </label>
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -1394,6 +1636,12 @@ export default function CheckoutPage() {
                     <span>Proteksi & Asuransi</span>
                     <span>{formatPrice(protectionCost + insuranceCost)}</span>
                   </div>
+                  {paymentFee > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span>Biaya Layanan Pembayaran</span>
+                      <span>{formatPrice(paymentFee)}</span>
+                    </div>
+                  )}
                   {selectedVoucher && discountAmount > 0 && (
                     <div className="flex items-center justify-between text-primary font-medium">
                       <span>Diskon Voucher ({selectedVoucher.code})</span>

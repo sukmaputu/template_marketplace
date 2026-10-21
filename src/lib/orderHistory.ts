@@ -36,6 +36,18 @@ interface BackendOrder {
   placed_at?: string;
   paid_at?: string;
   order_items?: BackendOrderItem[];
+  payment?: {
+    uuid?: string;
+    status?: string;
+    payment_method?: string;
+    sender_name?: string;
+    sender_bank?: string;
+    amount?: number;
+    payment_proof_url?: string;
+    rejection_reason?: string;
+    verified_at?: string;
+    paid_at?: string;
+  };
 }
 
 function mapBackendStatus(status?: string, paidAt?: string | null): OrderStatus {
@@ -65,11 +77,14 @@ function mapBackendOrder(bo: BackendOrder): Order {
 
   return {
     id: bo.order_number || bo.uuid || "ORD",
+    uuid: bo.uuid,
+    orderNumber: bo.order_number,
     status,
     date: formattedDate,
     grand_total: Number(bo.total ?? 0),
     courierName: bo.shipping_courier,
     trackingNumber: bo.tracking_number,
+    payment: bo.payment,
     shippingAddress: {
       recipientName: bo.recipient_name ?? "",
       phone: bo.phone ?? "",

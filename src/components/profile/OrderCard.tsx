@@ -13,6 +13,7 @@ export function OrderCard({
   onCancelClick,
   onRefundClick,
   onReviewClick,
+  onUploadProofClick,
 }: {
   order: Order;
   onTrackClick: (order: Order) => void;
@@ -20,6 +21,7 @@ export function OrderCard({
   onCancelClick: (order: Order) => void;
   onRefundClick: (order: Order) => void;
   onReviewClick?: (order: Order) => void;
+  onUploadProofClick?: (order: Order) => void;
 }) {
   const { formatPrice } = useCurrency();
   // NOTE: label "processing" di ORDER_STATUS_CONFIG (file ./types) perlu diubah
@@ -148,10 +150,32 @@ export function OrderCard({
                 className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-text hover:bg-background">
                 Batalkan
               </button>
-              <button className="rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-white shadow-sm hover:opacity-90">
-                Bayar Sekarang
-              </button>
+              {onUploadProofClick ? (
+                <button
+                  type="button"
+                  onClick={() => onUploadProofClick(order)}
+                  className="rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-white shadow-sm hover:opacity-90">
+                  {order.payment?.payment_proof
+                    ? order.payment.payment_status === "rejected"
+                      ? "Unggah Ulang Bukti"
+                      : "Lihat Bukti Bayar"
+                    : "Unggah Bukti Bayar"}
+                </button>
+              ) : (
+                <button className="rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-white shadow-sm hover:opacity-90">
+                  Bayar Sekarang
+                </button>
+              )}
             </>
+          )}
+
+          {order.status !== "pending_payment" && order.payment?.payment_proof && onUploadProofClick && (
+            <button
+              type="button"
+              onClick={() => onUploadProofClick(order)}
+              className="rounded-lg border border-border px-3.5 py-1.5 text-xs font-medium text-text hover:bg-background">
+              Bukti Bayar
+            </button>
           )}
 
           {order.status === "processing" && (

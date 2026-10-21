@@ -7,6 +7,7 @@ import { OrderCard } from "./OrderCard";
 import { TrackingModal } from "./TrackingModal";
 import { RefundModal } from "./RefundModal";
 import { ConfirmModal } from "./ConfirmModal";
+import { PaymentProofModal } from "./PaymentProofModal";
 import { fetchOrdersFromBackend, getStoredOrders } from "@/lib/orderHistory";
 import { showToast } from "@/lib/toast";
 
@@ -20,6 +21,8 @@ export function RiwayatPembelianTab() {
   const [selectedStatus, setSelectedStatus] = useState<FilterKey>("ALL");
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [selectedOrderForTracking, setSelectedOrderForTracking] =
+    useState<Order | null>(null);
+  const [selectedOrderForProof, setSelectedOrderForProof] =
     useState<Order | null>(null);
   const [selectedOrderForRefund, setSelectedOrderForRefund] =
     useState<Order | null>(null);
@@ -200,6 +203,7 @@ export function RiwayatPembelianTab() {
               key={order.id}
               order={order}
               onTrackClick={(ord) => setSelectedOrderForTracking(ord)}
+              onUploadProofClick={(ord) => setSelectedOrderForProof(ord)}
               onMarkReceived={handleMarkReceived}
               onCancelClick={(ord) => setSelectedOrderForCancel(ord)}
               onRefundClick={(ord) => setSelectedOrderForRefund(ord)}
@@ -261,6 +265,17 @@ export function RiwayatPembelianTab() {
         <TrackingModal
           order={selectedOrderForTracking}
           onClose={() => setSelectedOrderForTracking(null)}
+        />
+      )}
+
+      {selectedOrderForProof && (
+        <PaymentProofModal
+          order={selectedOrderForProof}
+          onClose={() => setSelectedOrderForProof(null)}
+          onSubmitted={() => {
+            setSelectedOrderForProof(null);
+            window.dispatchEvent(new Event("order-history-updated"));
+          }}
         />
       )}
 
