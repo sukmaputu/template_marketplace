@@ -448,21 +448,12 @@ class ChatService {
       conversations[convIndex] = updatedConv;
     }
 
+    newMsg.client_temp_id = msgId;
+
     saveStorage(conversations, nextMessages);
 
-    // 1. Broadcast over WebSocket for immediate realtime admin update
-    const payload: WSChatMessagePayload = {
-      type: "chat_message",
-      conversation_id: conversation.id,
-      customer_email: identity.customer_email || conversation.customer_email || undefined,
-      customer_phone: identity.customer_phone || conversation.customer_phone || undefined,
-      customer_user_id: identity.customer_user_id || conversation.customer_user_id || undefined,
-      conversation: updatedConv,
-      message: newMsg,
-    };
-    websocketService.send(payload);
-
-    // 2. Persist message to backend PostgreSQL database via REST API
+    // Persist message to backend PostgreSQL database via REST API.
+    // The backend will save the message and broadcast the single authoritative WebSocket event.
     this.persistMessageRemote(conversation.id, text, identity, replyTo ? String(replyTo.id) : undefined, msgId);
 
     // 3. If WebSocket is offline, provide mock bot response fallback
@@ -508,6 +499,7 @@ class ChatService {
             : null,
         message: messageText,
         reply_to_id: replyToId || undefined,
+        client_temp_id: localMsgId || undefined,
       };
 
       if (!isValidUUID(targetConvId)) {
@@ -540,12 +532,18 @@ class ChatService {
 
       if (res.ok && localMsgId) {
         const json = await res.json().catch(() => null);
-        const serverMsg = json?.data;
-        if (serverMsg && serverMsg.id && serverMsg.id !== localMsgId) {
+        const serverMsg = json?.data?.message || json?.data;
+        if (serverMsg && serverMsg.id) {
           const current = loadStorage();
           const updated = current.messages.map((m) =>
-            m.id === localMsgId
-              ? { ...m, id: serverMsg.id, created_at: serverMsg.created_at || m.created_at }
+            m.id === localMsgId || m.client_temp_id === localMsgId
+              ? {
+                  ...m,
+                  ...serverMsg,
+                  id: serverMsg.id,
+                  client_temp_id: localMsgId,
+                  created_at: serverMsg.created_at || m.created_at,
+                }
               : m,
           );
           saveStorage(current.conversations, updated);
@@ -602,12 +600,25 @@ class ChatService {
     const { conversations, messages } = loadStorage();
     const { conversation_id, message, conversation: incomingConv } = payload;
 
-    const existingMsgIndex = messages.findIndex((m) => m.id === message.id);
+    const existingMsgIndex = messages.findIndex(
+      (m) =>
+        m.id === message.id ||
+        (message.client_temp_id && (m.id === message.client_temp_id || m.client_temp_id === message.client_temp_id)) ||
+        (m.client_temp_id && m.client_temp_id === message.id) ||
+        (m.sender_role === message.sender_role &&
+          m.message === message.message &&
+          Math.abs(new Date(m.created_at || 0).getTime() - new Date(message.created_at || 0).getTime()) < 30000),
+    );
     const nextMessages = [...messages];
     if (existingMsgIndex === -1) {
       nextMessages.push(message);
     } else {
-      nextMessages[existingMsgIndex] = message;
+      nextMessages[existingMsgIndex] = {
+        ...nextMessages[existingMsgIndex],
+        ...message,
+        id: message.id,
+        created_at: message.created_at || nextMessages[existingMsgIndex].created_at,
+      };
     }
 
     const convIndex = conversations.findIndex((c) => c.id === conversation_id);
