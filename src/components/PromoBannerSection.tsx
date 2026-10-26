@@ -13,6 +13,8 @@ export type BannerSlide = {
   subtitle: string;
   ctaLabel: string;
   ctaHref: string;
+  mobileTemplate?: string;
+  mobileHeightPx?: number;
 };
 
 interface RawSlideItem {
@@ -25,6 +27,8 @@ interface RawSlideItem {
   ctaLabel?: unknown;
   ctaHref?: unknown;
   href?: unknown;
+  mobileTemplate?: unknown;
+  mobileHeightPx?: unknown;
 }
 
 const DEFAULT_SLIDES: BannerSlide[] = [
@@ -102,6 +106,10 @@ function parseDynamicBannerSlides(rawValue?: string): BannerSlide[] | null {
               ctaLabel:
                 typeof item.ctaLabel === "string" ? item.ctaLabel.trim() : "",
               ctaHref: sanitizeUrl(rawHref, "#catalog"),
+              mobileTemplate:
+                typeof item.mobileTemplate === "string" ? item.mobileTemplate : undefined,
+              mobileHeightPx:
+                typeof item.mobileHeightPx === "number" ? item.mobileHeightPx : undefined,
             };
           })
           .filter((s): s is BannerSlide => s !== null);
@@ -228,13 +236,34 @@ export function PromoBannerSection({
     return () => clearInterval(id);
   }, [isSlideshow, isPaused, slideCount]);
 
+  const currentSlide = bannerSlides[safeIndex] || bannerSlides[0];
+  const mobileTemplate = currentSlide?.mobileTemplate || "widescreen_16_9";
+  let mobileAspectClass = "aspect-[16/9]";
+  let mobileInlineHeight: string | undefined = undefined;
+
+  if (mobileTemplate === "marketplace_2_1") {
+    mobileAspectClass = "aspect-[2/1] sm:aspect-[16/9]";
+  } else if (mobileTemplate === "showcase_4_3") {
+    mobileAspectClass = "aspect-[4/3] sm:aspect-[16/9]";
+  } else if (mobileTemplate === "editorial_4_5") {
+    mobileAspectClass = "aspect-[4/5] sm:aspect-[16/9]";
+  } else if (mobileTemplate === "custom") {
+    mobileAspectClass = "h-[var(--banner-mobile-h)] sm:h-auto sm:aspect-[16/9]";
+    mobileInlineHeight = `${currentSlide?.mobileHeightPx || 220}px`;
+  }
+
   return (
     <section className="w-full mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <div
         onMouseEnter={() => setIsPaused(true)}
         onMouseLeave={() => setIsPaused(false)}
-        className="group relative w-full aspect-16/9 overflow-hidden rounded-xl bg-neutral-200 dark:bg-neutral-700 select-none"
-        style={{ width: "100%" }}>
+        className={`group relative w-full ${mobileAspectClass} overflow-hidden rounded-xl bg-neutral-200 dark:bg-neutral-700 select-none transition-all duration-300`}
+        style={{
+          width: "100%",
+          ...(mobileInlineHeight
+            ? ({ ["--banner-mobile-h" as string]: mobileInlineHeight } as React.CSSProperties)
+            : {}),
+        }}>
         <div
           className="flex h-full transition-transform duration-500 ease-out"
           style={{

@@ -18,6 +18,9 @@ export function MarketplaceFooter() {
     navbarLogo,
     siteTitle,
     siteTagline,
+    logoFooterMobileHeightPx,
+    logoFooterDesktopHeightPx,
+    logoMaxWidthPx,
   } = usePageSettings();
 
   const displayEmail = (contactEmail || "").trim();
@@ -42,7 +45,12 @@ export function MarketplaceFooter() {
               <img
                 src={navbarLogo || "/logo/logo_nadrical.png"}
                 alt={siteTitle || "Nadrical"}
-                className="h-10 w-auto object-contain"
+                className="h-[var(--logo-foot-h-mobile)] sm:h-[var(--logo-foot-h-desktop)] w-auto object-contain transition-all duration-200"
+                style={{
+                  ['--logo-foot-h-mobile' as any]: `${logoFooterMobileHeightPx || 36}px`,
+                  ['--logo-foot-h-desktop' as any]: `${logoFooterDesktopHeightPx || 44}px`,
+                  maxWidth: `${logoMaxWidthPx || 180}px`,
+                }}
                 onError={(event) => {
                   event.currentTarget.onerror = null;
                   event.currentTarget.src = "/logo/logo_nadrical.png";

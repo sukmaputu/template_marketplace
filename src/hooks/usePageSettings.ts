@@ -15,11 +15,25 @@ export interface PageSettingsData {
   popupBanner: string;
   popupBannerLink: string;
   isPopupEnabled: boolean;
+  popupMobileTemplate: string;
+  popupMobileMaxWidth: number;
+  popupMobileAspectRatio: string;
+  popupObjectFit: "cover" | "contain";
+  logoNavbarMobileHeightPx: number;
+  logoNavbarDesktopHeightPx: number;
+  logoFooterMobileHeightPx: number;
+  logoFooterDesktopHeightPx: number;
+  logoMaxWidthPx: number;
   siteTitle: string;
   siteTagline: string;
   settingsMap: Record<string, string>;
   loading: boolean;
   resolveImageUrl: (path?: string) => string;
+}
+
+export function stripHtmlTags(str?: string): string {
+  if (!str) return "";
+  return str.replace(/<[^>]*>/g, "").trim();
 }
 
 /**
@@ -100,7 +114,11 @@ export async function fetchPageSettingsMap(
           const key = String(item.key ?? item.nama_key ?? item.name ?? "").trim();
           if (key) {
             const val = item.value ?? item.val ?? "";
-            map[key] = typeof val === "string" ? val : String(val ?? "");
+            let strVal = typeof val === "string" ? val : String(val ?? "");
+            if (strVal.startsWith("<p>") && strVal.endsWith("</p>")) {
+              strVal = strVal.replace(/^<p>/i, "").replace(/<\/p>$/i, "").trim();
+            }
+            map[key] = strVal;
           }
         }
       });
@@ -183,46 +201,46 @@ export function usePageSettings(): PageSettingsData {
   }, []);
 
   const contactEmail =
-    (
+    stripHtmlTags(
       settingsMap.contact_email ||
       settingsMap.site_email ||
       settingsMap.email ||
       ""
-    ).trim() || "contact@nadrical.my.id";
+    ) || "contact@nadrical.my.id";
 
   const contactPhone =
-    (
+    stripHtmlTags(
       settingsMap.contact_phone ||
       settingsMap.site_phone ||
       settingsMap.phone ||
       settingsMap.contact_whatsapp ||
       ""
-    ).trim() || "+6281234567890";
+    ) || "+6281234567890";
 
   const contactAddress =
-    (
+    stripHtmlTags(
       settingsMap.contact_address ||
       settingsMap.site_address ||
       settingsMap.address ||
       settingsMap.alamat ||
       ""
-    ).trim() || "Jln Testing Jawa Barat no 19 RT 12";
+    ) || "Jln Testing Jawa Barat no 19 RT 12";
 
   const siteTitle =
-    (
+    stripHtmlTags(
       settingsMap.site_title ||
       settingsMap.title ||
       settingsMap.app_name ||
       ""
-    ).trim() || "Nadrical";
+    ) || "Nadrical";
 
   const siteTagline =
-    (
+    stripHtmlTags(
       settingsMap.site_tagline ||
       settingsMap.tagline ||
       settingsMap.description ||
       ""
-    ).trim() ||
+    ) ||
     "Solusi e-commerce terpercaya untuk semua kebutuhan template, produk digital, dan gaya hidup Anda.";
 
   const rawLogo =
@@ -248,6 +266,10 @@ export function usePageSettings(): PageSettingsData {
 
   let popupImageRaw = "";
   let popupLinkRaw = "";
+  let popupMobileTemplate = "square";
+  let popupMobileMaxWidth = 320;
+  let popupMobileAspectRatio = "1 / 1";
+  let popupObjectFit: "cover" | "contain" = "cover";
 
   if (rawPopup) {
     try {
@@ -255,6 +277,26 @@ export function usePageSettings(): PageSettingsData {
       if (typeof parsed === "object" && parsed !== null) {
         popupImageRaw = parsed.image || parsed.img || parsed.url || "";
         popupLinkRaw = parsed.link || parsed.url_target || parsed.href || "";
+        if (typeof parsed.mobileTemplate === "string" && parsed.mobileTemplate) {
+          popupMobileTemplate = parsed.mobileTemplate;
+        }
+        if (typeof parsed.mobileMaxWidth === "number" && !isNaN(parsed.mobileMaxWidth)) {
+          popupMobileMaxWidth = parsed.mobileMaxWidth;
+        }
+        if (typeof parsed.mobileAspectRatio === "string" && parsed.mobileAspectRatio) {
+          popupMobileAspectRatio = parsed.mobileAspectRatio;
+        } else if (popupMobileTemplate === "portrait_ig") {
+          popupMobileAspectRatio = "4 / 5";
+        } else if (popupMobileTemplate === "poster_tall") {
+          popupMobileAspectRatio = "3 / 4";
+        } else if (popupMobileTemplate === "compact_landscape") {
+          popupMobileAspectRatio = "4 / 3";
+        } else if (popupMobileTemplate === "story_full") {
+          popupMobileAspectRatio = "9 / 16";
+        }
+        if (parsed.objectFit === "contain") {
+          popupObjectFit = "contain";
+        }
       } else if (typeof parsed === "string") {
         popupImageRaw = parsed;
       }
@@ -263,8 +305,55 @@ export function usePageSettings(): PageSettingsData {
     }
   }
 
+  // Parse Logo Sizing Config from site_logo_config
+  let logoNavbarMobileHeightPx = 32;
+  let logoNavbarDesktopHeightPx = 40;
+  let logoFooterMobileHeightPx = 36;
+  let logoFooterDesktopHeightPx = 44;
+  let logoMaxWidthPx = 180;
+
+  if (settingsMap.site_logo_config) {
+    try {
+      const parsedConfig = JSON.parse(settingsMap.site_logo_config);
+      if (typeof parsedConfig === "object" && parsedConfig !== null) {
+        if (Number(parsedConfig.navbarMobileHeightPx) > 0) {
+          logoNavbarMobileHeightPx = Number(parsedConfig.navbarMobileHeightPx);
+        }
+        if (Number(parsedConfig.navbarDesktopHeightPx) > 0) {
+          logoNavbarDesktopHeightPx = Number(parsedConfig.navbarDesktopHeightPx);
+        } else if (logoNavbarMobileHeightPx > 40) {
+          logoNavbarDesktopHeightPx = Math.max(40, logoNavbarMobileHeightPx);
+        }
+
+        if (parsedConfig.footerMobilePreset === "sync") {
+          logoFooterMobileHeightPx = logoNavbarMobileHeightPx;
+          logoFooterDesktopHeightPx = logoNavbarDesktopHeightPx;
+        } else {
+          if (Number(parsedConfig.footerMobileHeightPx) > 0) {
+            logoFooterMobileHeightPx = Number(parsedConfig.footerMobileHeightPx);
+          }
+          if (Number(parsedConfig.footerDesktopHeightPx) > 0) {
+            logoFooterDesktopHeightPx = Number(parsedConfig.footerDesktopHeightPx);
+          } else if (logoFooterMobileHeightPx > 44) {
+            logoFooterDesktopHeightPx = Math.max(44, logoFooterMobileHeightPx);
+          }
+        }
+
+        if (Number(parsedConfig.maxWidthPx) > 0) {
+          logoMaxWidthPx = Number(parsedConfig.maxWidthPx);
+        }
+      }
+    } catch {
+      // fallback defaults
+    }
+  }
+
   const popupBanner = (popupImageRaw && isPopupEnabled) ? resolveAssetUrl(popupImageRaw) : "";
-  const popupBannerLink = popupLinkRaw ? sanitizeUrl(popupLinkRaw, "#catalog") : "#catalog";
+  let rawCleanLink = popupLinkRaw ? sanitizeUrl(popupLinkRaw, "#catalog") : "#catalog";
+  if (rawCleanLink === "/products" || rawCleanLink === "/products/") {
+    rawCleanLink = "/#catalog";
+  }
+  const popupBannerLink = rawCleanLink;
 
   return {
     contactEmail,
@@ -274,6 +363,15 @@ export function usePageSettings(): PageSettingsData {
     popupBanner,
     popupBannerLink,
     isPopupEnabled,
+    popupMobileTemplate,
+    popupMobileMaxWidth,
+    popupMobileAspectRatio,
+    popupObjectFit,
+    logoNavbarMobileHeightPx,
+    logoNavbarDesktopHeightPx,
+    logoFooterMobileHeightPx,
+    logoFooterDesktopHeightPx,
+    logoMaxWidthPx,
     siteTitle,
     siteTagline,
     settingsMap,
