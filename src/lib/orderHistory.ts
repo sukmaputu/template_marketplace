@@ -1,6 +1,7 @@
 import type { Order, OrderStatus } from "@/components/profile/types";
 import { api } from "@/lib/api";
 import { websocketService } from "@/lib/websocket";
+import { resolveAssetUrl } from "@/hooks/usePageSettings";
 
 const ORDER_HISTORY_KEY = "marketplace-order-history";
 
@@ -101,7 +102,7 @@ function mapBackendOrder(bo: BackendOrder): Order {
       variant_name_snapshot: item.variant_name_snapshot || "Standar",
       unit_price: Number(item.unit_price ?? item.price ?? 0),
       quantity: Number(item.quantity ?? 1),
-      image: item.product_image_snapshot || item.product?.image || "",
+      image: resolveAssetUrl(item.product_image_snapshot || item.product?.image || ""),
     })),
   };
 }
@@ -178,4 +179,19 @@ export async function fetchOrdersFromBackend(): Promise<Order[]> {
   }
 
   return getStoredOrders();
+}
+
+export async function updateOrderStatusInBackend(
+  orderIdOrUuid: string,
+  status: "CANCELED" | "DONE" | "COMPLETED",
+): Promise<boolean> {
+  try {
+    await api.patch(`/ecommerce/orders/${encodeURIComponent(orderIdOrUuid)}/status`, {
+      status,
+    });
+    return true;
+  } catch (err) {
+    console.warn("[updateOrderStatusInBackend] Failed to update order status:", err);
+    return false;
+  }
 }

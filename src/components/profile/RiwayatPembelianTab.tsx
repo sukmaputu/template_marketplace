@@ -8,16 +8,24 @@ import { TrackingModal } from "./TrackingModal";
 import { RefundModal } from "./RefundModal";
 import { ConfirmModal } from "./ConfirmModal";
 import { PaymentProofModal } from "./PaymentProofModal";
-import { fetchOrdersFromBackend, getStoredOrders } from "@/lib/orderHistory";
+import {
+  fetchOrdersFromBackend,
+  getStoredOrders,
+  updateOrderStatusInBackend,
+} from "@/lib/orderHistory";
+import { submitProductReview } from "@/lib/products";
 import { showToast } from "@/lib/toast";
+import { websocketService } from "@/lib/websocket";
+import { useAuth } from "@/components/auth/UseAuth";
 
 type FilterKey = "ALL" | OrderStatus;
 
 export function RiwayatPembelianTab() {
-  const [orders, setOrders] = useState<Order[]>(() => [
-    ...getStoredOrders(),
-    ...MOCK_ORDERS,
-  ]);
+  const { user, refreshProfile } = useAuth();
+  const [orders, setOrders] = useState<Order[]>(() => {
+    const stored = getStoredOrders();
+    return stored.length > 0 ? stored : MOCK_ORDERS;
+  });
   const [selectedStatus, setSelectedStatus] = useState<FilterKey>("ALL");
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [selectedOrderForTracking, setSelectedOrderForTracking] =
@@ -49,7 +57,8 @@ export function RiwayatPembelianTab() {
         // ignore
       }
       if (!cancelled) {
-        setOrders([...getStoredOrders(), ...MOCK_ORDERS]);
+        const stored = getStoredOrders();
+        setOrders(user ? stored : stored.length > 0 ? stored : MOCK_ORDERS);
       }
     }
 
@@ -60,9 +69,23 @@ export function RiwayatPembelianTab() {
     };
 
     window.addEventListener("order-history-updated", refreshOrders);
+    window.addEventListener("focus", refreshOrders);
+
+    const unsub1 = websocketService.on("order_updated", refreshOrders);
+    const unsub2 = websocketService.on("order_status_updated", refreshOrders);
+    const unsub3 = websocketService.on("data_updated", (payload: any) => {
+      if (!payload || payload.resource === "orders" || payload.resource === "pesanan") {
+        refreshOrders();
+      }
+    });
+
     return () => {
       cancelled = true;
       window.removeEventListener("order-history-updated", refreshOrders);
+      window.removeEventListener("focus", refreshOrders);
+      unsub1();
+      unsub2();
+      unsub3();
     };
   }, []);
 
@@ -98,17 +121,26 @@ export function RiwayatPembelianTab() {
     setCurrentPage(1);
   };
 
-  const handleMarkReceived = (orderId: string) => {
+  const handleMarkReceived = async (orderId: string) => {
+    const target = orders.find((o) => o.id === orderId);
+    const targetId = target?.uuid || orderId;
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status: "completed" } : o)),
     );
+    await updateOrderStatusInBackend(targetId, "DONE");
+    if (refreshProfile) {
+      void refreshProfile();
+    }
   };
 
-  const handleCancelOrder = (orderId: string) => {
+  const handleCancelOrder = async (orderId: string) => {
+    const target = orders.find((o) => o.id === orderId);
+    const targetId = target?.uuid || orderId;
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status: "cancelled" } : o)),
     );
     setSelectedOrderForCancel(null);
+    await updateOrderStatusInBackend(targetId, "CANCELED");
   };
 
   const handleRefundSubmit = (
@@ -135,6 +167,16 @@ export function RiwayatPembelianTab() {
 
     const productId =
       validItems[0].productId ?? validItems[0].product_name_snapshot;
+    const orderItemId = validItems[0].id;
+
+    submitProductReview(String(productId), {
+      rating: reviewRating,
+      comment: reviewComment.trim() || "Produk sangat bagus.",
+      order_item_uuid: orderItemId,
+    }).catch((err) => {
+      console.warn("Backend review submission warning:", err);
+    });
+
     const reviewPayload = {
       id: `review-${selectedOrderForReview.id}-${Date.now()}`,
       productId: String(productId),
@@ -142,6 +184,7 @@ export function RiwayatPembelianTab() {
       rating: reviewRating,
       comment: reviewComment.trim() || "Produk sangat bagus.",
       createdAt: new Date().toISOString(),
+      isVerified: true,
     };
 
     const existing = JSON.parse(

@@ -28,7 +28,7 @@ const DEFAULT_BANKS: BankAccount[] = [
 function resolveProofUrl(url?: string | null): string {
   if (!url) return "";
   if (url.startsWith("http://") || url.startsWith("https://")) return url;
-  const apiBase = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8001/api/v1").replace(/\/api\/v1\/?$/, "");
+  const apiBase = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8080/api/v1").replace(/\/api\/v1\/?$/, "");
   return `${apiBase}${url.startsWith("/") ? "" : "/"}${url}`;
 }
 

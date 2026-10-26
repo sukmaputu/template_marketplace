@@ -27,6 +27,9 @@ import {
   markAllNotificationsAsRead,
 } from "./notifications-data";
 import { useAnnouncements } from "@/lib/announcements";
+import { fetchOrdersFromBackend, getStoredOrders } from "@/lib/orderHistory";
+import type { Order } from "@/components/profile/types";
+import { websocketService } from "@/lib/websocket";
 
 function formatRelativeTime(dateStr?: string): string {
   if (!dateStr) return "Baru saja";
@@ -56,6 +59,40 @@ export function MobileMenu() {
 
   const { announcements, readIds, markRead, markAllRead } = useAnnouncements();
   const [readNotifIds, setReadNotifIds] = useState<Set<string>>(() => getReadNotificationIds());
+  const [userOrders, setUserOrders] = useState<Order[]>(() => getStoredOrders());
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadUserOrders() {
+      try {
+        const fetched = await fetchOrdersFromBackend();
+        if (!cancelled && fetched.length > 0) {
+          setUserOrders(fetched);
+          return;
+        }
+      } catch {
+        // ignore
+      }
+      if (!cancelled) {
+        setUserOrders(getStoredOrders());
+      }
+    }
+    void loadUserOrders();
+
+    const onOrdersUpdated = () => void loadUserOrders();
+    window.addEventListener("order-history-updated", onOrdersUpdated);
+    window.addEventListener("focus", onOrdersUpdated);
+    const unsubOrder = websocketService.on("order_updated", onOrdersUpdated);
+    const unsubStatus = websocketService.on("order_status_updated", onOrdersUpdated);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("order-history-updated", onOrdersUpdated);
+      window.removeEventListener("focus", onOrdersUpdated);
+      unsubOrder();
+      unsubStatus();
+    };
+  }, [user]);
 
   useEffect(() => {
     const handleSync = () => {
@@ -93,21 +130,58 @@ export function MobileMenu() {
       };
     });
 
-    const mockItems: UnifiedNotificationItem[] = NOTIFICATIONS.map((m) => {
-      const idStr = String(m.id).toLowerCase();
-      const isRead = readNotifIds.has(idStr) || m.is_read;
+    const orderItems: UnifiedNotificationItem[] = userOrders.map((o) => {
+      const orderIdStr = String(o.orderNumber || o.id);
+      const id = `order-${orderIdStr}`;
+      const isRead =
+        readNotifIds.has(id.toLowerCase()) ||
+        readNotifIds.has(orderIdStr.toLowerCase());
+
+      let title = "Pesanan Diproses";
+      let description = `Pesanan #${orderIdStr} sedang diproses penjual.`;
+
+      if (o.status === "completed") {
+        title = "Pesanan Selesai";
+        description = `Pesanan #${orderIdStr} telah selesai.`;
+      } else if (o.status === "shipping") {
+        title = "Pesanan Dikirim";
+        description = `Pesanan #${orderIdStr} sedang dikirim.${o.trackingNumber ? ` Resi: ${o.trackingNumber}` : ""}`;
+      } else if (o.status === "pending_payment") {
+        title = "Menunggu Pembayaran";
+        description = `Pesanan #${orderIdStr} menunggu konfirmasi pembayaran.`;
+      } else if (o.status === "cancelled") {
+        title = "Pesanan Dibatalkan";
+        description = `Pesanan #${orderIdStr} telah dibatalkan.`;
+      }
+
       return {
-        id: m.id,
-        title: m.title,
-        description: m.description,
-        time: m.time,
+        id,
+        title,
+        description,
+        time: o.date || "Baru saja",
         is_read: isRead,
-        notification_type: (m.notification_type as any) || "system",
+        notification_type: "order",
       };
     });
 
-    return [...liveItems, ...mockItems];
-  }, [announcements, readIds, readNotifIds]);
+    const mockItems: UnifiedNotificationItem[] =
+      orderItems.length > 0 || user
+        ? []
+        : NOTIFICATIONS.map((m) => {
+            const idStr = String(m.id).toLowerCase();
+            const isRead = readNotifIds.has(idStr) || m.is_read;
+            return {
+              id: m.id,
+              title: m.title,
+              description: m.description,
+              time: m.time,
+              is_read: isRead,
+              notification_type: (m.notification_type as any) || "system",
+            };
+          });
+
+    return [...liveItems, ...orderItems, ...mockItems];
+  }, [announcements, readIds, readNotifIds, userOrders, user]);
 
   const unreadCount = useMemo(() => {
     return items.filter((item) => !item.is_read).length;

@@ -46,6 +46,8 @@ import { api } from "@/lib/api";
 import { saveOrder } from "@/lib/orderHistory";
 import { websocketService } from "@/lib/websocket";
 import { showToast } from "@/lib/toast";
+import { usePageSettings } from "@/hooks/usePageSettings";
+import { useLoyalties } from "@/lib/loyalty";
 
 export interface ShippingMethod {
   id: string;
@@ -101,8 +103,6 @@ const SHIPPING_METHODS: ShippingMethod[] = [
   { id: "express", label: "Express", eta: "1-2 hari kerja", cost: 25000, courier_name: "Internal Express" },
 ];
 
-const LOYALTY_POINTS_PER_TRANSACTION = 10;
-
 function parseEtaDays(eta: string): { min: number; max: number } {
   const match = eta.match(/(\d+)(?:-(\d+))?/);
   if (!match) return { min: 1, max: 1 };
@@ -154,6 +154,8 @@ interface CheckoutItem {
 
 export default function CheckoutPage() {
   const { user } = useAuth();
+  const { settingsMap } = usePageSettings();
+  const { tiers: loyaltyTiers } = useLoyalties();
   const { formatPrice } = useCurrency();
   const location = useLocation();
   const navigate = useNavigate();
@@ -485,10 +487,41 @@ export default function CheckoutPage() {
     : serverVouchers.length > 0
       ? serverVouchers
       : CHECKOUT_VOUCHERS;
-  const availableVouchers =
-    (user?.loyalty_points ?? 0) >= LOYALTY_REWARD_THRESHOLD
-      ? [...baseVouchers, LOYALTY_REWARD_VOUCHER]
-      : baseVouchers;
+
+  const activeLoyaltyVouchers: Voucher[] = useMemo(() => {
+    return loyaltyTiers
+      .filter((t) => t.voucher && (user?.loyalty_points ?? 0) >= t.min_point)
+      .map((t) => ({
+        id: t.voucher!.uuid,
+        code: t.voucher!.code,
+        title: `Reward ${t.name}`,
+        discount_label:
+          t.voucher!.discount_type === "PERCENTAGE"
+            ? `${t.voucher!.discount_value}% OFF`
+            : `Rp ${t.voucher!.discount_value.toLocaleString("id-ID")}`,
+        discount_amount:
+          t.voucher!.discount_type === "FIXED"
+            ? t.voucher!.discount_value
+            : undefined,
+        min_purchase_amount: t.voucher!.min_order_amount,
+        min_purchase: `Min. poin: ${t.min_point}`,
+        expires_at: "Berlaku",
+        status: "aktif" as const,
+      }));
+  }, [loyaltyTiers, user?.loyalty_points]);
+
+  const availableVouchers = useMemo(() => {
+    const combined = [...baseVouchers];
+    if ((user?.loyalty_points ?? 0) >= LOYALTY_REWARD_THRESHOLD) {
+      combined.push(LOYALTY_REWARD_VOUCHER);
+    }
+    for (const lv of activeLoyaltyVouchers) {
+      if (!combined.some((v) => v.code === lv.code)) {
+        combined.push(lv);
+      }
+    }
+    return combined;
+  }, [baseVouchers, user?.loyalty_points, activeLoyaltyVouchers]);
 
   async function applyVoucherCode() {
     const code = voucherCodeInput.trim().toUpperCase();
@@ -764,7 +797,12 @@ export default function CheckoutPage() {
       taxTotal,
   );
 
-  const loyaltyPointsEarned = LOYALTY_POINTS_PER_TRANSACTION;
+  const rupiahPerPoint =
+    Number(settingsMap?.loyalty_rupiah_per_point) || 10000;
+  const loyaltyPointsEarned = Math.max(
+    0,
+    Math.floor(totalTagihan / rupiahPerPoint),
+  );
 
   const deliverToLabel = [address.trim(), city.trim(), postalCode.trim()]
     .filter(Boolean)

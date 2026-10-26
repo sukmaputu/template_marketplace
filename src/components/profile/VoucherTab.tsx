@@ -12,6 +12,7 @@ import {
 import { showToast } from "@/lib/toast";
 import { api } from "@/lib/api";
 import { websocketService } from "@/lib/websocket";
+import { useLoyalties } from "@/lib/loyalty";
 
 const EXPIRED_VOUCHER: Voucher = {
   id: "3",
@@ -63,6 +64,7 @@ const STATUS_LABEL: Record<VoucherStatus, string> = {
 
 export function VoucherTab() {
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
+  const [availablePool, setAvailablePool] = useState<Voucher[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [voucherCodeInput, setVoucherCodeInput] = useState("");
@@ -70,6 +72,7 @@ export function VoucherTab() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const { user } = useAuth();
+  const { tiers } = useLoyalties();
   const email = user?.email;
   const loyaltyPoints = user?.loyalty_points ?? 0;
   const { formatPrice } = useCurrency();
@@ -96,6 +99,25 @@ export function VoucherTab() {
         loyaltyPoints >= LOYALTY_REWARD_THRESHOLD
           ? [LOYALTY_REWARD_VOUCHER]
           : [];
+
+      const tierVouchers: Voucher[] = (tiers || [])
+        .filter((t) => t.voucher && loyaltyPoints >= t.min_point)
+        .map((t) => ({
+          id: t.voucher!.uuid,
+          code: t.voucher!.code,
+          title: `Reward ${t.name}`,
+          discount_label:
+            t.voucher!.discount_type === "PERCENTAGE"
+              ? `${t.voucher!.discount_value}% OFF`
+              : formatPrice(t.voucher!.discount_value),
+          discount_amount:
+            t.voucher!.discount_type === "FIXED"
+              ? t.voucher!.discount_value
+              : undefined,
+          min_purchase: `Min. poin: ${t.min_point}`,
+          expires_at: "Berlaku",
+          status: "aktif",
+        }));
 
       try {
         const res = await api.get("/ecommerce/vouchers/active");
@@ -136,9 +158,21 @@ export function VoucherTab() {
             };
           });
 
+          setAvailablePool([
+            ...CHECKOUT_VOUCHERS,
+            ...mapped,
+            ...loyaltyVoucher,
+            ...tierVouchers,
+          ]);
+
           // Also check stored custom voucher codes
           const storedCodes = getStoredVoucherCodes(email);
-          const allAvailable = [...CHECKOUT_VOUCHERS, ...mapped, ...loyaltyVoucher];
+          const allAvailable = [
+            ...CHECKOUT_VOUCHERS,
+            ...mapped,
+            ...loyaltyVoucher,
+            ...tierVouchers,
+          ];
           const storedVouchers = storedCodes
             .map((code) =>
               allAvailable.find(
@@ -149,11 +183,13 @@ export function VoucherTab() {
 
           const combined = [
             ...loyaltyVoucher,
+            ...tierVouchers,
             ...mapped,
             ...storedVouchers.filter(
               (s) =>
                 !mapped.some((m) => m.code === s.code) &&
-                !loyaltyVoucher.some((l) => l.code === s.code),
+                !loyaltyVoucher.some((l) => l.code === s.code) &&
+                !tierVouchers.some((t) => t.code === s.code),
             ),
             EXPIRED_VOUCHER,
           ];
@@ -168,7 +204,13 @@ export function VoucherTab() {
       }
 
       if (!cancelled) {
-        const fallback = [...loyaltyVoucher, ...CHECKOUT_VOUCHERS, EXPIRED_VOUCHER];
+        const fallback = [
+          ...loyaltyVoucher,
+          ...tierVouchers,
+          ...CHECKOUT_VOUCHERS,
+          EXPIRED_VOUCHER,
+        ];
+        setAvailablePool(fallback);
         setVouchers(fallback);
         setCurrentPage(1);
         setIsLoading(false);
@@ -179,7 +221,7 @@ export function VoucherTab() {
     return () => {
       cancelled = true;
     };
-  }, [email, loyaltyPoints, formatPrice, refreshKey]);
+  }, [email, loyaltyPoints, formatPrice, refreshKey, tiers]);
 
   function handleAddVoucher(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -189,11 +231,34 @@ export function VoucherTab() {
       return;
     }
 
-    const availableVouchers =
-      loyaltyPoints >= LOYALTY_REWARD_THRESHOLD
-        ? [...CHECKOUT_VOUCHERS, LOYALTY_REWARD_VOUCHER]
-        : CHECKOUT_VOUCHERS;
-    const found = availableVouchers.find(
+    const tierVouchers: Voucher[] = (tiers || [])
+      .filter((t) => t.voucher && loyaltyPoints >= t.min_point)
+      .map((t) => ({
+        id: t.voucher!.uuid,
+        code: t.voucher!.code,
+        title: `Reward ${t.name}`,
+        discount_label:
+          t.voucher!.discount_type === "PERCENTAGE"
+            ? `${t.voucher!.discount_value}% OFF`
+            : formatPrice(t.voucher!.discount_value),
+        discount_amount:
+          t.voucher!.discount_type === "FIXED"
+            ? t.voucher!.discount_value
+            : undefined,
+        min_purchase: `Min. poin: ${t.min_point}`,
+        expires_at: "Berlaku",
+        status: "aktif",
+      }));
+
+    const allCandidatePool = [
+      ...availablePool,
+      ...CHECKOUT_VOUCHERS,
+      ...(loyaltyPoints >= LOYALTY_REWARD_THRESHOLD
+        ? [LOYALTY_REWARD_VOUCHER]
+        : []),
+      ...tierVouchers,
+    ];
+    const found = allCandidatePool.find(
       (voucher) =>
         voucher.code.toUpperCase() === code && voucher.status === "aktif",
     );

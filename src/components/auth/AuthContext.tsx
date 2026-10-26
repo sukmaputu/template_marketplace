@@ -30,6 +30,12 @@ export interface AuthContextValue {
   ) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   addLoyaltyPoints: (points: number) => void;
+  updateProfile?: (data: {
+    full_name?: string;
+    phone?: string;
+    username?: string;
+  }) => Promise<{ success: boolean; message?: string }>;
+  refreshProfile?: () => Promise<void>;
 }
 
 export function useAuth() {
