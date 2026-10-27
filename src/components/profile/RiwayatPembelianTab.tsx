@@ -170,12 +170,12 @@ export function RiwayatPembelianTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-1.5 rounded-xl border border-border bg-surface p-1.5">
+      <div className="flex flex-nowrap gap-1.5 overflow-x-auto rounded-xl border border-border bg-surface p-1.5">
         {filterTabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => handleFilterChange(tab.key)}
-            className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors sm:px-4 sm:py-2 sm:text-xs ${
+            className={`shrink-0 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors sm:px-4 sm:py-2 sm:text-xs ${
               selectedStatus === tab.key
                 ? "bg-primary text-white"
                 : "text-text-secondary hover:bg-background hover:text-text"

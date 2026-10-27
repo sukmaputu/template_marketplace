@@ -524,7 +524,7 @@ export default function HomePage() {
 
         <button
           type="button"
-          onClick={() => setIsMobileFilterOpen((prev) => !prev)}
+          onClick={() => setIsMobileFilterOpen(true)}
           className="mt-6 flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-semibold text-text lg:hidden">
           <SlidersHorizontal className="h-4 w-4" />
           Filter
@@ -536,11 +536,21 @@ export default function HomePage() {
         <div className="mt-6 flex flex-col gap-8 lg:mt-8 lg:flex-row">
           <aside
             className={`${
-              isMobileFilterOpen ? "block" : "hidden"
-            } w-full shrink-0 lg:sticky lg:top-24 lg:block lg:h-fit lg:w-64 lg:overflow-clip`}>
-            <div className="bg-background lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
+              isMobileFilterOpen
+                ? "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 lg:sticky lg:inset-auto lg:top-24 lg:block lg:bg-transparent lg:p-0"
+                : "hidden lg:sticky lg:top-24 lg:block"
+            } w-full shrink-0 lg:h-fit lg:w-64 lg:overflow-clip`}
+            onClick={() => setIsMobileFilterOpen(false)}
+            role={isMobileFilterOpen ? "dialog" : undefined}
+            aria-modal={isMobileFilterOpen}
+            aria-labelledby="catalog-filter-title">
+            <div
+              className={`max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-background p-4 shadow-xl lg:max-h-[calc(100vh-7rem)] lg:max-w-none lg:rounded-none lg:p-0 lg:shadow-none`}
+              onClick={(event) => event.stopPropagation()}>
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="flex items-center gap-2 text-sm font-bold text-text">
+                <h2
+                  id="catalog-filter-title"
+                  className="flex items-center gap-2 text-sm font-bold text-text">
                   <SlidersHorizontal className="h-4 w-4 text-primary" />
                   Filter
                 </h2>
@@ -784,6 +794,13 @@ export default function HomePage() {
                   }}
                 />
               </FilterSection>
+
+              <button
+                type="button"
+                onClick={() => setIsMobileFilterOpen(false)}
+                className="mt-2 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 lg:hidden">
+                OK
+              </button>
             </div>
           </aside>
 

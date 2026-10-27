@@ -53,6 +53,16 @@ export function AddressTab() {
   const [isSearchingZip, setIsSearchingZip] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
+  useEffect(() => {
+    if (!isModalOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isModalOpen]);
+
   // Sync addresses from backend whenever user/email is ready or updated in another tab/browser
   useEffect(() => {
     let isCurrent = true;
@@ -395,17 +405,17 @@ export function AddressTab() {
 
       {isModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="address-modal-title">
           <form
             onSubmit={handleSubmit}
-            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-surface p-6 shadow-xl">
+            className="max-h-[calc(100dvh-1rem)] w-full max-w-lg rounded-xl bg-surface p-3 shadow-xl sm:p-6">
             <div className="flex items-center justify-between">
               <h3
                 id="address-modal-title"
-                className="text-lg font-semibold text-text">
+                className="text-base font-semibold text-text sm:text-lg">
                 {editingId ? "Edit Alamat" : "Tambah Alamat"}
               </h3>
               <button
@@ -416,7 +426,7 @@ export function AddressTab() {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5 sm:mt-5 sm:gap-4">
               {(
                 [
                   ["label", "Label alamat", "Rumah, Kantor"],
@@ -427,33 +437,33 @@ export function AddressTab() {
                   ["province", "Provinsi", "DKI Jakarta"],
                 ] as const
               ).map(([field, label, placeholder]) => (
-                <label key={field} className="text-sm font-medium text-text">
+                <label key={field} className="text-xs font-medium text-text sm:text-sm">
                   {label}
                   <input
                     required
                     value={form[field]}
                     onChange={(e) => updateField(field, e.target.value)}
                     placeholder={placeholder}
-                    className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text outline-none focus:border-primary"
+                    className="mt-1 w-full rounded-lg border border-border bg-background px-2.5 py-2 text-sm text-text outline-none focus:border-primary sm:mt-1.5 sm:px-3 sm:py-2.5"
                   />
                   {field === "postalCode" && isSearchingZip && (
                     <Loader2 className="mt-1.5 h-4 w-4 animate-spin text-primary" />
                   )}
                 </label>
               ))}
-              <label className="text-sm font-medium text-text sm:col-span-2">
+              <label className="col-span-2 text-xs font-medium text-text sm:text-sm">
                 Alamat lengkap
                 <textarea
                   required
-                  rows={3}
+                  rows={2}
                   value={form.addressLine}
                   onChange={(e) => updateField("addressLine", e.target.value)}
                   placeholder="Nama jalan, nomor rumah, RT/RW"
-                  className="mt-1.5 w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text outline-none focus:border-primary"
+                  className="mt-1 w-full resize-none rounded-lg border border-border bg-background px-2.5 py-2 text-sm text-text outline-none focus:border-primary sm:mt-1.5 sm:px-3 sm:py-2.5"
                 />
               </label>
             </div>
-            <div className="mt-6 flex justify-end gap-2">
+            <div className="mt-3 flex justify-end gap-2 sm:mt-6">
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}

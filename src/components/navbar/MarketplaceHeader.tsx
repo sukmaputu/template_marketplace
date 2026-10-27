@@ -1,13 +1,24 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Search, ShoppingCart, X, Star, Sparkles, TrendingUp, History } from "lucide-react";
+import {
+  Search,
+  ShoppingCart,
+  X,
+  Star,
+  Sparkles,
+  TrendingUp,
+  History,
+} from "lucide-react";
 import { ThemeToggle } from "@/components/navbar/Themetoggle";
 import { NotificationMenu } from "@/components/navbar/NotificationMenu";
 import { ProfileMenu } from "@/components/navbar/ProfileMenu";
 import { MobileMenu } from "@/components/navbar/MobileMenu";
 import { useCart } from "@/components/cart/useCart";
 import { useAuth } from "@/components/auth/UseAuth";
-import { CurrencySwitcher, useCurrency } from "@/components/navbar/CurrencySwitcher";
+import {
+  CurrencySwitcher,
+  useCurrency,
+} from "@/components/navbar/CurrencySwitcher";
 import { usePageSettings } from "@/hooks/usePageSettings";
 import {
   PRODUCTS,
@@ -70,7 +81,6 @@ export function MarketplaceHeader() {
     setCategory(urlCategory);
   }
 
- 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [recentlyViewed, setRecentlyViewed] = useState<Product[]>([]);
   const { navbarLogo } = usePageSettings();
@@ -82,7 +92,6 @@ export function MarketplaceHeader() {
     width: number;
   } | null>(null);
 
-  
   useEffect(() => {
     if (!isSearchOpen) return;
 
@@ -90,6 +99,19 @@ export function MarketplaceHeader() {
       if (!inputColumnRef.current || !searchWrapperRef.current) return;
       const inputRect = inputColumnRef.current.getBoundingClientRect();
       const wrapperRect = searchWrapperRef.current.getBoundingClientRect();
+
+      // Mobile (< sm): dropdown dibuat selebar viewport dengan jarak 16px kiri-kanan
+      if (window.innerWidth < 640) {
+        const GAP = 16;
+        const viewportWidth = document.documentElement.clientWidth;
+        setDropdownRect({
+          left: GAP - wrapperRect.left,
+          width: viewportWidth - GAP * 2,
+        });
+        return;
+      }
+
+      // Desktop/tablet: logika lama tetap sama
       setDropdownRect({
         left: inputRect.left - wrapperRect.left,
         width: inputRect.width,
@@ -269,7 +291,8 @@ export function MarketplaceHeader() {
               badgeClass = "bg-amber-500/10 text-amber-700 dark:text-amber-400";
             } else if (rating >= 4.5) {
               badgeText = "Top Rated";
-              badgeClass = "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+              badgeClass =
+                "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
             }
 
             return (
@@ -277,8 +300,7 @@ export function MarketplaceHeader() {
                 key={`${keyPrefix}-${product.id}`}
                 to={`/product/${product.id}`}
                 onClick={() => setIsSearchOpen(false)}
-                className="group flex items-center justify-between gap-3 rounded-lg p-2 transition-colors hover:bg-border/40"
-              >
+                className="group flex items-center justify-between gap-3 rounded-lg p-2 transition-colors hover:bg-border/40">
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-border/20">
                     {product.image ? (
@@ -309,8 +331,7 @@ export function MarketplaceHeader() {
                         </span>
                       ) : null}
                       <span
-                        className={`rounded px-1.5 py-0.2 text-[10px] font-medium ${badgeClass}`}
-                      >
+                        className={`rounded px-1.5 py-0.2 text-[10px] font-medium ${badgeClass}`}>
                         {badgeText}
                       </span>
                     </div>
@@ -356,7 +377,7 @@ export function MarketplaceHeader() {
         </Link>
 
         {/* Wrapper luar: hanya untuk deteksi klik-di-luar, BUKAN pembungkus dropdown */}
-        <div ref={searchWrapperRef} className="relative flex-1">
+        <div ref={searchWrapperRef} className="relative min-w-0 flex-1">
           <form
             onSubmit={handleSearchSubmit}
             className="flex flex-1 items-stretch overflow-hidden rounded-lg border border-border bg-surface focus-within:border-primary">
@@ -465,7 +486,9 @@ export function MarketplaceHeader() {
                               {(product.rating ?? 0) > 0 ? (
                                 <div className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-amber-500">
                                   <Star className="h-3 w-3 fill-current" />
-                                  <span>{(product.rating ?? 0).toFixed(1)}</span>
+                                  <span>
+                                    {(product.rating ?? 0).toFixed(1)}
+                                  </span>
                                 </div>
                               ) : null}
                             </Link>
@@ -664,12 +687,15 @@ export function MarketplaceHeader() {
         </div>
 
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-          <NotificationMenu />
+          {/* Notifikasi & keranjang disembunyikan di mobile, dipindah ke hamburger menu */}
+          <div className="hidden lg:block">
+            <NotificationMenu />
+          </div>
 
           <Link
             to="/cart"
             aria-label="Keranjang"
-            className="relative rounded-full p-2 text-text hover:bg-border/40">
+            className="relative hidden rounded-full p-2 text-text hover:bg-border/40 lg:block">
             <ShoppingCart className="h-5 w-5" />
             {itemCount > 0 ? (
               <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[10px] font-semibold text-white">
