@@ -75,7 +75,7 @@ export function sanitizeUrl(raw?: string, fallback = "#catalog"): string {
   if (/^https?:\/\//i.test(clean)) return clean;
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/i.test(clean)) return fallback;
   if (clean.startsWith("#") || clean.startsWith("/")) return clean;
-  return fallback;
+  return `/${clean}`;
 }
 
 export function resolveAssetUrl(url?: string): string {
@@ -87,6 +87,15 @@ export function resolveAssetUrl(url?: string): string {
   if (/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(cleanUrl)) return cleanUrl;
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/i.test(cleanUrl)) return "";
   const clean = cleanUrl.startsWith("/") ? cleanUrl : `/${cleanUrl}`;
+  if (
+    clean.startsWith("/banner/") ||
+    clean.startsWith("/logo/") ||
+    clean.startsWith("/products/") ||
+    clean.startsWith("/favicon") ||
+    clean.startsWith("/icons")
+  ) {
+    return clean;
+  }
   const baseUrl = (
     import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api/v1"
   ).replace(/\/api\/v1\/?$/, "");
