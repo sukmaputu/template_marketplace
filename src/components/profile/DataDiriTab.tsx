@@ -1,10 +1,12 @@
-import { useState } from "react";
-import { AtSign, Mail, Phone, Save, User } from "lucide-react";
+import { useState, useEffect } from "react";
+import { AtSign, Mail, Phone, Save, User, Loader2 } from "lucide-react";
 import { useAuth } from "@/components/auth/UseAuth";
+import { showToast } from "@/lib/toast";
 
 export function DataDiriTab() {
-  const { user } = useAuth();
+  const { user, updateProfile } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const [formData, setFormData] = useState({
     full_name: user?.full_name || "",
@@ -13,9 +15,45 @@ export function DataDiriTab() {
     email: user?.email || "",
   });
 
+  useEffect(() => {
+    if (user) {
+      setFormData({
+        full_name: user.full_name || "",
+        username: user.username || "",
+        phone: user.phone || "",
+        email: user.email || "",
+      });
+    }
+  }, [user]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSave = async () => {
+    if (updateProfile) {
+      setSaving(true);
+      try {
+        const res = await updateProfile({
+          full_name: formData.full_name,
+          username: formData.username,
+          phone: formData.phone,
+        });
+        if (res.success) {
+          showToast("Data diri berhasil diperbarui");
+          setIsEditing(false);
+        } else {
+          showToast(res.message || "Gagal menyimpan data diri");
+        }
+      } catch {
+        showToast("Gagal menyimpan data diri");
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      setIsEditing(false);
+    }
   };
 
   const fields = [
@@ -82,13 +120,19 @@ export function DataDiriTab() {
         ) : (
           <>
             <button
-              onClick={() => setIsEditing(false)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90">
-              <Save className="h-4 w-4" />
-              Simpan Perubahan
+              onClick={handleSave}
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              {saving ? "Menyimpan..." : "Simpan Perubahan"}
             </button>
             <button
               onClick={() => setIsEditing(false)}
+              disabled={saving}
               className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-text hover:bg-background">
               Batal
             </button>

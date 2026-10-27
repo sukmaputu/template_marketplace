@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import type { ReactNode } from "react";
 import { AuthContext, type AuthUser, type RegisterParams } from "@/components/auth/AuthContext";
-import { api, removeAuthToken, setAuthToken } from "@/lib/api";
+import { api, getAuthToken, removeAuthToken, setAuthToken } from "@/lib/api";
 import { createAddressApi } from "@/lib/addresses";
 import { chatService } from "@/services/chat.service";
+import { websocketService } from "@/lib/websocket";
 
 const DEMO_ACCOUNT = {
   email: "sukma@email.com",
@@ -78,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             full_name?: string;
             phone?: string;
             address?: string;
+            loyalty_points?: number;
           };
         };
       }>("/auth/login", {
@@ -91,11 +93,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (token && akun) {
         setAuthToken(token);
         const nextUser: AuthUser = {
+          id: akun.uuid,
           full_name: akun.full_name || akun.username || DEMO_ACCOUNT.full_name,
           email: akun.email,
           phone: akun.phone || DEMO_ACCOUNT.phone,
           username: akun.username || DEMO_ACCOUNT.username,
           address: akun.address || DEMO_ACCOUNT.address,
+          loyalty_points: akun.loyalty_points ?? 0,
         };
         setUser(nextUser);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
@@ -158,6 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             username?: string;
             full_name?: string;
             phone?: string;
+            loyalty_points?: number;
           };
         };
       }>("/auth/register", {
@@ -174,11 +179,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (token && akun) {
         setAuthToken(token);
         const nextUser: AuthUser = {
+          id: akun.uuid,
           full_name: akun.full_name || cleanName || akun.username || "Pengguna",
           email: akun.email,
           phone: akun.phone || params.phone?.trim(),
           username: akun.username || username,
           address: params.address?.trim(),
+          loyalty_points: akun.loyalty_points ?? 0,
         };
         setUser(nextUser);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
@@ -217,6 +224,122 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const refreshProfile = useCallback(async () => {
+    const token = getAuthToken();
+    if (!token) return;
+    try {
+      const res = await api.get<{
+        success: boolean;
+        data?: {
+          uuid?: string;
+          email?: string;
+          username?: string;
+          full_name?: string;
+          phone?: string;
+          address?: string;
+          loyalty_points?: number;
+        };
+      }>("/auth/profile");
+      const akun = res.data?.data;
+      if (akun) {
+        setUser((prev) => {
+          const nextUser: AuthUser = {
+            id: akun.uuid ?? prev?.id,
+            full_name:
+              akun.full_name ||
+              akun.username ||
+              prev?.full_name ||
+              DEMO_ACCOUNT.full_name,
+            email: akun.email || prev?.email || "",
+            phone: akun.phone || prev?.phone || DEMO_ACCOUNT.phone,
+            username: akun.username || prev?.username || DEMO_ACCOUNT.username,
+            address: akun.address || prev?.address || DEMO_ACCOUNT.address,
+            loyalty_points: akun.loyalty_points ?? prev?.loyalty_points ?? 0,
+          };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
+          return nextUser;
+        });
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  async function updateProfile(data: {
+    full_name?: string;
+    phone?: string;
+    username?: string;
+  }): Promise<{ success: boolean; message?: string }> {
+    try {
+      const res = await api.put<{
+        success: boolean;
+        message?: string;
+        data?: {
+          uuid?: string;
+          email?: string;
+          username?: string;
+          full_name?: string;
+          phone?: string;
+          address?: string;
+          loyalty_points?: number;
+        };
+      }>("/auth/profile", data);
+
+      const akun = res.data?.data;
+      if (akun) {
+        setUser((prev) => {
+          const nextUser: AuthUser = {
+            id: akun.uuid ?? prev?.id,
+            full_name:
+              akun.full_name ||
+              akun.username ||
+              prev?.full_name ||
+              DEMO_ACCOUNT.full_name,
+            email: akun.email || prev?.email || "",
+            phone: akun.phone || prev?.phone || DEMO_ACCOUNT.phone,
+            username: akun.username || prev?.username || DEMO_ACCOUNT.username,
+            address: akun.address || prev?.address || DEMO_ACCOUNT.address,
+            loyalty_points: akun.loyalty_points ?? prev?.loyalty_points ?? 0,
+          };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
+          return nextUser;
+        });
+      }
+      return { success: true };
+    } catch (err: unknown) {
+      const axiosErr = err as {
+        response?: { data?: { error?: string; message?: string } };
+      };
+      const errorMsg =
+        axiosErr.response?.data?.message ||
+        axiosErr.response?.data?.error ||
+        "Gagal memperbarui profil";
+      return { success: false, message: errorMsg };
+    }
+  }
+
+  useEffect(() => {
+    void refreshProfile();
+
+    const onSync = () => void refreshProfile();
+    window.addEventListener("focus", onSync);
+    window.addEventListener("auth_updated", onSync);
+
+    const unsubOrder = websocketService.on("order_updated", () => {
+      void refreshProfile();
+    });
+    const unsubStatus = websocketService.on("order_status_updated", () => {
+      void refreshProfile();
+    });
+
+    return () => {
+      window.removeEventListener("focus", onSync);
+      window.removeEventListener("auth_updated", onSync);
+      unsubOrder();
+      unsubStatus();
+    };
+  }, [refreshProfile]);
+
   function logout() {
     setUser(null);
     removeAuthToken();
@@ -247,8 +370,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       register,
       logout,
       addLoyaltyPoints,
+      updateProfile,
+      refreshProfile,
     }),
-    [user],
+    [user, refreshProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

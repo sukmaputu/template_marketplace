@@ -1,6 +1,7 @@
 import type { Order, OrderStatus } from "@/components/profile/types";
 import { api } from "@/lib/api";
 import { websocketService } from "@/lib/websocket";
+import { resolveAssetUrl } from "@/hooks/usePageSettings";
 
 const ORDER_HISTORY_KEY = "marketplace-order-history";
 
@@ -36,6 +37,18 @@ interface BackendOrder {
   placed_at?: string;
   paid_at?: string;
   order_items?: BackendOrderItem[];
+  payment?: {
+    uuid?: string;
+    status?: string;
+    payment_method?: string;
+    sender_name?: string;
+    sender_bank?: string;
+    amount?: number;
+    payment_proof_url?: string;
+    rejection_reason?: string;
+    verified_at?: string;
+    paid_at?: string;
+  };
 }
 
 function mapBackendStatus(status?: string, paidAt?: string | null): OrderStatus {
@@ -65,11 +78,14 @@ function mapBackendOrder(bo: BackendOrder): Order {
 
   return {
     id: bo.order_number || bo.uuid || "ORD",
+    uuid: bo.uuid,
+    orderNumber: bo.order_number,
     status,
     date: formattedDate,
     grand_total: Number(bo.total ?? 0),
     courierName: bo.shipping_courier,
     trackingNumber: bo.tracking_number,
+    payment: bo.payment,
     shippingAddress: {
       recipientName: bo.recipient_name ?? "",
       phone: bo.phone ?? "",
@@ -86,7 +102,7 @@ function mapBackendOrder(bo: BackendOrder): Order {
       variant_name_snapshot: item.variant_name_snapshot || "Standar",
       unit_price: Number(item.unit_price ?? item.price ?? 0),
       quantity: Number(item.quantity ?? 1),
-      image: item.product_image_snapshot || item.product?.image || "",
+      image: resolveAssetUrl(item.product_image_snapshot || item.product?.image || ""),
     })),
   };
 }
@@ -163,4 +179,19 @@ export async function fetchOrdersFromBackend(): Promise<Order[]> {
   }
 
   return getStoredOrders();
+}
+
+export async function updateOrderStatusInBackend(
+  orderIdOrUuid: string,
+  status: "CANCELED" | "DONE" | "COMPLETED",
+): Promise<boolean> {
+  try {
+    await api.patch(`/ecommerce/orders/${encodeURIComponent(orderIdOrUuid)}/status`, {
+      status,
+    });
+    return true;
+  } catch (err) {
+    console.warn("[updateOrderStatusInBackend] Failed to update order status:", err);
+    return false;
+  }
 }

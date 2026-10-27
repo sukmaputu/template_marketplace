@@ -28,6 +28,7 @@ export interface ChatMessage {
   reply_to?: ChatReply | null;
   product_context?: ProductChatContext;
   is_read?: boolean;
+  client_temp_id?: string | null;
   created_at: string;
 }
 

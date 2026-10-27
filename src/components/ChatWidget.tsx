@@ -204,13 +204,48 @@ export function ChatWidget() {
   }, [conversation, isOpen]);
 
   useEffect(() => {
+    function handleSynced(e: Event) {
+      const detail = (
+        e as CustomEvent<{ oldId: string; conversation: ChatConversation }>
+      ).detail;
+      if (detail?.conversation) {
+        setConversation((prev) => {
+          if (
+            !prev ||
+            prev.id === detail.oldId ||
+            prev.id === detail.conversation.id
+          ) {
+            return detail.conversation;
+          }
+          return prev;
+        });
+      }
+    }
+    window.addEventListener(
+      "marketplace-chat-conversation-synced",
+      handleSynced,
+    );
+    return () =>
+      window.removeEventListener(
+        "marketplace-chat-conversation-synced",
+        handleSynced,
+      );
+  }, []);
+
+  // Identity ref to ensure listeners stay stable without unbinding during messaging
+  const identityRef = useRef(getCustomerIdentity());
+  useEffect(() => {
+    identityRef.current = getCustomerIdentity();
+  }, [getCustomerIdentity]);
+
+  useEffect(() => {
     if (!isIdentified) return;
     let cancelled = false;
 
     async function loadConversation() {
-      const identity = getCustomerIdentity();
+      const identity = identityRef.current;
       const localConv = chatService.ensureConversation(identity);
-      const local = chatService.getLocalMessagesPage(localConv.id, 20);
+      const local = chatService.getLocalMessagesPage(localConv.id, 50);
 
       await Promise.resolve();
       if (cancelled) return;
@@ -226,12 +261,33 @@ export function ChatWidget() {
       if (cancelled) return;
       setConversation(syncedConv);
 
-      const page = await chatService.fetchMessagesPage(syncedConv.id, 20);
+      const page = await chatService.fetchMessagesPage(syncedConv.id, 50);
       if (
         !cancelled &&
         (page.messages.length > 0 || local.messages.length === 0)
       ) {
-        setMessages(page.messages);
+        setMessages((prev) => {
+          const map = new Map<string, ChatMessage>();
+          page.messages.forEach((m) => map.set(String(m.id), m));
+          prev.forEach((m) => {
+            const alreadyInMap =
+              map.has(String(m.id)) ||
+              (m.client_temp_id &&
+                Array.from(map.values()).some(
+                  (pm) =>
+                    pm.id === m.client_temp_id ||
+                    pm.client_temp_id === m.client_temp_id,
+                ));
+            if (!alreadyInMap) {
+              map.set(String(m.id), m);
+            }
+          });
+          return Array.from(map.values()).sort(
+            (a, b) =>
+              new Date(a.created_at || 0).getTime() -
+              new Date(b.created_at || 0).getTime(),
+          );
+        });
         setHasMore(page.hasMore);
         hasMoreRef.current = page.hasMore;
       }
@@ -241,7 +297,7 @@ export function ChatWidget() {
     return () => {
       cancelled = true;
     };
-  }, [isIdentified, getCustomerIdentity]);
+  }, [isIdentified]);
 
   // Initial scroll to bottom when opening
   useEffect(() => {
@@ -310,6 +366,16 @@ export function ChatWidget() {
     prevMessagesLengthRef.current = messages.length;
   }, [messages]);
 
+  // Auto-scroll when admin starts typing so indicator is never clipped or overlapped
+  useEffect(() => {
+    if (isAdminTyping && scrollRef.current) {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }, [isAdminTyping]);
+
   const handleLoadMore = useCallback(async () => {
     if (!hasMore || isLoadingMore || isPrependingRef.current) return;
     const container = scrollRef.current;
@@ -370,8 +436,6 @@ export function ChatWidget() {
 
   // WebSocket listeners: chat, typing, presence
   useEffect(() => {
-    const ident = getCustomerIdentity();
-
     // Helper to verify that incoming event belongs specifically to THIS customer's conversation
     const matchesMyConversation = (payload: {
       conversation_id?: string;
@@ -379,24 +443,33 @@ export function ChatWidget() {
       message?: ChatMessage;
       customer_email?: string | null;
       customer_user_id?: string | null;
+      customer_phone?: string | null;
     }) => {
       const currentConv = conversationRef.current;
-      if (!currentConv) return false;
-
       const targetId =
         payload.conversation_id ||
         payload.message?.conversation_id ||
         payload.conversation?.id;
-      if (targetId && targetId === currentConv.id) {
+
+      if (currentConv && targetId && targetId === currentConv.id) {
         return true;
       }
 
+      // Check if targetId matches any conversation belonging to this customer session
+      const storedConvs = chatService.getConversations();
+      if (targetId && storedConvs.some((c) => c.id === targetId)) {
+        return true;
+      }
+
+      const currentIdent = identityRef.current;
       const incomingEmail =
         payload.customer_email || payload.conversation?.customer_email;
-      const myEmail = currentConv.customer_email || ident.customer_email;
+      const myEmail = currentConv?.customer_email || currentIdent.customer_email;
       if (
         incomingEmail &&
+        incomingEmail.trim() &&
         myEmail &&
+        myEmail.trim() &&
         incomingEmail.trim().toLowerCase() === myEmail.trim().toLowerCase()
       ) {
         return true;
@@ -404,7 +477,7 @@ export function ChatWidget() {
 
       const incomingUserId =
         payload.customer_user_id || payload.conversation?.customer_user_id;
-      const myUserId = currentConv.customer_user_id || ident.customer_user_id;
+      const myUserId = currentConv?.customer_user_id || currentIdent.customer_user_id;
       if (
         incomingUserId &&
         myUserId &&
@@ -414,11 +487,14 @@ export function ChatWidget() {
         return true;
       }
 
-      const incomingPhone = payload.customer_phone || payload.conversation?.customer_phone;
-      const myPhone = currentConv.customer_phone || ident.customer_phone;
+      const incomingPhone =
+        payload.customer_phone || payload.conversation?.customer_phone;
+      const myPhone = currentConv?.customer_phone || currentIdent.customer_phone;
       if (
         incomingPhone &&
+        incomingPhone.trim() &&
         myPhone &&
+        myPhone.trim() &&
         incomingPhone.trim() === myPhone.trim()
       ) {
         return true;
@@ -428,13 +504,14 @@ export function ChatWidget() {
     };
 
     const announcePresence = () => {
+      const currentIdent = identityRef.current;
       websocketService.sendPresence({
         role: "customer",
         conversation_id: conversationRef.current?.id,
-        user_id: ident.customer_user_id,
-        customer_user_id: ident.customer_user_id || undefined,
-        customer_email: ident.customer_email || undefined,
-        user_name: ident.customer_name,
+        user_id: currentIdent.customer_user_id,
+        customer_user_id: currentIdent.customer_user_id || undefined,
+        customer_email: currentIdent.customer_email || undefined,
+        user_name: currentIdent.customer_name,
         status: "online",
         timestamp: Date.now(),
       });
@@ -455,28 +532,60 @@ export function ChatWidget() {
         // CRITICAL: Ignore messages that belong to other customer conversations!
         if (!matchesMyConversation(payload)) return;
 
+        const currentConv = conversationRef.current;
+        const activeConvId = payload.conversation_id || currentConv?.id || "";
+
+        // Auto-heal local conversation ID if synced to canonical backend UUID
         if (
+          currentConv &&
+          payload.conversation_id &&
+          currentConv.id !== payload.conversation_id
+        ) {
+          setConversation((prev) =>
+            prev ? { ...prev, id: payload.conversation_id } : prev,
+          );
+        }
+
+        const normalizedPayload: WSChatMessagePayload = {
+          ...payload,
+          conversation_id: activeConvId,
+          message: {
+            ...payload.message,
+            conversation_id: activeConvId,
+          },
+        };
+
+        chatService.handleIncomingWSMessage(normalizedPayload);
+        setMessages((prev) => {
+          const incoming = normalizedPayload.message;
+          const idx = prev.findIndex(
+            (m) =>
+              m.id === incoming.id ||
+              (incoming.client_temp_id && (m.id === incoming.client_temp_id || m.client_temp_id === incoming.client_temp_id)) ||
+              (m.client_temp_id && m.client_temp_id === incoming.id) ||
+              (m.sender_role === incoming.sender_role &&
+                m.message === incoming.message &&
+                Math.abs(new Date(m.created_at || 0).getTime() - new Date(incoming.created_at || 0).getTime()) < 30000),
+          );
+          if (idx !== -1) {
+            const updated = [...prev];
+            updated[idx] = {
+              ...updated[idx],
+              ...incoming,
+              id: incoming.id,
+              created_at: incoming.created_at || updated[idx].created_at,
+            };
+            return updated;
+          }
+          return [...prev, incoming];
+        });
+
+        const isStaff =
           payload.message.sender_role === "admin" ||
           payload.message.sender_role === "agent" ||
-          payload.message.sender_role === "bot"
-        ) {
-          const currentConv = conversationRef.current;
-          const activeConvId = currentConv?.id || payload.conversation_id;
-          const normalizedPayload: WSChatMessagePayload = {
-            ...payload,
-            conversation_id: activeConvId,
-            message: {
-              ...payload.message,
-              conversation_id: activeConvId,
-            },
-          };
+          payload.message.sender_role === "bot";
 
-          chatService.handleIncomingWSMessage(normalizedPayload);
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === payload.message.id)) return prev;
-            return [...prev, normalizedPayload.message];
-          });
-
+        if (isStaff) {
           // Admin replied -> clear typing
           setIsAdminTyping(false);
           lastAdminSeenRef.current = Date.now();
@@ -571,13 +680,14 @@ export function ChatWidget() {
     }, 5000);
 
     const handleBeforeUnload = () => {
+      const currentIdent = identityRef.current;
       websocketService.sendPresence({
         role: "customer",
         conversation_id: conversationRef.current?.id,
-        user_id: ident.customer_user_id,
-        customer_user_id: ident.customer_user_id || undefined,
-        customer_email: ident.customer_email || undefined,
-        user_name: ident.customer_name,
+        user_id: currentIdent.customer_user_id,
+        customer_user_id: currentIdent.customer_user_id || undefined,
+        customer_email: currentIdent.customer_email || undefined,
+        user_name: currentIdent.customer_name,
         status: "offline",
         timestamp: Date.now(),
       });
@@ -594,7 +704,7 @@ export function ChatWidget() {
       clearInterval(sweepTimer);
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [conversation, getCustomerIdentity]);
+  }, [isIdentified]);
 
   // Handle external open event (e.g. from ProductDetailPage "Tanya Admin" button)
   useEffect(() => {
@@ -744,13 +854,18 @@ export function ChatWidget() {
     const text = draft.trim();
     if (!text || text.length > 2000 || !isIdentified) return;
 
+    setDraft("");
+    const replyingSnapshot = replyingTo;
+    const productSnapshot = attachedProduct;
+    setReplyingTo(null);
+    setAttachedProduct(null);
+
     lastTypingSentRef.current = 0;
     if (typingTimerRef.current) {
       clearTimeout(typingTimerRef.current);
     }
 
     const identity = getCustomerIdentity();
-    const productSnapshot = attachedProduct;
     const result = chatService.sendCustomerMessage(
       identity,
       text,
@@ -763,9 +878,8 @@ export function ChatWidget() {
             category: productSnapshot.category,
           }
         : undefined,
-      replyingTo,
+      replyingSnapshot,
     );
-    setAttachedProduct(null);
 
     // Cancel typing
     websocketService.sendTyping({
@@ -778,9 +892,22 @@ export function ChatWidget() {
     });
 
     setConversation(result.conversation);
-    setMessages((prev) => [...prev, result.message]);
-    setDraft("");
-    setReplyingTo(null);
+    setMessages((prev) => {
+      const idx = prev.findIndex(
+        (m) =>
+          m.id === result.message.id ||
+          (result.message.client_temp_id && (m.id === result.message.client_temp_id || m.client_temp_id === result.message.client_temp_id)) ||
+          (m.sender_role === result.message.sender_role &&
+            m.message === result.message.message &&
+            Math.abs(new Date(m.created_at || 0).getTime() - new Date(result.message.created_at || 0).getTime()) < 30000),
+      );
+      if (idx !== -1) {
+        const up = [...prev];
+        up[idx] = { ...up[idx], ...result.message };
+        return up;
+      }
+      return [...prev, result.message];
+    });
   }
 
   return (
@@ -1147,10 +1274,16 @@ export function ChatWidget() {
                 })}
 
                 {isAdminTyping && (
-                  <div className="flex justify-start">
-                    <p className="text-xs text-text-secondary italic">
-                      Admin sedang mengetik...
-                    </p>
+                  <div className="flex items-end gap-2 pb-2">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-variant text-[10px] font-bold text-text">
+                      SA
+                    </span>
+                    <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-sm border border-border bg-surface px-3 py-2 shadow-xs">
+                      <span className="text-xs text-text-secondary mr-1">Admin sedang mengetik</span>
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary animate-bounce [animation-delay:-0.3s]" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary animate-bounce [animation-delay:-0.15s]" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary animate-bounce" />
+                    </div>
                   </div>
                 )}
               </div>

@@ -8,7 +8,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type { WishlistItem } from "@/components/profile/types";
-import { getDiscountPercent } from "@/lib/products";
+import { getDiscountPercent, useMarketplaceProducts } from "@/lib/products";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 import { useCart } from "@/components/cart/useCart";
 
@@ -35,9 +35,32 @@ export function WishlistTab() {
   const [pendingRemovalId, setPendingRemovalId] = useState<string | null>(null);
   const isLoading = false;
 
+  const { products } = useMarketplaceProducts(50);
   const { formatPrice } = useCurrency();
   const { addToCart } = useCart();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!products || products.length === 0) return;
+    setItems((prev) => {
+      let changed = false;
+      const updated = prev.map((item) => {
+        const live = products.find((p) => p.id === item.product.id);
+        if (live) {
+          changed = true;
+          return {
+            ...item,
+            product: {
+              ...item.product,
+              ...live,
+            },
+          };
+        }
+        return item;
+      });
+      return changed ? updated : prev;
+    });
+  }, [products]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

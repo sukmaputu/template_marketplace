@@ -83,7 +83,13 @@ export function MarketplaceHeader() {
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [recentlyViewed, setRecentlyViewed] = useState<Product[]>([]);
-  const { navbarLogo } = usePageSettings();
+  const {
+    navbarLogo,
+    siteTitle,
+    logoNavbarMobileHeightPx,
+    logoNavbarDesktopHeightPx,
+    logoMaxWidthPx,
+  } = usePageSettings();
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const searchWrapperRef = useRef<HTMLDivElement>(null);
   const inputColumnRef = useRef<HTMLDivElement>(null);
@@ -368,11 +374,16 @@ export function MarketplaceHeader() {
               e.currentTarget.onerror = null;
               e.currentTarget.src = "/logo/logo_nadrical.png";
             }}
-            alt="Logo"
-            className="h-10 w-auto object-contain"
+            alt={siteTitle || "Logo"}
+            className="h-[var(--logo-nav-h-mobile)] sm:h-[var(--logo-nav-h-desktop)] w-auto object-contain transition-all duration-200"
+            style={{
+              ['--logo-nav-h-mobile' as any]: `${logoNavbarMobileHeightPx || 32}px`,
+              ['--logo-nav-h-desktop' as any]: `${logoNavbarDesktopHeightPx || 40}px`,
+              maxWidth: `${logoMaxWidthPx || 180}px`,
+            }}
           />
           <span className="text-lg font-bold tracking-tight text-text">
-            Nadrical
+            {siteTitle || "Nadrical"}
           </span>
         </Link>
 

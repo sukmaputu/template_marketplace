@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, ChevronDown, MessageCircle } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
+import { useFAQs } from "@/lib/faq";
 
 interface FaqItem {
   question: string;
@@ -17,9 +18,9 @@ interface FaqCategory {
 // mengecek mode toko (misal dari env var, feature flag, atau response API).
 // false = tampilkan FAQ versi jualan kelas (sebelum konek backend produk)
 // true  = tampilkan FAQ versi jualan barang fisik (setelah konek backend produk)
-const IS_BACKEND_CONNECTED = false;
+export const IS_BACKEND_CONNECTED = false;
 
-const FAQ_CATEGORIES_KELAS: FaqCategory[] = [
+export const FAQ_CATEGORIES_KELAS: FaqCategory[] = [
   {
     title: "Sebelum Beli",
     items: [
@@ -170,9 +171,19 @@ const FAQ_CATEGORIES_PRODUK: FaqCategory[] = [
   },
 ];
 
-const FAQ_CATEGORIES: FaqCategory[] = IS_BACKEND_CONNECTED
-  ? FAQ_CATEGORIES_PRODUK
-  : FAQ_CATEGORIES_KELAS;
+function formatCategoryTitle(category: string): string {
+  if (!category) return "Informasi Umum";
+  const lower = category.toLowerCase();
+  if (lower === "ecommerce") return "E-Commerce & Produk";
+  if (lower === "general") return "Informasi Umum";
+  if (lower === "shipping") return "Pengiriman & Kurir";
+  if (lower === "payment") return "Pembayaran";
+  return category
+    .replace(/[_-]/g, " ")
+    .split(" ")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
 
 function AccordionItem({ item }: { item: FaqItem }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -203,6 +214,27 @@ function openChatWidget() {
 }
 
 export default function HelpPage() {
+  const { faqs, loading } = useFAQs();
+
+  const categories: FaqCategory[] = useMemo(() => {
+    if (faqs && faqs.length > 0) {
+      const map: Record<string, FaqItem[]> = {};
+      const sorted = [...faqs].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      for (const item of sorted) {
+        const catTitle = formatCategoryTitle(item.category || "General");
+        if (!map[catTitle]) {
+          map[catTitle] = [];
+        }
+        map[catTitle].push({
+          question: item.question,
+          answer: item.answer,
+        });
+      }
+      return Object.entries(map).map(([title, items]) => ({ title, items }));
+    }
+    return FAQ_CATEGORIES_PRODUK;
+  }, [faqs]);
+
   return (
     <div className="min-h-screen bg-background">
       <MarketplaceHeader />
@@ -221,20 +253,36 @@ export default function HelpPage() {
           masih butuh bantuan.
         </p>
 
-        <div className="mt-6 space-y-4">
-          {FAQ_CATEGORIES.map((category) => (
-            <div
-              key={category.title}
-              className="rounded-xl border border-border bg-surface p-6">
-              <h2 className="text-sm font-bold text-text">{category.title}</h2>
-              <div className="mt-2">
-                {category.items.map((item) => (
-                  <AccordionItem key={item.question} item={item} />
-                ))}
+        {loading && (!faqs || faqs.length === 0) ? (
+          <div className="mt-6 space-y-4">
+            {[1, 2].map((i) => (
+              <div
+                key={i}
+                className="animate-pulse rounded-xl border border-border bg-surface p-6">
+                <div className="h-4 w-32 rounded bg-border/60"></div>
+                <div className="mt-4 space-y-3">
+                  <div className="h-4 w-full rounded bg-border/40"></div>
+                  <div className="h-4 w-3/4 rounded bg-border/40"></div>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-6 space-y-4">
+            {categories.map((category) => (
+              <div
+                key={category.title}
+                className="rounded-xl border border-border bg-surface p-6">
+                <h2 className="text-sm font-bold text-text">{category.title}</h2>
+                <div className="mt-2">
+                  {category.items.map((item) => (
+                    <AccordionItem key={item.question} item={item} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="mt-6 flex flex-col items-center gap-3 rounded-xl border border-border bg-surface px-6 py-8 text-center">
           <p className="text-sm text-text-secondary">
@@ -251,3 +299,4 @@ export default function HelpPage() {
     </div>
   );
 }
+

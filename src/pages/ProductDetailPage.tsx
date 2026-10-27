@@ -10,6 +10,7 @@ import {
   MessageCircle,
   Star,
   Loader2,
+  CheckCircle2,
 } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { MarketplaceFooter } from "@/components/MarketplaceFooter";
@@ -29,7 +30,13 @@ import { showToast } from "@/lib/toast";
 import { ProductCard } from "@/components/ProductCard";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 import type { WishlistItem } from "@/components/profile/types";
-import { getProductRatingStats, getProductReviews } from "@/lib/products";
+import {
+  getProductRatingStats,
+  getProductReviews,
+  fetchProductReviews,
+  fetchProductRatingSummary,
+  type ProductReview,
+} from "@/lib/products";
 import { useAuth } from "@/components/auth/AuthContext";
 import { getProductSpecs } from "@/lib/productSpecs";
 import { websocketService } from "@/lib/websocket";
@@ -158,6 +165,37 @@ export default function ProductDetailPage() {
     setSelectedVariantId(null);
   }
 
+  const [apiReviews, setApiReviews] = useState<ProductReview[]>([]);
+  const [apiStats, setApiStats] = useState<{ rating: number; reviewCount: number } | null>(null);
+
+  useEffect(() => {
+    if (!product?.id) return;
+    let cancelled = false;
+
+    fetchProductReviews(product.id)
+      .then((res) => {
+        if (!cancelled && res.items.length > 0) {
+          setApiReviews(res.items);
+        }
+      })
+      .catch(() => {});
+
+    fetchProductRatingSummary(product.id)
+      .then((res) => {
+        if (!cancelled && res) {
+          setApiStats({
+            rating: res.average_rating,
+            reviewCount: res.total_reviews,
+          });
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [product?.id, reviewRefreshKey]);
+
   const ratingStats = useMemo(() => {
     void reviewRefreshKey;
     return getProductRatingStats(product?.id ?? "");
@@ -165,14 +203,22 @@ export default function ProductDetailPage() {
 
   const reviews = useMemo(() => {
     void reviewRefreshKey;
+    if (apiReviews.length > 0) return apiReviews.slice(0, 5);
     return product ? getProductReviews(product.id).slice(0, 5) : [];
-  }, [product, reviewRefreshKey]);
+  }, [apiReviews, product, reviewRefreshKey]);
 
-  // Pakai review lokal kalau ada, kalau tidak pakai rating dari backend
+  // Pakai review backend kalau ada, kalau tidak pakai review lokal / produk fallback
   const displayRating =
-    ratingStats.reviewCount > 0 ? ratingStats.rating : (product?.rating ?? 0);
+    apiStats && apiStats.reviewCount > 0
+      ? apiStats.rating
+      : ratingStats.reviewCount > 0
+      ? ratingStats.rating
+      : (product?.rating ?? 0);
+
   const displayCount =
-    ratingStats.reviewCount > 0
+    apiStats && apiStats.reviewCount > 0
+      ? apiStats.reviewCount
+      : ratingStats.reviewCount > 0
       ? ratingStats.reviewCount
       : (product?.reviewCount ?? 0);
 
@@ -799,9 +845,17 @@ export default function ProductDetailPage() {
                   className="rounded-xl border border-border bg-background p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-text">
-                        {review.userName}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-text">
+                          {review.userName}
+                        </p>
+                        {review.isVerified && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Terverifikasi
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[11px] text-text-secondary">
                         {new Date(review.createdAt).toLocaleDateString(
                           "id-ID",
@@ -829,6 +883,18 @@ export default function ProductDetailPage() {
                   <p className="mt-2 text-sm leading-relaxed text-text-secondary">
                     {review.comment}
                   </p>
+                  {review.imageUrls && review.imageUrls.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {review.imageUrls.map((img, i) => (
+                        <img
+                          key={i}
+                          src={img}
+                          alt="Review attachment"
+                          className="h-14 w-14 rounded-lg object-cover border border-border"
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))
             ) : (

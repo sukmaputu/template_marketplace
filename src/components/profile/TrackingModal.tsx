@@ -1,5 +1,15 @@
-import { MapPin, Truck, X } from "lucide-react";
+import { Copy, ExternalLink, MapPin, Truck, X } from "lucide-react";
 import type { Order } from "./types";
+import { showToast } from "@/lib/toast";
+
+function getTrackingUrl(courier?: string, trackingNumber?: string): string | null {
+  if (!trackingNumber || !trackingNumber.trim()) return null;
+  const c = (courier || "").toLowerCase();
+  if (c.includes("jne")) return "https://www.jne.co.id/id/tracking/trace";
+  if (c.includes("sicepat")) return "https://www.sicepat.com/checkAwb";
+  if (c.includes("j&t") || c.includes("jnt")) return "https://www.jet.co.id/track";
+  return `https://cekresi.com/?noresi=${encodeURIComponent(trackingNumber.trim())}`;
+}
 
 export function TrackingModal({
   order,
@@ -9,6 +19,15 @@ export function TrackingModal({
   onClose: () => void;
 }) {
   const address = order.shippingAddress;
+  const tracking = order.trackingNumber;
+  const trackingUrl = getTrackingUrl(order.courierName, tracking);
+
+  const copyTracking = () => {
+    if (!tracking) return;
+    navigator.clipboard?.writeText(tracking).then(() => {
+      showToast("Nomor resi berhasil disalin!");
+    });
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -34,11 +53,33 @@ export function TrackingModal({
               {order.courierName || "Standar Kurir"}
             </span>
           </div>
-          <div className="mt-1.5 flex items-center justify-between text-xs">
+          <div className="mt-2 flex items-center justify-between text-xs">
             <span className="text-text-secondary">No. Resi:</span>
-            <span className="font-mono font-medium text-primary">
-              {order.trackingNumber || "-"}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono font-medium text-primary">
+                {tracking || "-"}
+              </span>
+              {tracking && (
+                <>
+                  <button
+                    type="button"
+                    onClick={copyTracking}
+                    title="Salin No. Resi"
+                    className="p-1 text-text-secondary hover:text-primary transition-colors">
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
+                  {trackingUrl && (
+                    <a
+                      href={trackingUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline">
+                      <ExternalLink className="h-3 w-3" /> Cek Resi
+                    </a>
+                  )}
+                </>
+              )}
+            </div>
           </div>
           {order.estimatedDelivery && (
             <div className="mt-1.5 flex items-center justify-between text-xs">

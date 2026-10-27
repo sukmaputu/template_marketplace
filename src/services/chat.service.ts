@@ -1,5 +1,5 @@
 import { websocketService } from "@/lib/websocket";
-import { api } from "@/lib/api";
+import { api, getAuthToken } from "@/lib/api";
 import type {
   ChatConversation,
   ChatIdentity,
@@ -15,7 +15,7 @@ const GUEST_ID_KEY = "marketplace_chat_guest_id";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api/v1";
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function isValidUUID(id?: string | null): boolean {
   if (!id) return false;
@@ -85,6 +85,9 @@ function saveStorage(conversations: ChatConversation[], messages: ChatMessage[])
   try {
     localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(conversations));
     localStorage.setItem(MESSAGES_KEY, JSON.stringify(messages));
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("marketplace-chat-updated"));
+    }
   } catch {
     // storage not available
   }
@@ -127,6 +130,16 @@ class ChatService {
       .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   }
 
+  public getCustomerUnreadCount(conversationId?: string): number {
+    const { messages } = loadStorage();
+    return messages.filter(
+      (m) =>
+        (!conversationId || m.conversation_id === conversationId) &&
+        (m.sender_role === "admin" || m.sender_role === "agent" || m.sender_role === "bot") &&
+        !m.is_read,
+    ).length;
+  }
+
   public getLocalMessagesPage(
     conversationId: string,
     limit = 20,
@@ -151,9 +164,7 @@ class ChatService {
     limit = 20,
     before?: string,
   ): Promise<{ messages: ChatMessage[]; hasMore: boolean }> {
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      conversationId,
-    );
+    const isUUID = isValidUUID(conversationId);
     if (!isUUID) {
       return this.getLocalMessagesPage(conversationId, limit, before);
     }
@@ -191,11 +202,18 @@ class ChatService {
         created_at: rm.created_at,
       }));
 
-      // Cache into local storage
+      // Cache into local storage with smart deduplication
       const { conversations, messages } = loadStorage();
       const merged = [...messages];
       for (const msg of mappedMsgs) {
-        const idx = merged.findIndex((m) => m.id === msg.id);
+        const idx = merged.findIndex(
+          (m) =>
+            m.id === msg.id ||
+            (m.conversation_id === msg.conversation_id &&
+              m.sender_role === msg.sender_role &&
+              m.message === msg.message &&
+              Math.abs(new Date(m.created_at).getTime() - new Date(msg.created_at).getTime()) < 5000),
+        );
         if (idx !== -1) {
           merged[idx] = msg;
         } else {
@@ -313,7 +331,7 @@ class ChatService {
       const remoteId = remoteConv.id;
 
       // Update conversation with remote canonical DB id and properties
-      let updatedConversations = conversations.map((c) => {
+      const updatedConversations = conversations.map((c) => {
         if (c.id === oldId || c.id === remoteId) {
           return {
             ...c,
@@ -330,7 +348,7 @@ class ChatService {
       });
 
       // Re-map messages to the canonical database conversation ID
-      let updatedMessages = messages.map((m) => {
+      const updatedMessages = messages.map((m) => {
         if (m.conversation_id === oldId) {
           return { ...m, conversation_id: remoteId };
         }
@@ -361,7 +379,16 @@ class ChatService {
 
       saveStorage(updatedConversations, updatedMessages);
       const active = updatedConversations.find((c) => c.id === remoteId);
-      return active || { ...localConv, id: remoteId };
+      const resultConv = active || { ...localConv, id: remoteId };
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("marketplace-chat-conversation-synced", {
+            detail: { oldId, conversation: resultConv },
+          }),
+        );
+      }
+      return resultConv;
     } catch (err) {
       // Offline fallback: graceful resilience
       console.warn("[ChatService] Failed to sync with backend DB:", err);
@@ -421,22 +448,13 @@ class ChatService {
       conversations[convIndex] = updatedConv;
     }
 
+    newMsg.client_temp_id = msgId;
+
     saveStorage(conversations, nextMessages);
 
-    // 1. Broadcast over WebSocket for immediate realtime admin update
-    const payload: WSChatMessagePayload = {
-      type: "chat_message",
-      conversation_id: conversation.id,
-      customer_email: identity.customer_email || conversation.customer_email || undefined,
-      customer_phone: identity.customer_phone || conversation.customer_phone || undefined,
-      customer_user_id: identity.customer_user_id || conversation.customer_user_id || undefined,
-      conversation: updatedConv,
-      message: newMsg,
-    };
-    websocketService.send(payload);
-
-    // 2. Persist message to backend PostgreSQL database via REST API
-    this.persistMessageRemote(conversation.id, text, identity, replyTo ? String(replyTo.id) : undefined);
+    // Persist message to backend PostgreSQL database via REST API.
+    // The backend will save the message and broadcast the single authoritative WebSocket event.
+    this.persistMessageRemote(conversation.id, text, identity, replyTo ? String(replyTo.id) : undefined, msgId);
 
     // 3. If WebSocket is offline, provide mock bot response fallback
     if (!websocketService.isConnected()) {
@@ -463,9 +481,27 @@ class ChatService {
     messageText: string,
     identity: ChatIdentity,
     replyToId?: string,
+    localMsgId?: string,
   ): Promise<void> {
     try {
       let targetConvId = conversationId;
+      const token = getAuthToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const sendPayload = {
+        sender_role: "customer",
+        sender_user_id:
+          identity.customer_user_id && !identity.customer_user_id.startsWith("guest-")
+            ? identity.customer_user_id
+            : null,
+        message: messageText,
+        reply_to_id: replyToId || undefined,
+        client_temp_id: localMsgId || undefined,
+      };
+
       if (!isValidUUID(targetConvId)) {
         const synced = await this.ensureConversationAsync(identity);
         if (synced && isValidUUID(synced.id)) {
@@ -475,19 +511,44 @@ class ChatService {
         }
       }
 
-      await fetch(`${API_BASE}/ecommerce/chats/${targetConvId}/messages`, {
+      let res = await fetch(`${API_BASE}/ecommerce/chats/${targetConvId}/messages`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sender_role: "customer",
-          sender_user_id:
-            identity.customer_user_id && !identity.customer_user_id.startsWith("guest-")
-              ? identity.customer_user_id
-              : null,
-          message: messageText,
-          reply_to_id: replyToId || undefined,
-        }),
+        headers,
+        body: JSON.stringify(sendPayload),
       });
+
+      // If conversation wasn't found in remote DB yet (e.g. fresh local UUID), sync conversation and retry
+      if (res.status === 404) {
+        const synced = await this.ensureConversationAsync(identity);
+        if (synced && isValidUUID(synced.id) && synced.id !== targetConvId) {
+          targetConvId = synced.id;
+          res = await fetch(`${API_BASE}/ecommerce/chats/${targetConvId}/messages`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(sendPayload),
+          });
+        }
+      }
+
+      if (res.ok && localMsgId) {
+        const json = await res.json().catch(() => null);
+        const serverMsg = json?.data?.message || json?.data;
+        if (serverMsg && serverMsg.id) {
+          const current = loadStorage();
+          const updated = current.messages.map((m) =>
+            m.id === localMsgId || m.client_temp_id === localMsgId
+              ? {
+                  ...m,
+                  ...serverMsg,
+                  id: serverMsg.id,
+                  client_temp_id: localMsgId,
+                  created_at: serverMsg.created_at || m.created_at,
+                }
+              : m,
+          );
+          saveStorage(current.conversations, updated);
+        }
+      }
     } catch (err) {
       console.warn("[ChatService] Failed to persist message to PostgreSQL:", err);
     }
@@ -539,15 +600,28 @@ class ChatService {
     const { conversations, messages } = loadStorage();
     const { conversation_id, message, conversation: incomingConv } = payload;
 
-    const existingMsgIndex = messages.findIndex((m) => m.id === message.id);
-    let nextMessages = [...messages];
+    const existingMsgIndex = messages.findIndex(
+      (m) =>
+        m.id === message.id ||
+        (message.client_temp_id && (m.id === message.client_temp_id || m.client_temp_id === message.client_temp_id)) ||
+        (m.client_temp_id && m.client_temp_id === message.id) ||
+        (m.sender_role === message.sender_role &&
+          m.message === message.message &&
+          Math.abs(new Date(m.created_at || 0).getTime() - new Date(message.created_at || 0).getTime()) < 30000),
+    );
+    const nextMessages = [...messages];
     if (existingMsgIndex === -1) {
       nextMessages.push(message);
     } else {
-      nextMessages[existingMsgIndex] = message;
+      nextMessages[existingMsgIndex] = {
+        ...nextMessages[existingMsgIndex],
+        ...message,
+        id: message.id,
+        created_at: message.created_at || nextMessages[existingMsgIndex].created_at,
+      };
     }
 
-    let convIndex = conversations.findIndex((c) => c.id === conversation_id);
+    const convIndex = conversations.findIndex((c) => c.id === conversation_id);
     let targetConv: ChatConversation;
 
     if (convIndex !== -1) {
@@ -597,7 +671,7 @@ class ChatService {
       const isOpposite =
         readerRole === "admin"
           ? m.sender_role === "customer"
-          : m.sender_role === "admin" || m.sender_role === "agent";
+          : m.sender_role === "admin" || m.sender_role === "agent" || m.sender_role === "bot";
       if (m.conversation_id === conversationId && isOpposite && !m.is_read) {
         changed = true;
         return { ...m, is_read: true };
@@ -690,15 +764,20 @@ class ChatService {
       return emailMatch || phoneMatch;
     });
 
-    // Also persist transfer to backend PostgreSQL DB
-    api.post("/ecommerce/chats/transfer", {
-      email: user.email,
-      phone: user.phone || "",
-      customer_user_id: user.id || "00000000-0000-0000-0000-000000000000",
-      customer_name: user.full_name,
-    }).catch((err) => {
-      console.warn("[ChatService] Backend transfer error:", err);
-    });
+    // Also persist transfer to backend PostgreSQL DB only if user has a valid authenticated JWT token
+    const token = getAuthToken();
+    if (token) {
+      api
+        .post("/ecommerce/chats/transfer", {
+          email: user.email,
+          phone: user.phone || "",
+          customer_user_id: user.id || "00000000-0000-0000-0000-000000000000",
+          customer_name: user.full_name,
+        })
+        .catch((err) => {
+          console.warn("[ChatService] Backend transfer error:", err);
+        });
+    }
 
     if (guestConvIndex === -1) {
       return { transferred: false };

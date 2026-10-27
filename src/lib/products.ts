@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { websocketService } from "@/lib/websocket";
+import { resolveAssetUrl } from "@/hooks/usePageSettings";
 
 export type ProductType = "physical" | "digital" | "service";
 
@@ -117,6 +118,8 @@ export interface ProductReview {
   rating: number;
   comment: string;
   createdAt: string;
+  isVerified?: boolean;
+  imageUrls?: string[];
 }
 
 const PRODUCT_REVIEW_STORAGE_KEY = "marketplace-product-reviews";
@@ -213,6 +216,154 @@ export function getProductRatingStats(productId: string) {
     rating: Number((total / reviews.length).toFixed(1)),
     reviewCount: reviews.length,
   };
+}
+
+export async function fetchProductReviews(
+  productId: string,
+  params?: {
+    page?: number;
+    limit?: number;
+    rating?: number;
+    sort?: string;
+  },
+): Promise<{
+  items: ProductReview[];
+  total: number;
+  stats?: {
+    average_rating?: number;
+    total_reviews?: number;
+    distribution?: Record<string, number>;
+    percentages?: Record<string, number>;
+  };
+}> {
+  const isUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      productId,
+    );
+  if (!isUuid) {
+    const local = getProductReviews(productId);
+    return { items: local, total: local.length };
+  }
+
+  try {
+    const res = await api.get<{
+      success: boolean;
+      data?: Array<{
+        uuid?: string;
+        id?: string;
+        product_uuid?: string;
+        product_id?: string;
+        order_item_uuid?: string;
+        rating: number;
+        comment: string;
+        image_urls?: string[];
+        is_verified_purchase?: boolean;
+        author?: { name?: string; username?: string };
+        account?: { full_name?: string; username?: string };
+        created_at: string;
+      }>;
+      meta?: {
+        total?: number;
+        stats?: {
+          average_rating?: number;
+          total_reviews?: number;
+          distribution?: Record<string, number>;
+          percentages?: Record<string, number>;
+        };
+      };
+    }>(`/ecommerce/products/${productId}/reviews`, { params });
+
+    const rawItems = res.data?.data || [];
+    const items: ProductReview[] = rawItems.map((item) => {
+      const authorName =
+        item.author?.name ||
+        item.author?.username ||
+        item.account?.full_name ||
+        item.account?.username ||
+        "Pelanggan";
+
+      return {
+        id: item.uuid || item.id || `rev-${Date.now()}`,
+        productId: item.product_uuid || item.product_id || productId,
+        userName: authorName,
+        rating: Number(item.rating) || 5,
+        comment: item.comment || "",
+        createdAt: item.created_at || new Date().toISOString(),
+        isVerified: Boolean(item.is_verified_purchase || item.order_item_uuid),
+        imageUrls: item.image_urls || [],
+      };
+    });
+
+    return {
+      items,
+      total: res.data?.meta?.total ?? items.length,
+      stats: res.data?.meta?.stats,
+    };
+  } catch {
+    const local = getProductReviews(productId);
+    return { items: local, total: local.length };
+  }
+}
+
+export async function fetchProductRatingSummary(productId: string) {
+  const isUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      productId,
+    );
+  if (!isUuid) return null;
+
+  try {
+    const res = await api.get<{
+      success: boolean;
+      data?: {
+        product_id: string;
+        average_rating: number;
+        total_reviews: number;
+        distribution: Record<string, number>;
+        percentages: Record<string, number>;
+      };
+    }>(`/ecommerce/products/${productId}/ratings`);
+
+    return res.data?.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function submitProductReview(
+  productId: string,
+  payload: {
+    rating: number;
+    comment: string;
+    order_item_uuid?: string;
+    image_urls?: string[];
+  },
+) {
+  const isUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      productId,
+    );
+
+  if (isUuid) {
+    const res = await api.post(
+      `/ecommerce/products/${productId}/reviews`,
+      payload,
+    );
+    return res.data?.data;
+  }
+
+  const review: ProductReview = {
+    id: `review-${Date.now()}`,
+    productId,
+    userName: "Anda",
+    rating: payload.rating,
+    comment: payload.comment,
+    createdAt: new Date().toISOString(),
+    isVerified: Boolean(payload.order_item_uuid),
+    imageUrls: payload.image_urls,
+  };
+  saveProductReview(review);
+  return review;
 }
 
 export function mapProductRow(row: ProductRow): Product {
@@ -1002,7 +1153,22 @@ export function mapBackendToProduct(p: any): Product {
     p.original_price && Number(p.original_price) > basePrice
       ? Number(p.original_price)
       : undefined;
-  const img = p.image || p.cover_image_url || undefined;
+
+  const rawImg = p.image || p.cover_image_url || undefined;
+  const img = rawImg ? resolveAssetUrl(rawImg) : undefined;
+
+  let allImages: string[] = [];
+  if (Array.isArray(p.images) && p.images.length > 0) {
+    allImages = p.images
+      .map((item: any) => {
+        const u = typeof item === "string" ? item : item?.image_url || item?.url;
+        return u ? resolveAssetUrl(u) : "";
+      })
+      .filter(Boolean);
+  }
+  if (allImages.length === 0 && img) {
+    allImages = [img];
+  }
 
   // BARU: petakan varian aktif dari backend
   const variants: ProductVariant[] | undefined = Array.isArray(p.variants)
@@ -1024,7 +1190,7 @@ export function mapBackendToProduct(p: any): Product {
     name: p.name,
     description: p.description || p.summary || undefined,
     image: img,
-    images: img ? [img] : [],
+    images: allImages,
     type: p.type === "digital" || p.type === "service" ? p.type : "physical",
     basePrice,
     comparePrice,
