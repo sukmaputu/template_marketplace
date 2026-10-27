@@ -379,7 +379,7 @@ export function MarketplaceHeader() {
             style={{
               ['--logo-nav-h-mobile' as any]: `${logoNavbarMobileHeightPx || 32}px`,
               ['--logo-nav-h-desktop' as any]: `${logoNavbarDesktopHeightPx || 40}px`,
-              maxWidth: `${logoMaxWidthPx || 180}px`,
+              maxWidth: `${Math.max(logoMaxWidthPx || 220, 260)}px`,
             }}
           />
           <span className="text-lg font-bold tracking-tight text-text">

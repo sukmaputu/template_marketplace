@@ -13,8 +13,12 @@ export interface PageSettingsData {
   contactAddress: string;
   navbarLogo: string;
   popupBanner: string;
+  popupMobileImage: string;
   popupBannerLink: string;
   isPopupEnabled: boolean;
+  popupDesktopTemplate: string;
+  popupDesktopMaxWidth: number;
+  popupDesktopAspectRatio: string;
   popupMobileTemplate: string;
   popupMobileMaxWidth: number;
   popupMobileAspectRatio: string;
@@ -36,37 +40,53 @@ export function stripHtmlTags(str?: string): string {
   return str.replace(/<[^>]*>/g, "").trim();
 }
 
+const ALLOWED_ASPECT_RATIOS = new Set([
+  "1 / 1",
+  "4 / 3",
+  "4 / 5",
+  "3 / 4",
+  "16 / 9",
+  "9 / 16",
+  "2 / 1",
+  "auto",
+]);
+
+export function clampPx(val: unknown, min: number, max: number, fallback: number): number {
+  const num = typeof val === "number" ? val : Number(val);
+  if (isNaN(num)) return fallback;
+  return Math.min(Math.max(Math.round(num), min), max);
+}
+
+export function sanitizeAspectRatio(val: unknown, fallback = "1 / 1"): string {
+  if (typeof val !== "string") return fallback;
+  const clean = val.trim();
+  if (ALLOWED_ASPECT_RATIOS.has(clean)) return clean;
+  return fallback;
+}
+
 /**
- * Sanitizes URL/href against dangerous URI schemes (javascript:, vbscript:, data:text/html).
+ * Sanitizes URL/href against dangerous URI schemes (javascript:, vbscript:, data:text/html) and protocol-relative URLs.
  */
 export function sanitizeUrl(raw?: string, fallback = "#catalog"): string {
   if (!raw) return fallback;
-  const trimmed = raw.trim();
-  if (!trimmed) return fallback;
-  if (
-    trimmed.startsWith("#") ||
-    trimmed.startsWith("/") ||
-    /^https?:\/\//i.test(trimmed)
-  ) {
-    return trimmed;
-  }
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/i.test(trimmed)) {
-    return fallback;
-  }
-  return trimmed;
+  const clean = raw.replace(/[\u0000-\u001F\u007F]/g, "").trim();
+  if (!clean) return fallback;
+  if (clean.startsWith("//")) return fallback;
+  if (/^https?:\/\//i.test(clean)) return clean;
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/i.test(clean)) return fallback;
+  if (clean.startsWith("#") || clean.startsWith("/")) return clean;
+  return fallback;
 }
 
 export function resolveAssetUrl(url?: string): string {
   if (!url) return "";
-  const trimmed = url.trim();
-  if (!trimmed) return "";
-  if (/^https?:\/\//i.test(trimmed) || /^data:image\//i.test(trimmed)) {
-    return trimmed;
-  }
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/i.test(trimmed)) {
-    return "";
-  }
-  const clean = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  const cleanUrl = url.replace(/[\u0000-\u001F\u007F]/g, "").trim();
+  if (!cleanUrl) return "";
+  if (cleanUrl.startsWith("//")) return "";
+  if (/^https?:\/\//i.test(cleanUrl)) return cleanUrl;
+  if (/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(cleanUrl)) return cleanUrl;
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/i.test(cleanUrl)) return "";
+  const clean = cleanUrl.startsWith("/") ? cleanUrl : `/${cleanUrl}`;
   const baseUrl = (
     import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api/v1"
   ).replace(/\/api\/v1\/?$/, "");
@@ -265,7 +285,11 @@ export function usePageSettings(): PageSettingsData {
     rawPopupEnabled === "1";
 
   let popupImageRaw = "";
+  let popupMobileImageRaw = "";
   let popupLinkRaw = "";
+  let popupDesktopTemplate = "square";
+  let popupDesktopMaxWidth = 480;
+  let popupDesktopAspectRatio = "1 / 1";
   let popupMobileTemplate = "square";
   let popupMobileMaxWidth = 320;
   let popupMobileAspectRatio = "1 / 1";
@@ -276,23 +300,42 @@ export function usePageSettings(): PageSettingsData {
       const parsed = JSON.parse(rawPopup);
       if (typeof parsed === "object" && parsed !== null) {
         popupImageRaw = parsed.image || parsed.img || parsed.url || "";
+        const rawMob = parsed.mobileImage || parsed.imageMobile || "";
+        popupMobileImageRaw = rawMob && rawMob !== "pending" ? rawMob : "";
         popupLinkRaw = parsed.link || parsed.url_target || parsed.href || "";
+
+        if (typeof parsed.desktopTemplate === "string" && parsed.desktopTemplate) {
+          popupDesktopTemplate = parsed.desktopTemplate;
+        }
+        popupDesktopMaxWidth = clampPx(parsed.desktopMaxWidth, 360, 800, 480);
+        if (popupDesktopTemplate === "custom") {
+          popupDesktopAspectRatio = "auto";
+        } else if (popupDesktopTemplate === "landscape") {
+          popupDesktopAspectRatio = sanitizeAspectRatio(parsed.desktopAspectRatio, "4 / 3");
+        } else if (popupDesktopTemplate === "portrait") {
+          popupDesktopAspectRatio = sanitizeAspectRatio(parsed.desktopAspectRatio, "4 / 5");
+        } else if (popupDesktopTemplate === "wide") {
+          popupDesktopAspectRatio = sanitizeAspectRatio(parsed.desktopAspectRatio, "16 / 9");
+        } else {
+          popupDesktopAspectRatio = sanitizeAspectRatio(parsed.desktopAspectRatio, "1 / 1");
+        }
+
         if (typeof parsed.mobileTemplate === "string" && parsed.mobileTemplate) {
           popupMobileTemplate = parsed.mobileTemplate;
         }
-        if (typeof parsed.mobileMaxWidth === "number" && !isNaN(parsed.mobileMaxWidth)) {
-          popupMobileMaxWidth = parsed.mobileMaxWidth;
-        }
-        if (typeof parsed.mobileAspectRatio === "string" && parsed.mobileAspectRatio) {
-          popupMobileAspectRatio = parsed.mobileAspectRatio;
-        } else if (popupMobileTemplate === "portrait_ig") {
-          popupMobileAspectRatio = "4 / 5";
+        popupMobileMaxWidth = clampPx(parsed.mobileMaxWidth, 240, 420, 320);
+        if (popupMobileTemplate === "custom") {
+          popupMobileAspectRatio = "auto";
+        } else if (popupMobileTemplate === "portrait_ig" || popupMobileTemplate === "portrait") {
+          popupMobileAspectRatio = sanitizeAspectRatio(parsed.mobileAspectRatio, "4 / 5");
         } else if (popupMobileTemplate === "poster_tall") {
-          popupMobileAspectRatio = "3 / 4";
-        } else if (popupMobileTemplate === "compact_landscape") {
-          popupMobileAspectRatio = "4 / 3";
+          popupMobileAspectRatio = sanitizeAspectRatio(parsed.mobileAspectRatio, "3 / 4");
+        } else if (popupMobileTemplate === "compact_landscape" || popupMobileTemplate === "landscape") {
+          popupMobileAspectRatio = sanitizeAspectRatio(parsed.mobileAspectRatio, "4 / 3");
         } else if (popupMobileTemplate === "story_full") {
-          popupMobileAspectRatio = "9 / 16";
+          popupMobileAspectRatio = sanitizeAspectRatio(parsed.mobileAspectRatio, "9 / 16");
+        } else {
+          popupMobileAspectRatio = sanitizeAspectRatio(parsed.mobileAspectRatio, "1 / 1");
         }
         if (parsed.objectFit === "contain") {
           popupObjectFit = "contain";
@@ -310,16 +353,49 @@ export function usePageSettings(): PageSettingsData {
   let logoNavbarDesktopHeightPx = 40;
   let logoFooterMobileHeightPx = 36;
   let logoFooterDesktopHeightPx = 44;
-  let logoMaxWidthPx = 180;
+  let logoMaxWidthPx = 220;
 
   if (settingsMap.site_logo_config) {
     try {
       const parsedConfig = JSON.parse(settingsMap.site_logo_config);
       if (typeof parsedConfig === "object" && parsedConfig !== null) {
-        if (Number(parsedConfig.navbarMobileHeightPx) > 0) {
+        const navMobPresetMap: Record<string, number> = {
+          compact: 24,
+          standard: 32,
+          large: 40,
+          prominent: 48,
+        };
+        const navDeskPresetMap: Record<string, number> = {
+          compact: 32,
+          standard: 40,
+          large: 52,
+        };
+        const footMobPresetMap: Record<string, number> = {
+          compact: 28,
+          standard: 36,
+          large: 48,
+        };
+        const footDeskPresetMap: Record<string, number> = {
+          compact: 36,
+          standard: 44,
+          large: 60,
+        };
+
+        if (
+          typeof parsedConfig.navbarMobilePreset === "string" &&
+          parsedConfig.navbarMobilePreset in navMobPresetMap
+        ) {
+          logoNavbarMobileHeightPx = navMobPresetMap[parsedConfig.navbarMobilePreset];
+        } else if (Number(parsedConfig.navbarMobileHeightPx) > 0) {
           logoNavbarMobileHeightPx = Number(parsedConfig.navbarMobileHeightPx);
         }
-        if (Number(parsedConfig.navbarDesktopHeightPx) > 0) {
+
+        if (
+          typeof parsedConfig.navbarDesktopPreset === "string" &&
+          parsedConfig.navbarDesktopPreset in navDeskPresetMap
+        ) {
+          logoNavbarDesktopHeightPx = navDeskPresetMap[parsedConfig.navbarDesktopPreset];
+        } else if (Number(parsedConfig.navbarDesktopHeightPx) > 0) {
           logoNavbarDesktopHeightPx = Number(parsedConfig.navbarDesktopHeightPx);
         } else if (logoNavbarMobileHeightPx > 40) {
           logoNavbarDesktopHeightPx = Math.max(40, logoNavbarMobileHeightPx);
@@ -327,21 +403,31 @@ export function usePageSettings(): PageSettingsData {
 
         if (parsedConfig.footerMobilePreset === "sync") {
           logoFooterMobileHeightPx = logoNavbarMobileHeightPx;
-          logoFooterDesktopHeightPx = logoNavbarDesktopHeightPx;
-        } else {
-          if (Number(parsedConfig.footerMobileHeightPx) > 0) {
-            logoFooterMobileHeightPx = Number(parsedConfig.footerMobileHeightPx);
-          }
-          if (Number(parsedConfig.footerDesktopHeightPx) > 0) {
-            logoFooterDesktopHeightPx = Number(parsedConfig.footerDesktopHeightPx);
-          } else if (logoFooterMobileHeightPx > 44) {
-            logoFooterDesktopHeightPx = Math.max(44, logoFooterMobileHeightPx);
-          }
+        } else if (
+          typeof parsedConfig.footerMobilePreset === "string" &&
+          parsedConfig.footerMobilePreset in footMobPresetMap
+        ) {
+          logoFooterMobileHeightPx = footMobPresetMap[parsedConfig.footerMobilePreset];
+        } else if (Number(parsedConfig.footerMobileHeightPx) > 0) {
+          logoFooterMobileHeightPx = Number(parsedConfig.footerMobileHeightPx);
         }
 
-        if (Number(parsedConfig.maxWidthPx) > 0) {
-          logoMaxWidthPx = Number(parsedConfig.maxWidthPx);
+        if (parsedConfig.footerDesktopPreset === "sync") {
+          logoFooterDesktopHeightPx = logoNavbarDesktopHeightPx;
+        } else if (
+          typeof parsedConfig.footerDesktopPreset === "string" &&
+          parsedConfig.footerDesktopPreset in footDeskPresetMap
+        ) {
+          logoFooterDesktopHeightPx = footDeskPresetMap[parsedConfig.footerDesktopPreset];
+        } else if (Number(parsedConfig.footerDesktopHeightPx) > 0) {
+          logoFooterDesktopHeightPx = Number(parsedConfig.footerDesktopHeightPx);
+        } else if (parsedConfig.footerMobilePreset === "sync") {
+          logoFooterDesktopHeightPx = logoNavbarDesktopHeightPx;
+        } else if (logoFooterMobileHeightPx > 44) {
+          logoFooterDesktopHeightPx = Math.max(44, logoFooterMobileHeightPx);
         }
+
+        logoMaxWidthPx = clampPx(parsedConfig.maxWidthPx, 100, 400, 220);
       }
     } catch {
       // fallback defaults
@@ -349,6 +435,7 @@ export function usePageSettings(): PageSettingsData {
   }
 
   const popupBanner = (popupImageRaw && isPopupEnabled) ? resolveAssetUrl(popupImageRaw) : "";
+  const popupMobileImage = (popupMobileImageRaw && isPopupEnabled) ? resolveAssetUrl(popupMobileImageRaw) : "";
   let rawCleanLink = popupLinkRaw ? sanitizeUrl(popupLinkRaw, "#catalog") : "#catalog";
   if (rawCleanLink === "/products" || rawCleanLink === "/products/") {
     rawCleanLink = "/#catalog";
@@ -361,8 +448,12 @@ export function usePageSettings(): PageSettingsData {
     contactAddress,
     navbarLogo,
     popupBanner,
+    popupMobileImage,
     popupBannerLink,
     isPopupEnabled,
+    popupDesktopTemplate,
+    popupDesktopMaxWidth,
+    popupDesktopAspectRatio,
     popupMobileTemplate,
     popupMobileMaxWidth,
     popupMobileAspectRatio,

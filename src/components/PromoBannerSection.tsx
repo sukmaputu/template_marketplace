@@ -4,21 +4,27 @@ import {
   usePageSettings,
   resolveAssetUrl,
   sanitizeUrl,
+  clampPx,
 } from "@/hooks/usePageSettings";
 
 export type BannerSlide = {
   image: string;
+  imageMobile?: string;
   badge?: string;
   title: string;
   subtitle: string;
   ctaLabel: string;
   ctaHref: string;
+  desktopTemplate?: string;
+  desktopHeightPx?: number;
   mobileTemplate?: string;
   mobileHeightPx?: number;
 };
 
 interface RawSlideItem {
   image?: unknown;
+  imageMobile?: unknown;
+  mobileImage?: unknown;
   url?: unknown;
   src?: unknown;
   badge?: unknown;
@@ -27,6 +33,8 @@ interface RawSlideItem {
   ctaLabel?: unknown;
   ctaHref?: unknown;
   href?: unknown;
+  desktopTemplate?: unknown;
+  desktopHeightPx?: unknown;
   mobileTemplate?: unknown;
   mobileHeightPx?: unknown;
 }
@@ -64,12 +72,6 @@ function parseDynamicBannerSlides(rawValue?: string): BannerSlide[] | null {
 
   const resolveBannerPath = (url: string): string => {
     if (!url) return "";
-    if (url.startsWith("/uploads/") || url.startsWith("uploads/")) {
-      return resolveAssetUrl(url);
-    }
-    if (/^https?:\/\//i.test(url) || /^data:image\//i.test(url) || url.startsWith("/")) {
-      return url;
-    }
     return resolveAssetUrl(url);
   };
 
@@ -91,6 +93,16 @@ function parseDynamicBannerSlides(rawValue?: string): BannerSlide[] | null {
                     : "";
             const img = resolveBannerPath(rawImg);
             if (!img) return null;
+            const rawMobImg =
+              typeof item.imageMobile === "string"
+                ? item.imageMobile
+                : typeof item.mobileImage === "string"
+                  ? item.mobileImage
+                  : "";
+            const imgMob =
+              rawMobImg && rawMobImg !== "pending"
+                ? resolveBannerPath(rawMobImg)
+                : undefined;
             const rawHref =
               typeof item.ctaHref === "string"
                 ? item.ctaHref
@@ -99,6 +111,7 @@ function parseDynamicBannerSlides(rawValue?: string): BannerSlide[] | null {
                   : "#catalog";
             return {
               image: img,
+              imageMobile: imgMob,
               badge: typeof item.badge === "string" ? item.badge.trim() : "",
               title: typeof item.title === "string" ? item.title.trim() : "",
               subtitle:
@@ -106,10 +119,18 @@ function parseDynamicBannerSlides(rawValue?: string): BannerSlide[] | null {
               ctaLabel:
                 typeof item.ctaLabel === "string" ? item.ctaLabel.trim() : "",
               ctaHref: sanitizeUrl(rawHref, "#catalog"),
+              desktopTemplate:
+                typeof item.desktopTemplate === "string" ? item.desktopTemplate : undefined,
+              desktopHeightPx:
+                typeof item.desktopHeightPx === "number"
+                  ? clampPx(item.desktopHeightPx, 280, 900, 480)
+                  : undefined,
               mobileTemplate:
                 typeof item.mobileTemplate === "string" ? item.mobileTemplate : undefined,
               mobileHeightPx:
-                typeof item.mobileHeightPx === "number" ? item.mobileHeightPx : undefined,
+                typeof item.mobileHeightPx === "number"
+                  ? clampPx(item.mobileHeightPx, 140, 500, 205)
+                  : undefined,
             };
           })
           .filter((s): s is BannerSlide => s !== null);
@@ -238,18 +259,36 @@ export function PromoBannerSection({
 
   const currentSlide = bannerSlides[safeIndex] || bannerSlides[0];
   const mobileTemplate = currentSlide?.mobileTemplate || "widescreen_16_9";
+  const desktopTemplate = currentSlide?.desktopTemplate;
+
   let mobileAspectClass = "aspect-[16/9]";
-  let mobileInlineHeight: string | undefined = undefined;
+  let desktopAspectClass = "sm:h-[480px] sm:aspect-auto";
+  const inlineStyles: Record<string, string> = {};
 
   if (mobileTemplate === "marketplace_2_1") {
-    mobileAspectClass = "aspect-[2/1] sm:aspect-[16/9]";
+    mobileAspectClass = "aspect-[2/1]";
   } else if (mobileTemplate === "showcase_4_3") {
-    mobileAspectClass = "aspect-[4/3] sm:aspect-[16/9]";
+    mobileAspectClass = "aspect-[4/3]";
   } else if (mobileTemplate === "editorial_4_5") {
-    mobileAspectClass = "aspect-[4/5] sm:aspect-[16/9]";
+    mobileAspectClass = "aspect-[4/5]";
   } else if (mobileTemplate === "custom") {
-    mobileAspectClass = "h-[var(--banner-mobile-h)] sm:h-auto sm:aspect-[16/9]";
-    mobileInlineHeight = `${currentSlide?.mobileHeightPx || 220}px`;
+    mobileAspectClass = "h-[var(--banner-mobile-h)]";
+    inlineStyles["--banner-mobile-h"] = `${currentSlide?.mobileHeightPx || 220}px`;
+  }
+
+  if (desktopTemplate === "compact") {
+    desktopAspectClass = "sm:h-[380px] sm:aspect-auto";
+  } else if (desktopTemplate === "standard") {
+    desktopAspectClass = "sm:h-[480px] sm:aspect-auto";
+  } else if (desktopTemplate === "large") {
+    desktopAspectClass = "sm:h-[600px] sm:aspect-auto";
+  } else if (desktopTemplate === "cinematic") {
+    desktopAspectClass = "sm:h-[720px] sm:aspect-auto";
+  } else if (desktopTemplate === "custom") {
+    desktopAspectClass = "sm:h-[var(--banner-desktop-h)] sm:aspect-auto";
+    inlineStyles["--banner-desktop-h"] = `${currentSlide?.desktopHeightPx || 480}px`;
+  } else if (!desktopTemplate && mobileTemplate !== "custom") {
+    desktopAspectClass = "sm:aspect-[16/9]";
   }
 
   return (
@@ -257,12 +296,10 @@ export function PromoBannerSection({
       <div
         onMouseEnter={() => setIsPaused(true)}
         onMouseLeave={() => setIsPaused(false)}
-        className={`group relative w-full ${mobileAspectClass} overflow-hidden rounded-xl bg-neutral-200 dark:bg-neutral-700 select-none transition-all duration-300`}
+        className={`group relative w-full ${mobileAspectClass} ${desktopAspectClass} overflow-hidden rounded-xl bg-neutral-200 dark:bg-neutral-700 select-none transition-all duration-300`}
         style={{
           width: "100%",
-          ...(mobileInlineHeight
-            ? ({ ["--banner-mobile-h" as string]: mobileInlineHeight } as React.CSSProperties)
-            : {}),
+          ...(inlineStyles as React.CSSProperties),
         }}>
         <div
           className="flex h-full transition-transform duration-500 ease-out"
@@ -278,15 +315,20 @@ export function PromoBannerSection({
               <div
                 key={`${slide.image}-${i}`}
                 className="relative flex h-full w-full shrink-0 items-center justify-center bg-neutral-200 dark:bg-neutral-700">
-                <img
-                  src={slide.image}
-                  alt={`Banner promo ${i + 1}`}
-                  className="absolute inset-0 h-full w-full object-cover object-center"
-                  onError={(e) => {
-                    e.currentTarget.onerror = null;
-                    e.currentTarget.src = "/banner/slide1.jpg";
-                  }}
-                />
+                <picture className="absolute inset-0 h-full w-full">
+                  {slide.imageMobile && (
+                    <source media="(max-width: 639px)" srcSet={slide.imageMobile} />
+                  )}
+                  <img
+                    src={slide.image}
+                    alt={`Banner promo ${i + 1}`}
+                    className="h-full w-full object-cover object-center"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = "/banner/slide1.jpg";
+                    }}
+                  />
+                </picture>
 
                 {hasContent && <div className="absolute inset-0 bg-black/50" />}
 
