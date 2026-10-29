@@ -151,14 +151,20 @@ export function NotificationMenu() {
   const { announcements, readIds, markRead, markAllRead } = useAnnouncements();
   const { user } = useAuth();
   const [readNotifIds, setReadNotifIds] = useState<Set<string>>(() => getReadNotificationIds());
-  const [userOrders, setUserOrders] = useState<Order[]>(() => getStoredOrders());
+  const [userOrders, setUserOrders] = useState<Order[]>(() =>
+    user ? getStoredOrders() : [],
+  );
 
   useEffect(() => {
     let cancelled = false;
     async function loadUserOrders() {
+      if (!user) {
+        if (!cancelled) setUserOrders([]);
+        return;
+      }
       try {
         const fetched = await fetchOrdersFromBackend();
-        if (!cancelled && fetched.length > 0) {
+        if (!cancelled) {
           setUserOrders(fetched);
           return;
         }
@@ -184,7 +190,7 @@ export function NotificationMenu() {
       unsubOrder();
       unsubStatus();
     };
-  }, [user]);
+  }, [user?.id, user?.email]);
 
   useEffect(() => {
     const handleSync = () => {

@@ -1,9 +1,42 @@
 import type { Order, OrderStatus } from "@/components/profile/types";
-import { api } from "@/lib/api";
+import { api, getAuthToken } from "@/lib/api";
 import { websocketService } from "@/lib/websocket";
 import { resolveAssetUrl } from "@/hooks/usePageSettings";
 
-const ORDER_HISTORY_KEY = "marketplace-order-history";
+const BASE_ORDER_HISTORY_KEY = "marketplace-order-history";
+
+function getScopedOrderKey(): string | null {
+  if (typeof window === "undefined") return null;
+  const token = getAuthToken();
+  if (!token) return null;
+  try {
+    const rawUser = window.localStorage.getItem("auth-user");
+    if (rawUser) {
+      const user = JSON.parse(rawUser) as { id?: string; email?: string };
+      const ident = (user.id || user.email || "").trim().toLowerCase();
+      if (ident) {
+        return `${BASE_ORDER_HISTORY_KEY}:${ident}`;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return BASE_ORDER_HISTORY_KEY;
+}
+
+export function clearStoredOrders() {
+  if (typeof window === "undefined") return;
+  try {
+    const scopedKey = getScopedOrderKey();
+    if (scopedKey) {
+      window.localStorage.removeItem(scopedKey);
+    }
+    window.localStorage.removeItem(BASE_ORDER_HISTORY_KEY);
+    window.dispatchEvent(new Event("order-history-updated"));
+  } catch {
+    // ignore
+  }
+}
 
 interface BackendOrderItem {
   uuid?: string;
@@ -109,9 +142,13 @@ function mapBackendOrder(bo: BackendOrder): Order {
 
 export function getStoredOrders(): Order[] {
   if (typeof window === "undefined") return [];
+  if (!getAuthToken()) return [];
+
+  const key = getScopedOrderKey();
+  if (!key) return [];
 
   try {
-    const value = window.localStorage.getItem(ORDER_HISTORY_KEY);
+    const value = window.localStorage.getItem(key);
     if (!value) return [];
 
     const orders = JSON.parse(value) as unknown;
@@ -124,9 +161,12 @@ export function getStoredOrders(): Order[] {
 export function saveOrder(order: Order) {
   if (typeof window === "undefined") return;
 
-  const orders = getStoredOrders().filter((item) => item.id !== order.id);
-  const updatedOrders = [order, ...orders];
-  window.localStorage.setItem(ORDER_HISTORY_KEY, JSON.stringify(updatedOrders));
+  const key = getScopedOrderKey();
+  if (key) {
+    const orders = getStoredOrders().filter((item) => item.id !== order.id);
+    const updatedOrders = [order, ...orders];
+    window.localStorage.setItem(key, JSON.stringify(updatedOrders));
+  }
 
   // 1. Dispatch DOM event for current page
   window.dispatchEvent(new Event("order-history-updated"));
@@ -139,43 +179,30 @@ export function saveOrder(order: Order) {
 }
 
 export async function fetchOrdersFromBackend(): Promise<Order[]> {
+  if (!getAuthToken()) {
+    clearStoredOrders();
+    return [];
+  }
+
+  const key = getScopedOrderKey();
+
   try {
     const res = await api.get("/ecommerce/orders", {
-      params: { limit: 50 },
+      params: { limit: 50, scope: "my" },
     });
     const items = res.data?.data;
     if (Array.isArray(items)) {
       const backendOrders = items.map(mapBackendOrder);
-      const localOrders = getStoredOrders();
-
-      // Merge backend orders with local orders without duplicating ID
-      const seen = new Set<string>();
-      const combined: Order[] = [];
-
-      for (const bo of backendOrders) {
-        if (!seen.has(bo.id)) {
-          seen.add(bo.id);
-          combined.push(bo);
-        }
-      }
-
-      for (const lo of localOrders) {
-        if (!seen.has(lo.id)) {
-          seen.add(lo.id);
-          combined.push(lo);
-        }
-      }
-
-      if (typeof window !== "undefined") {
+      if (typeof window !== "undefined" && key) {
         window.localStorage.setItem(
-          ORDER_HISTORY_KEY,
-          JSON.stringify(combined),
+          key,
+          JSON.stringify(backendOrders),
         );
       }
-      return combined;
+      return backendOrders;
     }
   } catch {
-    // Return stored orders on network failure or unauthorized
+    // Return stored orders on transient network failure
   }
 
   return getStoredOrders();
@@ -186,9 +213,11 @@ export async function updateOrderStatusInBackend(
   status: "CANCELED" | "DONE" | "COMPLETED",
 ): Promise<boolean> {
   try {
-    await api.patch(`/ecommerce/orders/${encodeURIComponent(orderIdOrUuid)}/status`, {
-      status,
-    });
+    await api.patch(
+      `/ecommerce/orders/${encodeURIComponent(orderIdOrUuid)}/status`,
+      { status },
+      { params: { scope: "my" } },
+    );
     return true;
   } catch (err) {
     console.warn("[updateOrderStatusInBackend] Failed to update order status:", err);

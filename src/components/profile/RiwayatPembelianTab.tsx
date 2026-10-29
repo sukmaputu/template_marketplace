@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Package, Star, X } from "lucide-react";
 import type { Order, OrderStatus } from "./types";
 import { ORDER_STATUS_CONFIG } from "./types";
-import { MOCK_ORDERS } from "./MockData";
 import { OrderCard } from "./OrderCard";
 import { TrackingModal } from "./TrackingModal";
 import { RefundModal } from "./RefundModal";
@@ -23,8 +22,7 @@ type FilterKey = "ALL" | OrderStatus;
 export function RiwayatPembelianTab() {
   const { user, refreshProfile } = useAuth();
   const [orders, setOrders] = useState<Order[]>(() => {
-    const stored = getStoredOrders();
-    return stored.length > 0 ? stored : MOCK_ORDERS;
+    return user ? getStoredOrders() : [];
   });
   const [selectedStatus, setSelectedStatus] = useState<FilterKey>("ALL");
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -47,9 +45,13 @@ export function RiwayatPembelianTab() {
     let cancelled = false;
 
     async function loadOrders() {
+      if (!user) {
+        if (!cancelled) setOrders([]);
+        return;
+      }
       try {
         const fetched = await fetchOrdersFromBackend();
-        if (!cancelled && fetched.length > 0) {
+        if (!cancelled) {
           setOrders(fetched);
           return;
         }
@@ -57,15 +59,14 @@ export function RiwayatPembelianTab() {
         // ignore
       }
       if (!cancelled) {
-        const stored = getStoredOrders();
-        setOrders(user ? stored : stored.length > 0 ? stored : MOCK_ORDERS);
+        setOrders(getStoredOrders());
       }
     }
 
-    loadOrders();
+    void loadOrders();
 
     const refreshOrders = () => {
-      loadOrders();
+      void loadOrders();
     };
 
     window.addEventListener("order-history-updated", refreshOrders);
@@ -87,7 +88,7 @@ export function RiwayatPembelianTab() {
       unsub2();
       unsub3();
     };
-  }, []);
+  }, [user?.id, user?.email]);
 
   const filterTabs: { key: FilterKey; label: string }[] = [
     { key: "ALL", label: "Semua" },
