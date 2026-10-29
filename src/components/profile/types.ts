@@ -153,6 +153,13 @@ export interface Voucher {
   min_purchase_amount?: number;
   expires_at: string;
   status: VoucherStatus;
+  target_type?: "all" | "limited" | "loyalty";
+}
+
+export interface ClaimableLoyaltyVoucher {
+  voucher: Voucher;
+  is_claimed: boolean;
+  tier_name: string;
 }
 
 export interface WishlistItem {
