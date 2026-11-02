@@ -114,6 +114,7 @@ export interface Product {
 export interface ProductReview {
   id: string;
   productId: string;
+  orderItemUuid?: string;
   userName: string;
   rating: number;
   comment: string;
@@ -236,15 +237,6 @@ export async function fetchProductReviews(
     percentages?: Record<string, number>;
   };
 }> {
-  const isUuid =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      productId,
-    );
-  if (!isUuid) {
-    const local = getProductReviews(productId);
-    return { items: local, total: local.length };
-  }
-
   try {
     const res = await api.get<{
       success: boolean;
@@ -285,6 +277,7 @@ export async function fetchProductReviews(
       return {
         id: item.uuid || item.id || `rev-${Date.now()}`,
         productId: item.product_uuid || item.product_id || productId,
+        orderItemUuid: item.order_item_uuid,
         userName: authorName,
         rating: Number(item.rating) || 5,
         comment: item.comment || "",
@@ -305,31 +298,6 @@ export async function fetchProductReviews(
   }
 }
 
-export async function fetchProductRatingSummary(productId: string) {
-  const isUuid =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      productId,
-    );
-  if (!isUuid) return null;
-
-  try {
-    const res = await api.get<{
-      success: boolean;
-      data?: {
-        product_id: string;
-        average_rating: number;
-        total_reviews: number;
-        distribution: Record<string, number>;
-        percentages: Record<string, number>;
-      };
-    }>(`/ecommerce/products/${productId}/ratings`);
-
-    return res.data?.data ?? null;
-  } catch {
-    return null;
-  }
-}
-
 export async function submitProductReview(
   productId: string,
   payload: {
@@ -339,31 +307,11 @@ export async function submitProductReview(
     image_urls?: string[];
   },
 ) {
-  const isUuid =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      productId,
-    );
-
-  if (isUuid) {
-    const res = await api.post(
-      `/ecommerce/products/${productId}/reviews`,
-      payload,
-    );
-    return res.data?.data;
-  }
-
-  const review: ProductReview = {
-    id: `review-${Date.now()}`,
-    productId,
-    userName: "Anda",
-    rating: payload.rating,
-    comment: payload.comment,
-    createdAt: new Date().toISOString(),
-    isVerified: Boolean(payload.order_item_uuid),
-    imageUrls: payload.image_urls,
-  };
-  saveProductReview(review);
-  return review;
+  const res = await api.post(
+    `/ecommerce/products/${encodeURIComponent(productId)}/reviews`,
+    payload,
+  );
+  return res.data?.data;
 }
 
 export function mapProductRow(row: ProductRow): Product {
@@ -1159,9 +1107,12 @@ export function mapBackendToProduct(p: any): Product {
 
   let allImages: string[] = [];
   if (Array.isArray(p.images) && p.images.length > 0) {
-    allImages = p.images
-      .map((item: any) => {
-        const u = typeof item === "string" ? item : item?.image_url || item?.url;
+    allImages = (p.images as Array<
+      string | { image_url?: string; url?: string }
+    >)
+      .map((item) => {
+        const u =
+          typeof item === "string" ? item : item.image_url || item.url;
         return u ? resolveAssetUrl(u) : "";
       })
       .filter(Boolean);

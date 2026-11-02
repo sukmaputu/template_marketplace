@@ -7,7 +7,10 @@ const ORDER_HISTORY_KEY = "marketplace-order-history";
 
 interface BackendOrderItem {
   uuid?: string;
+  id?: string;
+  order_item_uuid?: string;
   product_uuid?: string;
+  product_id?: string;
   product_name_snapshot?: string;
   variant_name_snapshot?: string;
   unit_price?: number;
@@ -15,6 +18,8 @@ interface BackendOrderItem {
   quantity?: number;
   product_image_snapshot?: string;
   product?: {
+    uuid?: string;
+    id?: string;
     image?: string;
     name?: string;
   };
@@ -32,7 +37,9 @@ interface BackendOrder {
   shipping_courier?: string;
   tracking_number?: string;
   total?: number;
+  grand_total?: number;
   order_status?: string;
+  status?: string;
   created_at?: string;
   placed_at?: string;
   paid_at?: string;
@@ -53,15 +60,20 @@ interface BackendOrder {
 
 function mapBackendStatus(status?: string, paidAt?: string | null): OrderStatus {
   const s = (status || "").toUpperCase();
-  if (s === "COMPLETED") return "completed";
-  if (s === "DELIVERING") return "shipping";
-  if (s === "CANCELED") return "cancelled";
-  if (s === "PROCESSING" || s === "WAITING_CONFIRMATION" || paidAt) return "processing";
+  if (["COMPLETE", "COMPLETED", "DELIVERED", "DONE", "FINISHED"].includes(s))
+    return "completed";
+  if (["DELIVERING", "SHIPPED", "ON_DELIVERY"].includes(s))
+    return "shipping";
+  if (["CANCELED", "CANCELLED"].includes(s)) return "cancelled";
+  if (["WAITING_CONFIRMATION", "WAITING_PAYMENT_CONFIRMATION"].includes(s))
+    return "waiting_confirmation";
+  if (["PROCESSING", "WAITING_ONGKIR"].includes(s) || paidAt)
+    return "processing";
   return "pending_payment";
 }
 
 function mapBackendOrder(bo: BackendOrder): Order {
-  const status = mapBackendStatus(bo.order_status, bo.paid_at);
+  const status = mapBackendStatus(bo.order_status || bo.status, bo.paid_at);
   const dateStr = bo.placed_at || bo.created_at || new Date().toISOString();
   let formattedDate: string;
   try {
@@ -82,7 +94,7 @@ function mapBackendOrder(bo: BackendOrder): Order {
     orderNumber: bo.order_number,
     status,
     date: formattedDate,
-    grand_total: Number(bo.total ?? 0),
+    grand_total: Number(bo.grand_total ?? bo.total ?? 0),
     courierName: bo.shipping_courier,
     trackingNumber: bo.tracking_number,
     payment: bo.payment,
@@ -95,8 +107,12 @@ function mapBackendOrder(bo: BackendOrder): Order {
       postalCode: bo.postal_code ?? "",
     },
     items: (bo.order_items || []).map((item, idx) => ({
-      id: item.uuid || `item-${idx}`,
-      productId: item.product_uuid,
+      id: item.uuid || item.order_item_uuid || item.id || `item-${idx}`,
+      productId:
+        item.product_uuid ||
+        item.product_id ||
+        item.product?.uuid ||
+        item.product?.id,
       product_name_snapshot:
         item.product_name_snapshot || item.product?.name || "Produk",
       variant_name_snapshot: item.variant_name_snapshot || "Standar",
@@ -147,12 +163,27 @@ export async function fetchOrdersFromBackend(): Promise<Order[]> {
     if (Array.isArray(items)) {
       const backendOrders = items.map(mapBackendOrder);
       const localOrders = getStoredOrders();
+      const localOrdersById = new Map(
+        localOrders.map((order) => [order.id, order]),
+      );
 
       // Merge backend orders with local orders without duplicating ID
       const seen = new Set<string>();
       const combined: Order[] = [];
 
-      for (const bo of backendOrders) {
+      for (const backendOrder of backendOrders) {
+        const localOrder = localOrdersById.get(backendOrder.id);
+        const bo = localOrder
+          ? {
+              ...backendOrder,
+              items: backendOrder.items.map((item) => ({
+                ...item,
+                review: localOrder.items.find(
+                  (localItem) => localItem.id === item.id,
+                )?.review,
+              })),
+            }
+          : backendOrder;
         if (!seen.has(bo.id)) {
           seen.add(bo.id);
           combined.push(bo);
@@ -183,7 +214,7 @@ export async function fetchOrdersFromBackend(): Promise<Order[]> {
 
 export async function updateOrderStatusInBackend(
   orderIdOrUuid: string,
-  status: "CANCELED" | "DONE" | "COMPLETED",
+  status: "CANCELED" | "COMPLETED",
 ): Promise<boolean> {
   try {
     await api.patch(`/ecommerce/orders/${encodeURIComponent(orderIdOrUuid)}/status`, {

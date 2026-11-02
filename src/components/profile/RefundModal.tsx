@@ -10,6 +10,7 @@ import {
 import type { Order } from "./types";
 import { REFUND_REASONS } from "./types";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
+import { showToast } from "@/lib/toast";
 
 export function RefundModal({
   order,
@@ -23,7 +24,7 @@ export function RefundModal({
     reason: string,
     note: string,
     evidence: File[],
-  ) => void;
+  ) => boolean | Promise<boolean>;
 }) {
   const { formatPrice } = useCurrency();
   const [reason, setReason] = useState<string>(REFUND_REASONS[0]);
@@ -42,9 +43,17 @@ export function RefundModal({
     setEvidence((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = () => {
-    onSubmit(order.id, reason, note, evidence);
-    setSubmitted(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    try {
+      const success = await onSubmit(order.id, reason, note, evidence);
+      if (success) setSubmitted(true);
+      else showToast("Pengajuan refund tidak dapat dikirim saat ini.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -181,7 +190,8 @@ export function RefundModal({
               </button>
               <button
                 onClick={handleSubmit}
-                className="rounded-lg bg-primary px-4 py-2 text-xs font-medium text-white hover:opacity-90">
+                disabled={isSubmitting}
+                className="rounded-lg bg-primary px-4 py-2 text-xs font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
                 Kirim Pengajuan
               </button>
             </div>

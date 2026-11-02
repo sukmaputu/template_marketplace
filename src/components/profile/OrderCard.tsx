@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
-import { MapPin, Package, RotateCcw, Truck } from "lucide-react";
-import type { Order } from "./types";
+import { MapPin, Package, RotateCcw, Star, Truck } from "lucide-react";
+import type { Order, OrderItem } from "./types";
 import { ORDER_STATUS_CONFIG } from "./types";
 import { isRefundEligible } from "./utils";
 import { CountdownTimer } from "./CountdownTimer";
@@ -20,7 +20,7 @@ export function OrderCard({
   onMarkReceived: (orderId: string) => void;
   onCancelClick: (order: Order) => void;
   onRefundClick: (order: Order) => void;
-  onReviewClick?: (order: Order) => void;
+  onReviewClick?: (order: Order, item: OrderItem) => void;
   onUploadProofClick?: (order: Order) => void;
 }) {
   const { formatPrice } = useCurrency();
@@ -88,6 +88,15 @@ export function OrderCard({
                 <p className="mt-0.5 text-xs text-text-secondary">
                   Variasi: {item.variant_name_snapshot}
                 </p>
+                {order.status === "completed" && onReviewClick && (
+                  <button
+                    type="button"
+                    onClick={() => onReviewClick(order, item)}
+                    className="mt-2 inline-flex min-h-8 items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs font-semibold text-primary hover:border-primary hover:bg-primary/10">
+                    <Star className="h-3.5 w-3.5" />
+                    {item.review ? "Lihat Ulasan" : "Berikan Ulasan"}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -143,19 +152,22 @@ export function OrderCard({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 sm:self-auto">
-          {order.status === "pending_payment" && (
+          {(order.status === "pending_payment" ||
+            order.status === "waiting_confirmation") && (
             <>
-              <button
-                onClick={() => onCancelClick(order)}
-                className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-text hover:bg-background">
-                Batalkan
-              </button>
+              {order.status === "pending_payment" && (
+                <button
+                  onClick={() => onCancelClick(order)}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-text hover:bg-background">
+                  Batalkan
+                </button>
+              )}
               {onUploadProofClick ? (
                 <button
                   type="button"
                   onClick={() => onUploadProofClick(order)}
                   className="rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-white shadow-sm hover:opacity-90">
-                  {order.payment?.payment_proof
+                  {order.payment?.payment_proof_url || order.payment?.payment_proof
                     ? order.payment.payment_status === "rejected"
                       ? "Unggah Ulang Bukti"
                       : "Lihat Bukti Bayar"
@@ -169,7 +181,9 @@ export function OrderCard({
             </>
           )}
 
-          {order.status !== "pending_payment" && order.payment?.payment_proof && onUploadProofClick && (
+          {order.status !== "pending_payment" &&
+            (order.payment?.payment_proof_url || order.payment?.payment_proof) &&
+            onUploadProofClick && (
             <button
               type="button"
               onClick={() => onUploadProofClick(order)}
@@ -205,14 +219,6 @@ export function OrderCard({
 
           {order.status === "completed" && (
             <>
-              {onReviewClick && (
-                <button
-                  type="button"
-                  onClick={() => onReviewClick(order)}
-                  className="rounded-lg border border-border px-3.5 py-1.5 text-xs font-medium text-text hover:bg-background">
-                  Beri Ulasan
-                </button>
-              )}
               <Link
                 to="/"
                 className="inline-block rounded-lg bg-primary px-4 py-1.5 text-center text-xs font-medium text-white hover:opacity-90">

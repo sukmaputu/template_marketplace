@@ -63,6 +63,26 @@ const USE_CASE_OPTIONS = [
 
 const STYLE_OPTIONS = ["Casual", "Sporty", "Formal", "Vintage", "Minimalis"];
 
+// Tab untuk filter di layar mobile (satu tab = satu kelompok filter)
+type FilterTabId =
+  | "kategori"
+  | "harga"
+  | "warna"
+  | "ukuran"
+  | "kegunaan"
+  | "style"
+  | "promo";
+
+const FILTER_TABS: { id: FilterTabId; label: string }[] = [
+  { id: "kategori", label: "Kategori" },
+  { id: "harga", label: "Harga" },
+  { id: "warna", label: "Warna" },
+  { id: "ukuran", label: "Ukuran" },
+  { id: "kegunaan", label: "Kegunaan" },
+  { id: "style", label: "Style" },
+  { id: "promo", label: "Promo" },
+];
+
 function FilterSection({
   title,
   count = 0,
@@ -194,6 +214,36 @@ export default function HomePage() {
   const [discountOnly, setDiscountOnly] = useState(false);
   const [sortBy, setSortBy] = useState("default");
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
+  const [activeFilterTab, setActiveFilterTab] =
+    useState<FilterTabId>("kategori");
+  const tabListRef = useRef<HTMLDivElement>(null);
+  const tabDragRef = useRef({ moved: false, startX: 0, startScroll: 0 });
+
+  // Geser tab dengan mouse (drag) untuk desktop / responsive mode.
+  // Di HP (touch), geser jari sudah jalan otomatis lewat overflow-x-auto.
+  function handleTabListMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    const el = tabListRef.current;
+    if (!el) return;
+    const drag = tabDragRef.current;
+    drag.moved = false;
+    drag.startX = e.clientX;
+    drag.startScroll = el.scrollLeft;
+
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - drag.startX;
+      if (Math.abs(dx) > 4) drag.moved = true;
+      el.scrollLeft = drag.startScroll - dx;
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      setTimeout(() => {
+        drag.moved = false;
+      }, 0);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
   const [viewMode, setViewMode] = useState<"pagination" | "infinite">(
     "pagination",
   );
@@ -341,6 +391,21 @@ export default function HomePage() {
     previousCurrencyRef.current = currency;
   }, [currency, rate, priceRangeDefaults, minPriceInput, maxPriceInput]);
 
+  // Kunci scroll halaman di belakang modal filter mobile + tutup dengan Escape
+  useEffect(() => {
+    if (!isMobileFilterOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsMobileFilterOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [isMobileFilterOpen]);
+
   function resetToFirstPage() {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set("page", "1");
@@ -350,6 +415,37 @@ export default function HomePage() {
   function toggleCategory(id: string) {
     setSelectedCategories((prev) =>
       prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id],
+    );
+    resetToFirstPage();
+  }
+
+  function handleMinPriceChange(nextValue: string) {
+    const nextMin = nextValue === "" ? 0 : Number(nextValue);
+    setMinPriceInput(nextValue);
+
+    const finalMin = Number.isFinite(nextMin) ? Math.max(0, nextMin) : 0;
+    const finalMax = maxPriceInput
+      ? Number(maxPriceInput)
+      : priceRangeDefaults[1];
+
+    setPriceRange(
+      normalizePriceRange(finalMin, finalMax, priceRangeDefaults[1]),
+    );
+    resetToFirstPage();
+  }
+
+  function handleMaxPriceChange(nextValue: string) {
+    const nextMax =
+      nextValue === "" ? priceRangeDefaults[1] : Number(nextValue);
+    setMaxPriceInput(nextValue);
+
+    const finalMin = minPriceInput ? Number(minPriceInput) : 0;
+    const finalMax = Number.isFinite(nextMax)
+      ? Math.max(0, nextMax)
+      : priceRangeDefaults[1];
+
+    setPriceRange(
+      normalizePriceRange(finalMin, finalMax, priceRangeDefaults[1]),
     );
     resetToFirstPage();
   }
@@ -502,6 +598,243 @@ export default function HomePage() {
   //   sessionStorage.setItem("hasSeenPromo", "true");
   // };
 
+  // ---------------------------------------------------------------------
+  // Konten tiap kelompok filter (dipakai bersama oleh sidebar desktop
+  // dan tab di modal mobile, jadi logikanya tidak diduplikasi)
+  // ---------------------------------------------------------------------
+  const priceSummary =
+    minPriceInput || maxPriceInput
+      ? currency === "USD" && rate
+        ? `$${Math.min(
+            Number(minPriceInput || 0),
+            Number(maxPriceInput || priceRangeDefaults[1]),
+          ).toLocaleString("en-US", {
+            maximumFractionDigits: 2,
+          })} — $${Math.max(
+            Number(minPriceInput || 0),
+            Number(maxPriceInput || priceRangeDefaults[1]),
+          ).toLocaleString("en-US", {
+            maximumFractionDigits: 2,
+          })}`
+        : `${formatRupiah(
+            Math.min(
+              Number(minPriceInput || 0),
+              Number(maxPriceInput || priceRangeDefaults[1]),
+            ),
+          )} — ${formatRupiah(
+            Math.max(
+              Number(minPriceInput || 0),
+              Number(maxPriceInput || priceRangeDefaults[1]),
+            ),
+          )}`
+      : "Pilih rentang harga sesuai kebutuhan";
+
+  const priceInputClass =
+    "w-full min-w-0 rounded-md border border-border bg-background px-3 py-2 text-xs text-text outline-none transition-colors placeholder:text-text-secondary/70 focus:border-primary focus:ring-2 focus:ring-primary/20";
+
+  const categoryContent = (columns: boolean) => (
+    <div
+      className={
+        columns ? "grid grid-cols-2 gap-x-2 gap-y-0.5" : "space-y-0.5"
+      }>
+      {categories.map((cat) => {
+        const keyVal = cat.slug || cat.uuid || cat.id;
+        return (
+          <FilterCheckbox
+            key={keyVal}
+            label={cat.label}
+            checked={selectedCategories.includes(keyVal)}
+            onChange={() => toggleCategory(keyVal)}
+          />
+        );
+      })}
+    </div>
+  );
+
+  const priceContent = (sideBySide: boolean) => (
+    <>
+      <div
+        className={`grid gap-2 ${sideBySide ? "grid-cols-2" : "grid-cols-1"}`}>
+        <input
+          type="number"
+          min={0}
+          step={currency === "USD" ? 1 : 10000}
+          placeholder="Minimum"
+          value={minPriceInput}
+          onChange={(e) => handleMinPriceChange(e.target.value)}
+          className={priceInputClass}
+        />
+        <input
+          type="number"
+          min={0}
+          step={currency === "USD" ? 1 : 10000}
+          placeholder="Maksimum"
+          value={maxPriceInput}
+          onChange={(e) => handleMaxPriceChange(e.target.value)}
+          className={priceInputClass}
+        />
+      </div>
+      <p className="mt-2 text-[11px] text-text-secondary">{priceSummary}</p>
+    </>
+  );
+
+  // Desktop: dropdown. Mobile: langsung grid warna agar tidak butuh ruang ekstra.
+  const colorContent = (asGrid: boolean) =>
+    asGrid ? (
+      <div className="grid grid-cols-2 gap-1.5">
+        {COLOR_OPTIONS.map((color) => {
+          const isSelected = selectedColors.includes(color.label);
+          return (
+            <button
+              key={color.label}
+              type="button"
+              onClick={() => toggleColor(color.label)}
+              aria-pressed={isSelected}
+              className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left text-xs transition-colors ${
+                isSelected
+                  ? "border-primary bg-primary/10 text-text"
+                  : "border-border bg-background text-text hover:border-primary"
+              }`}>
+              <span
+                style={{ backgroundColor: color.hex }}
+                className="h-4 w-4 shrink-0 rounded-sm border border-border"></span>
+              <span className="flex-1 truncate">{color.label}</span>
+              {isSelected && (
+                <Check className="h-3.5 w-3.5 text-primary" strokeWidth={3} />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    ) : (
+      <div className="relative">
+        <button
+          type="button"
+          aria-expanded={isColorDropdownOpen}
+          onClick={() => setIsColorDropdownOpen((prev) => !prev)}
+          className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-left text-xs text-text transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
+          <span className="truncate">
+            {selectedColors.length > 0
+              ? selectedColors.join(", ")
+              : "Pilih warna"}
+          </span>
+          <ChevronDown
+            className={`ml-2 h-4 w-4 shrink-0 text-text-secondary transition-transform ${
+              isColorDropdownOpen ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+        {isColorDropdownOpen && (
+          <div className="mt-1 space-y-0.5 rounded-md border border-border bg-background p-1">
+            {COLOR_OPTIONS.map((color) => {
+              const isSelected = selectedColors.includes(color.label);
+              return (
+                <button
+                  key={color.label}
+                  type="button"
+                  onClick={() => toggleColor(color.label)}
+                  aria-pressed={isSelected}
+                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs text-text transition-colors hover:bg-surface">
+                  <span
+                    style={{ backgroundColor: color.hex }}
+                    className={`h-4 w-4 shrink-0 rounded-sm border ${
+                      isSelected ? "border-primary" : "border-border"
+                    }`}></span>
+                  <span className="flex-1">{color.label}</span>
+                  {isSelected && (
+                    <Check
+                      className="h-3.5 w-3.5 text-primary"
+                      strokeWidth={3}
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+
+  const sizeContent = (
+    <div className="flex flex-wrap gap-2">
+      {SIZE_OPTIONS.map((size) => (
+        <button
+          key={size}
+          type="button"
+          onClick={() => toggleSize(size)}
+          className={`min-w-10 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+            selectedSizes.includes(size)
+              ? "border-primary bg-primary text-white shadow-sm"
+              : "border-border bg-background text-text hover:border-primary hover:text-primary"
+          }`}>
+          {size}
+        </button>
+      ))}
+    </div>
+  );
+
+  const useCaseContent = (
+    <div className="space-y-0.5">
+      {USE_CASE_OPTIONS.map((useCase) => (
+        <FilterCheckbox
+          key={useCase}
+          label={useCase}
+          checked={selectedUseCases.includes(useCase)}
+          onChange={() => toggleUseCase(useCase)}
+        />
+      ))}
+    </div>
+  );
+
+  const styleContent = (
+    <div className="flex flex-wrap gap-2">
+      {STYLE_OPTIONS.map((style) => (
+        <button
+          key={style}
+          type="button"
+          onClick={() => toggleStyle(style)}
+          className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all ${
+            selectedStyles.includes(style)
+              ? "border-primary bg-primary text-white shadow-sm"
+              : "border-border bg-background text-text hover:border-primary hover:text-primary"
+          }`}>
+          {style}
+        </button>
+      ))}
+    </div>
+  );
+
+  const promoContent = (
+    <FilterCheckbox
+      label="Hanya produk diskon"
+      checked={discountOnly}
+      onChange={() => {
+        setDiscountOnly((prev) => !prev);
+        resetToFirstPage();
+      }}
+    />
+  );
+
+  const filterTabCounts: Record<FilterTabId, number> = {
+    kategori: selectedCategories.length,
+    harga: minPriceInput || maxPriceInput ? 1 : 0,
+    warna: selectedColors.length,
+    ukuran: selectedSizes.length,
+    kegunaan: selectedUseCases.length,
+    style: selectedStyles.length,
+    promo: discountOnly ? 1 : 0,
+  };
+
+  const mobileTabContent: Record<FilterTabId, React.ReactNode> = {
+    kategori: categoryContent(true),
+    harga: priceContent(false),
+    warna: colorContent(true),
+    ukuran: sizeContent,
+    kegunaan: useCaseContent,
+    style: styleContent,
+    promo: promoContent,
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-background transition-colors">
       <MarketplaceHeader />
@@ -534,23 +867,11 @@ export default function HomePage() {
         </button>
 
         <div className="mt-6 flex flex-col gap-8 lg:mt-8 lg:flex-row">
-          <aside
-            className={`${
-              isMobileFilterOpen
-                ? "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 lg:sticky lg:inset-auto lg:top-24 lg:block lg:bg-transparent lg:p-0"
-                : "hidden lg:sticky lg:top-24 lg:block"
-            } w-full shrink-0 lg:h-fit lg:w-64 lg:overflow-clip`}
-            onClick={() => setIsMobileFilterOpen(false)}
-            role={isMobileFilterOpen ? "dialog" : undefined}
-            aria-modal={isMobileFilterOpen}
-            aria-labelledby="catalog-filter-title">
-            <div
-              className={`max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-background p-4 shadow-xl lg:max-h-[calc(100vh-7rem)] lg:max-w-none lg:rounded-none lg:p-0 lg:shadow-none`}
-              onClick={(event) => event.stopPropagation()}>
+          {/* ================= Sidebar filter (desktop) ================= */}
+          <aside className="hidden w-64 shrink-0 lg:sticky lg:top-24 lg:block lg:h-fit lg:overflow-clip">
+            <div className="lg:max-h-[calc(100vh-7rem)] overflow-y-auto">
               <div className="mb-4 flex items-center justify-between">
-                <h2
-                  id="catalog-filter-title"
-                  className="flex items-center gap-2 text-sm font-bold text-text">
+                <h2 className="flex items-center gap-2 text-sm font-bold text-text">
                   <SlidersHorizontal className="h-4 w-4 text-primary" />
                   Filter
                 </h2>
@@ -566,161 +887,15 @@ export default function HomePage() {
               </div>
 
               <FilterSection title="Kategori" count={selectedCategories.length}>
-                <div className="space-y-0.5">
-                  {categories.map((cat) => {
-                    const keyVal = cat.slug || cat.uuid || cat.id;
-                    return (
-                      <FilterCheckbox
-                        key={keyVal}
-                        label={cat.label}
-                        checked={selectedCategories.includes(keyVal)}
-                        onChange={() => toggleCategory(keyVal)}
-                      />
-                    );
-                  })}
-                </div>
+                {categoryContent(false)}
               </FilterSection>
 
               <FilterSection title="Rentang Harga">
-                <div className="grid grid-cols-1 gap-2">
-                  <input
-                    type="number"
-                    min={0}
-                    step={currency === "USD" ? 1 : 10000}
-                    placeholder="Minimum"
-                    value={minPriceInput}
-                    onChange={(e) => {
-                      const nextValue = e.target.value;
-                      const nextMin = nextValue === "" ? 0 : Number(nextValue);
-                      setMinPriceInput(nextValue);
-
-                      const finalMin = Number.isFinite(nextMin)
-                        ? Math.max(0, nextMin)
-                        : 0;
-                      const finalMax = maxPriceInput
-                        ? Number(maxPriceInput)
-                        : priceRangeDefaults[1];
-
-                      setPriceRange(
-                        normalizePriceRange(
-                          finalMin,
-                          finalMax,
-                          priceRangeDefaults[1],
-                        ),
-                      );
-                      resetToFirstPage();
-                    }}
-                    className="w-full min-w-0 rounded-md border border-border bg-background px-3 py-2 text-xs text-text outline-none transition-colors placeholder:text-text-secondary/70 focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  />
-                  <input
-                    type="number"
-                    min={0}
-                    step={currency === "USD" ? 1 : 10000}
-                    placeholder="Maksimum"
-                    value={maxPriceInput}
-                    onChange={(e) => {
-                      const nextValue = e.target.value;
-                      const nextMax =
-                        nextValue === ""
-                          ? priceRangeDefaults[1]
-                          : Number(nextValue);
-                      setMaxPriceInput(nextValue);
-
-                      const finalMin = minPriceInput
-                        ? Number(minPriceInput)
-                        : 0;
-                      const finalMax = Number.isFinite(nextMax)
-                        ? Math.max(0, nextMax)
-                        : priceRangeDefaults[1];
-
-                      setPriceRange(
-                        normalizePriceRange(
-                          finalMin,
-                          finalMax,
-                          priceRangeDefaults[1],
-                        ),
-                      );
-                      resetToFirstPage();
-                    }}
-                    className="w-full min-w-0 rounded-md border border-border bg-background px-3 py-2 text-xs text-text outline-none transition-colors placeholder:text-text-secondary/70 focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-                <p className="mt-2 text-[11px] text-text-secondary">
-                  {minPriceInput || maxPriceInput
-                    ? currency === "USD" && rate
-                      ? `$${Math.min(
-                          Number(minPriceInput || 0),
-                          Number(maxPriceInput || priceRangeDefaults[1]),
-                        ).toLocaleString("en-US", {
-                          maximumFractionDigits: 2,
-                        })} — $${Math.max(
-                          Number(minPriceInput || 0),
-                          Number(maxPriceInput || priceRangeDefaults[1]),
-                        ).toLocaleString("en-US", {
-                          maximumFractionDigits: 2,
-                        })}`
-                      : `${formatRupiah(
-                          Math.min(
-                            Number(minPriceInput || 0),
-                            Number(maxPriceInput || priceRangeDefaults[1]),
-                          ),
-                        )} — ${formatRupiah(
-                          Math.max(
-                            Number(minPriceInput || 0),
-                            Number(maxPriceInput || priceRangeDefaults[1]),
-                          ),
-                        )}`
-                    : "Pilih rentang harga sesuai kebutuhan"}
-                </p>
+                {priceContent(false)}
               </FilterSection>
 
               <FilterSection title="Warna" count={selectedColors.length}>
-                <div className="relative">
-                  <button
-                    type="button"
-                    aria-expanded={isColorDropdownOpen}
-                    onClick={() => setIsColorDropdownOpen((prev) => !prev)}
-                    className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-left text-xs text-text transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
-                    <span className="truncate">
-                      {selectedColors.length > 0
-                        ? selectedColors.join(", ")
-                        : "Pilih warna"}
-                    </span>
-                    <ChevronDown
-                      className={`ml-2 h-4 w-4 shrink-0 text-text-secondary transition-transform ${
-                        isColorDropdownOpen ? "rotate-180" : ""
-                      }`}
-                    />
-                  </button>
-                  {isColorDropdownOpen && (
-                    <div className="mt-1 space-y-0.5 rounded-md border border-border bg-background p-1">
-                      {COLOR_OPTIONS.map((color) => {
-                        const isSelected = selectedColors.includes(color.label);
-                        return (
-                          <button
-                            key={color.label}
-                            type="button"
-                            onClick={() => toggleColor(color.label)}
-                            aria-pressed={isSelected}
-                            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs text-text transition-colors hover:bg-surface">
-                            <span
-                              style={{ backgroundColor: color.hex }}
-                              className={`h-4 w-4 shrink-0 rounded-sm border ${
-                                isSelected ? "border-primary" : "border-border"
-                              }`}></span>
-                            <span className="flex-1">{color.label}</span>
-                            {isSelected && (
-                              <Check
-                                className="h-3.5 w-3.5 text-primary"
-                                strokeWidth={3}
-                              />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                {colorContent(false)}
               </FilterSection>
 
               <FilterSection
@@ -728,21 +903,7 @@ export default function HomePage() {
                 count={selectedSizes.length}
                 isOpen={isSizeFilterOpen}
                 onToggle={() => setIsSizeFilterOpen((prev) => !prev)}>
-                <div className="flex flex-wrap gap-2">
-                  {SIZE_OPTIONS.map((size) => (
-                    <button
-                      key={size}
-                      type="button"
-                      onClick={() => toggleSize(size)}
-                      className={`min-w-10 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
-                        selectedSizes.includes(size)
-                          ? "border-primary bg-primary text-white shadow-sm"
-                          : "border-border bg-background text-text hover:border-primary hover:text-primary"
-                      }`}>
-                      {size}
-                    </button>
-                  ))}
-                </div>
+                {sizeContent}
               </FilterSection>
 
               <FilterSection
@@ -750,16 +911,7 @@ export default function HomePage() {
                 count={selectedUseCases.length}
                 isOpen={isUseCaseFilterOpen}
                 onToggle={() => setIsUseCaseFilterOpen((prev) => !prev)}>
-                <div className="space-y-0.5">
-                  {USE_CASE_OPTIONS.map((useCase) => (
-                    <FilterCheckbox
-                      key={useCase}
-                      label={useCase}
-                      checked={selectedUseCases.includes(useCase)}
-                      onChange={() => toggleUseCase(useCase)}
-                    />
-                  ))}
-                </div>
+                {useCaseContent}
               </FilterSection>
 
               <FilterSection
@@ -767,42 +919,130 @@ export default function HomePage() {
                 count={selectedStyles.length}
                 isOpen={isStyleFilterOpen}
                 onToggle={() => setIsStyleFilterOpen((prev) => !prev)}>
-                <div className="flex flex-wrap gap-2">
-                  {STYLE_OPTIONS.map((style) => (
-                    <button
-                      key={style}
-                      type="button"
-                      onClick={() => toggleStyle(style)}
-                      className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all ${
-                        selectedStyles.includes(style)
-                          ? "border-primary bg-primary text-white shadow-sm"
-                          : "border-border bg-background text-text hover:border-primary hover:text-primary"
-                      }`}>
-                      {style}
-                    </button>
-                  ))}
-                </div>
+                {styleContent}
               </FilterSection>
 
-              <FilterSection title="Promo">
-                <FilterCheckbox
-                  label="Hanya produk diskon"
-                  checked={discountOnly}
-                  onChange={() => {
-                    setDiscountOnly((prev) => !prev);
-                    resetToFirstPage();
-                  }}
-                />
-              </FilterSection>
-
-              <button
-                type="button"
-                onClick={() => setIsMobileFilterOpen(false)}
-                className="mt-2 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 lg:hidden">
-                OK
-              </button>
+              <FilterSection title="Promo">{promoContent}</FilterSection>
             </div>
           </aside>
+
+          {/* ================= Modal filter (mobile, per tab) ================= */}
+          {isMobileFilterOpen && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 lg:hidden"
+              onClick={() => setIsMobileFilterOpen(false)}>
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="catalog-filter-title"
+                onClick={(event) => event.stopPropagation()}
+                className="flex max-h-[90dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-background shadow-xl">
+                {/* Header */}
+                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3">
+                  <h2
+                    id="catalog-filter-title"
+                    className="flex items-center gap-2 text-sm font-bold text-text">
+                    <SlidersHorizontal className="h-4 w-4 text-primary" />
+                    Filter
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    {hasActiveFilters ? (
+                      <button
+                        type="button"
+                        onClick={handleClearFilters}
+                        className="flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20">
+                        <X className="h-3 w-3" />
+                        Hapus
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setIsMobileFilterOpen(false)}
+                      aria-label="Tutup filter"
+                      className="rounded-full p-1 text-text-secondary hover:bg-surface hover:text-text">
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tab: 1 baris, digeser ke kiri/kanan (scrollbar disembunyikan) */}
+                <div
+                  ref={tabListRef}
+                  role="tablist"
+                  aria-label="Kelompok filter"
+                  onMouseDown={handleTabListMouseDown}
+                  onWheel={(e) => {
+                    if (e.deltaX === 0 && tabListRef.current) {
+                      tabListRef.current.scrollLeft += e.deltaY;
+                    }
+                  }}
+                  className="flex shrink-0 cursor-grab select-none flex-nowrap gap-1.5 overflow-x-auto overscroll-x-contain border-b border-border px-4 py-3 [-ms-overflow-style:none] [scrollbar-width:none] [touch-action:pan-x] active:cursor-grabbing [&::-webkit-scrollbar]:hidden">
+                  {FILTER_TABS.map((tab) => {
+                    const isActive = activeFilterTab === tab.id;
+                    const count = filterTabCounts[tab.id];
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        role="tab"
+                        id={`filter-tab-${tab.id}`}
+                        aria-selected={isActive}
+                        aria-controls="filter-tabpanel"
+                        onClick={(event) => {
+                          if (tabDragRef.current.moved) return;
+                          setActiveFilterTab(tab.id);
+                          event.currentTarget.scrollIntoView({
+                            behavior: "smooth",
+                            inline: "center",
+                            block: "nearest",
+                          });
+                        }}
+                        className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                          isActive
+                            ? "border-primary bg-primary text-white"
+                            : "border-border bg-surface text-text hover:border-primary"
+                        }`}>
+                        {tab.label}
+                        {count > 0 && (
+                          <span
+                            className={`flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold ${
+                              isActive
+                                ? "bg-white text-primary"
+                                : "bg-primary text-white"
+                            }`}>
+                            {count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Isi tab aktif. overflow-y-auto hanya jaring pengaman untuk layar sangat pendek. */}
+                <div
+                  id="filter-tabpanel"
+                  role="tabpanel"
+                  aria-labelledby={`filter-tab-${activeFilterTab}`}
+                  className="min-h-[11rem] flex-1 overflow-y-auto px-4 py-3">
+                  {mobileTabContent[activeFilterTab]}
+                </div>
+
+                {/* Footer */}
+                <div className="shrink-0 border-t border-border p-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsMobileFilterOpen(false)}
+                    className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90">
+                    {isLoading
+                      ? "Memuat produk..."
+                      : serverTotal > 0
+                        ? `Tampilkan ${serverTotal} Produk`
+                        : "Tidak ada produk yang cocok"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="hidden w-px bg-border lg:block" />
 
@@ -949,7 +1189,8 @@ export default function HomePage() {
                           </h2>
                         </div>
                         <p className="mt-1 text-xs text-text-secondary sm:text-sm">
-                          Rekomendasi berdasarkan pencarian &quot;{searchQuery}&quot;
+                          Rekomendasi berdasarkan pencarian &quot;{searchQuery}
+                          &quot;
                         </p>
                       </div>
                       <Link

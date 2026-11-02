@@ -48,6 +48,10 @@ import { websocketService } from "@/lib/websocket";
 import { showToast } from "@/lib/toast";
 import { usePageSettings } from "@/hooks/usePageSettings";
 import { useLoyalties } from "@/lib/loyalty";
+import {
+  saveCheckoutOrderState,
+  type CheckoutOrderState,
+} from "@/lib/checkoutFlow";
 
 export interface ShippingMethod {
   id: string;
@@ -98,6 +102,23 @@ export interface ActiveTax {
   status?: string;
 }
 
+const DEMO_MANUAL_PAYMENT_METHOD: GatewayPaymentMethod = {
+  uuid: "demo-manual-transfer",
+  gateway_code: "manual",
+  code: "demo-bank-transfer",
+  name: "Transfer Bank (Demo)",
+  category: "BANK_TRANSFER",
+  is_enabled: true,
+  fee_type: "FIXED",
+  additional_fee: 0,
+  default_gateway_fee: 0,
+  bank_name: "Bank Demo",
+  account_number: "0000000000",
+  account_holder: "DEMO - Tidak menerima pembayaran",
+  instructions:
+    "Metode demo untuk menguji alur checkout. Jangan transfer ke rekening ini.",
+};
+
 const SHIPPING_METHODS: ShippingMethod[] = [
   { id: "standard", label: "Standard", eta: "3-5 hari kerja", cost: 8000, courier_name: "Internal" },
   { id: "express", label: "Express", eta: "1-2 hari kerja", cost: 25000, courier_name: "Internal Express" },
@@ -145,6 +166,7 @@ interface CheckoutItem {
   productId: string;
   name: string;
   variant: string;
+  variantUuid?: string;
   image?: string;
   basePrice: number;
   comparePrice?: number;
@@ -152,18 +174,32 @@ interface CheckoutItem {
   selected: true;
 }
 
+interface ActiveVoucherResponse {
+  uuid?: string;
+  id?: string;
+  code: string;
+  description?: string;
+  voucher_type: string;
+  discount_value: number | string;
+  max_discount_amount?: number | string | null;
+  min_purchase_amount?: number | string | null;
+  valid_to_date?: string | null;
+}
+
 export default function CheckoutPage() {
   const { user } = useAuth();
   const { settingsMap } = usePageSettings();
   const { tiers: loyaltyTiers } = useLoyalties();
-  const { formatPrice } = useCurrency();
+  const { currency, rate, error: currencyError, formatPrice } = useCurrency();
   const location = useLocation();
   const navigate = useNavigate();
   const navigationBlocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
       currentLocation.pathname === "/checkout" &&
       nextLocation.pathname !== currentLocation.pathname &&
-      nextLocation.pathname !== "/payment-success",
+      nextLocation.pathname !== "/payment-success" &&
+      nextLocation.pathname !== "/waiting-confirmation" &&
+      nextLocation.pathname !== "/upload-payment-proof",
   );
   const { items, clearSelected } = useCart();
 
@@ -208,8 +244,12 @@ export default function CheckoutPage() {
     useState<string>("standard");
   const [availableShippingMethods, setAvailableShippingMethods] =
     useState<ShippingMethod[]>(SHIPPING_METHODS);
-  const [paymentMethods, setPaymentMethods] = useState<GatewayPaymentMethod[]>([]);
-  const [selectedPaymentMethodUuid, setSelectedPaymentMethodUuid] = useState<string>("");
+  const [paymentMethods, setPaymentMethods] = useState<GatewayPaymentMethod[]>([
+    DEMO_MANUAL_PAYMENT_METHOD,
+  ]);
+  const [selectedPaymentMethodUuid, setSelectedPaymentMethodUuid] = useState(
+    DEMO_MANUAL_PAYMENT_METHOD.uuid,
+  );
   const [copiedAccount, setCopiedAccount] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<FormErrors>({});
 
@@ -318,10 +358,12 @@ export default function CheckoutPage() {
     let cancelled = false;
     async function loadActiveVouchers() {
       try {
-        const res = await api.get("/ecommerce/vouchers/active");
+        const res = await api.get<{ data?: ActiveVoucherResponse[] }>(
+          "/ecommerce/vouchers/active",
+        );
         const list = res.data?.data;
         if (Array.isArray(list) && !cancelled) {
-          const mapped: Voucher[] = list.map((v: any) => {
+          const mapped: Voucher[] = list.map((v) => {
             const isPercentage = v.voucher_type === "percentage";
             const discountValue = Number(v.discount_value) || 0;
             const maxDiscount = v.max_discount_amount !== null && v.max_discount_amount !== undefined
@@ -441,10 +483,26 @@ export default function CheckoutPage() {
         if (!cancelled && payRes.status === "fulfilled") {
           const list: GatewayPaymentMethod[] = payRes.value.data?.data || [];
           if (Array.isArray(list) && list.length > 0) {
-            setPaymentMethods(list);
+            const hasManualMethod = list.some(
+              (method) =>
+                method.gateway_code === "manual" ||
+                method.category === "BANK_TRANSFER",
+            );
+            const methods = hasManualMethod
+              ? list
+              : [...list, DEMO_MANUAL_PAYMENT_METHOD];
+            setPaymentMethods(methods);
             setSelectedPaymentMethodUuid((prev) => {
-              if (prev && list.some((p) => p.uuid === prev)) return prev;
-              return list[0].uuid;
+              if (prev && methods.some((method) => method.uuid === prev)) {
+                return prev;
+              }
+              return (
+                methods.find(
+                  (method) =>
+                    method.gateway_code === "manual" ||
+                    method.category === "BANK_TRANSFER",
+                )?.uuid ?? methods[0].uuid
+              );
             });
           }
         }
@@ -613,6 +671,7 @@ export default function CheckoutPage() {
         };
         quantity: number;
         variant?: string;
+        variantUuid?: string;
       }
     | undefined;
 
@@ -625,6 +684,7 @@ export default function CheckoutPage() {
               productId: immediateBuy.product.id,
               name: immediateBuy.product.name,
               variant: immediateBuy.variant ?? "Varian standar",
+              variantUuid: immediateBuy.variantUuid,
               image: immediateBuy.product.image,
               basePrice: immediateBuy.product.basePrice,
               comparePrice: immediateBuy.product.comparePrice,
@@ -639,6 +699,7 @@ export default function CheckoutPage() {
               productId: item.productId,
               name: item.name,
               variant: item.variant,
+              variantUuid: item.variantUuid,
               image: item.image,
               basePrice: item.basePrice,
               comparePrice: item.comparePrice,
@@ -780,7 +841,7 @@ export default function CheckoutPage() {
   }, [selectedPaymentMethod, totalHarga]);
 
   const isManualFallback = useMemo(() => {
-    if (paymentMethods.length === 0) return false;
+    if (paymentMethods.length === 0) return true;
     return paymentMethods.every(
       (p) => p.gateway_code === "manual" || p.category === "BANK_TRANSFER",
     );
@@ -839,18 +900,40 @@ export default function CheckoutPage() {
       );
       return;
     }
+    if (currency === "USD" && !rate) {
+      alert(currencyError ?? "Kurs USD belum tersedia. Silakan coba lagi nanti.");
+      return;
+    }
+    if (!selectedPaymentMethod && !isManualFallback) {
+      alert(
+        "Metode pembayaran belum tersedia dari API. Silakan coba lagi nanti.",
+      );
+      return;
+    }
+    if (
+      selectedPaymentMethod &&
+      selectedPaymentMethod.gateway_code !== "manual" &&
+      selectedPaymentMethod.category !== "BANK_TRANSFER"
+    ) {
+      alert(
+        "API saat ini belum menyediakan endpoint untuk memulai pembayaran gateway ini. Pilih transfer bank manual.",
+      );
+      return;
+    }
     if (!validate()) return;
 
     setIsSubmitting(true);
 
-    const purchasedProductIds = selectedItems.map((item) => item.productId);
     const isManualOrder =
-      isManualFallback || selectedPaymentMethod?.gateway_code === "manual";
+      isManualFallback ||
+      selectedPaymentMethod?.gateway_code === "manual" ||
+      selectedPaymentMethod?.category === "BANK_TRANSFER";
 
-    const recordLocalOrder = (orderId: string) => {
+    const recordLocalOrder = (orderId: string, orderUuid?: string) => {
       try {
         saveOrder({
           id: orderId,
+          uuid: orderUuid,
           status: isManualOrder ? "pending_payment" : "processing",
           payment: selectedPaymentMethod
             ? {
@@ -895,43 +978,56 @@ export default function CheckoutPage() {
       }
     };
 
-    const navigateToSuccess = (orderId: string) => {
+    const navigateToPaymentProof = (
+      orderId: string,
+      orderUuid?: string,
+    ) => {
       if (!immediateBuy) {
         clearSelected();
       }
 
-      navigate("/payment-success", {
-        state: {
-          totalPaid: totalTagihan,
-          paymentMethod: selectedPaymentMethod,
-          isManual: isManualOrder,
-          paymentFee: paymentFee,
-          itemIds: purchasedProductIds,
-          orderId: orderId,
-          items: selectedItems.map((item) => ({
-            productId: item.productId,
-            name: item.name,
-            variant: item.variant,
-            quantity: item.quantity,
-            price: item.basePrice,
-            image: item.image,
-          })),
-          subtotal: totalHarga,
-          packagingFee: shippingCost,
-          taxAmount: taxTotal,
-          taxLabel: taxLines.length > 0 ? `${taxLines[0].name} (${taxLines[0].ratePercent}%)` : "Pajak (PPN)",
-          discountAmount,
-          voucherCode: selectedVoucher?.code,
-          loyaltyPointsEarned,
-          estimatedDeliveryLabel,
-          customer: {
-            name: user?.full_name || "Pelanggan",
-            email: user?.email || "",
-            phone:
-              selectedAddress?.phone || user?.phone || "+62 812 3456 7890",
-          },
+      const state: CheckoutOrderState = {
+        totalPaid: totalTagihan,
+        paymentMethod: selectedPaymentMethod,
+        currency,
+        exchangeRate: rate,
+        isManual: isManualOrder,
+        orderId,
+        orderUuid,
+        invoiceDate: new Date().toLocaleString("id-ID", {
+          day: "numeric",
+          month: "numeric",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        }),
+        subtotal: totalHarga,
+        packagingFee:
+          shippingCost + protectionCost + insuranceCost + paymentFee,
+        taxAmount: taxTotal,
+        taxLabel: taxLines.map((tax) => tax.name).join(", ") || undefined,
+        discountAmount,
+        voucherCode: selectedVoucher?.code,
+        customer: {
+          name:
+            selectedAddress?.recipientName || user?.full_name || "Pelanggan",
+          email: user?.email || "-",
+          phone:
+            selectedAddress?.phone || user?.phone || "+62 812 3456 7890",
         },
-      });
+        items: selectedItems.map((item) => ({
+          productId: item.productId,
+          name: item.name,
+          variant: item.variant,
+          quantity: item.quantity,
+          price: item.basePrice,
+          image: item.image,
+        })),
+        loyaltyPointsEarned,
+      };
+      saveCheckoutOrderState(state);
+      navigate("/upload-payment-proof", { state });
     };
 
     try {
@@ -957,12 +1053,7 @@ export default function CheckoutPage() {
         voucher_code: selectedVoucher?.code || undefined,
         items: selectedItems.map((item) => ({
           product_id: item.productId,
-          variant_id:
-            item.variant &&
-            item.variant !== "Varian standar" &&
-            item.variant !== "Standar"
-              ? item.variant
-              : undefined,
+          variant_uuid: item.variantUuid,
           quantity: item.quantity,
         })),
       };
@@ -971,9 +1062,10 @@ export default function CheckoutPage() {
       const orderData = res.data?.data;
       const createdOrderId =
         orderData?.order_number || orderData?.uuid || orderData?.id || `ORD-${Date.now()}`;
+      const createdOrderUuid = orderData?.uuid;
 
-      recordLocalOrder(createdOrderId);
-      navigateToSuccess(createdOrderId);
+      recordLocalOrder(createdOrderId, createdOrderUuid);
+      navigateToPaymentProof(createdOrderId, createdOrderUuid);
     } catch (err: unknown) {
       console.error(err);
       const axiosErr = err as {
@@ -983,23 +1075,6 @@ export default function CheckoutPage() {
         axiosErr.response?.data?.error ||
         axiosErr.response?.data?.message ||
         "";
-
-      // If backend reports product not found (e.g. static mock catalog product) or 401 in demo mode,
-      // fall back gracefully to local order creation so user experience is not blocked
-      const isProductNotFound = errorMessage.toLowerCase().includes("product not found");
-      const isAuthError = axiosErr.response?.status === 401;
-
-      if (isProductNotFound || isAuthError) {
-        console.warn(
-          "Backend order failed with:",
-          errorMessage,
-          "- Falling back to local order completion.",
-        );
-        const fallbackOrderId = `ORD-${Date.now().toString(36).toUpperCase()}`;
-        recordLocalOrder(fallbackOrderId);
-        navigateToSuccess(fallbackOrderId);
-        return;
-      }
 
       alert(errorMessage || "Gagal membuat pesanan. Pastikan koneksi stabil.");
     } finally {
@@ -1528,13 +1603,15 @@ export default function CheckoutPage() {
                   </h2>
                 </div>
 
-                {isManualFallback && (
+                {(isManualFallback ||
+                  selectedPaymentMethod?.uuid ===
+                    DEMO_MANUAL_PAYMENT_METHOD.uuid) && (
                   <div className="mt-3 flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200">
                     <Info className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
                     <div>
                       <p className="font-semibold">Mode Transfer Bank Manual Aktif</p>
                       <p className="mt-0.5 text-text-secondary text-[11px]">
-                        Gateway otomatis belum aktif. Lakukan transfer ke salah satu rekening resmi kami di bawah ini dan unggah bukti bayar setelah checkout.
+                        Metode transfer demo tersedia untuk pengujian. Jangan lakukan transfer sungguhan ke rekening demo.
                       </p>
                     </div>
                   </div>
@@ -1631,28 +1708,10 @@ export default function CheckoutPage() {
                       );
                     })
                   ) : (
-                    [
-                      "BCA Virtual Account",
-                      "BRI Virtual Account",
-                      "Alfamart",
-                    ].map((method) => (
-                      <label
-                        key={method}
-                        className="flex cursor-pointer items-center justify-between rounded-lg border border-border px-3 py-3 text-sm text-text">
-                        <span className="flex items-center gap-3">
-                          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-background">
-                            <Building2 className="h-4 w-4 text-text-secondary" />
-                          </span>
-                          {method}
-                        </span>
-                        <input
-                          type="radio"
-                          name="payment-method"
-                          className="h-4 w-4 accent-primary"
-                          defaultChecked={method === "BCA Virtual Account"}
-                        />
-                      </label>
-                    ))
+                    <p className="rounded-lg border border-border px-3 py-3 text-xs text-text-secondary">
+                      Metode pembayaran belum tersedia. Muat ulang halaman atau
+                      hubungi admin toko.
+                    </p>
                   )}
                 </div>
               </div>

@@ -3,6 +3,7 @@ import type { Product } from "@/lib/products";
 export type OrderStatus =
   | "pending_payment"
   | "paid"
+  | "waiting_confirmation"
   | "processing"
   | "shipping"
   | "completed"
@@ -30,6 +31,12 @@ export const ORDER_STATUS_CONFIG: Record<
     filterLabel: "Dibayar",
     badgeClassName: "bg-secondary/15 text-secondary",
     showInFilter: false,
+  },
+  waiting_confirmation: {
+    label: "Menunggu Konfirmasi",
+    filterLabel: "Menunggu Konfirmasi",
+    badgeClassName: "bg-amber-500/15 text-amber-700",
+    showInFilter: true,
   },
   processing: {
     label: "Sedang Dikemas",
@@ -71,6 +78,11 @@ export interface OrderItem {
   unit_price: number;
   quantity: number;
   image?: string;
+  review?: {
+    rating: number;
+    comment: string;
+    createdAt: string;
+  };
 }
 
 export interface TrackingStep {

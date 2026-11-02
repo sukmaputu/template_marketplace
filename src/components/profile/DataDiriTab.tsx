@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { AtSign, Mail, Phone, Save, User, Loader2 } from "lucide-react";
 import { useAuth } from "@/components/auth/UseAuth";
 import { showToast } from "@/lib/toast";
@@ -14,17 +14,6 @@ export function DataDiriTab() {
     phone: user?.phone || "",
     email: user?.email || "",
   });
-
-  useEffect(() => {
-    if (user) {
-      setFormData({
-        full_name: user.full_name || "",
-        username: user.username || "",
-        phone: user.phone || "",
-        email: user.email || "",
-      });
-    }
-  }, [user]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -60,22 +49,29 @@ export function DataDiriTab() {
     {
       label: "Nama Lengkap",
       name: "full_name",
-      value: formData.full_name,
+      value: isEditing ? formData.full_name : user?.full_name || "",
       icon: User,
     },
     {
       label: "Username",
       name: "username",
-      value: formData.username || "Belum diatur",
+      value: isEditing
+        ? formData.username || "Belum diatur"
+        : user?.username || "Belum diatur",
       icon: AtSign,
     },
     {
       label: "No. Telepon",
       name: "phone",
-      value: formData.phone || "Belum diatur",
+      value: isEditing ? formData.phone || "Belum diatur" : user?.phone || "Belum diatur",
       icon: Phone,
     },
-    { label: "Alamat Email", name: "email", value: formData.email, icon: Mail },
+    {
+      label: "Alamat Email",
+      name: "email",
+      value: user?.email || "",
+      icon: Mail,
+    },
   ];
 
   return (
@@ -98,9 +94,10 @@ export function DataDiriTab() {
                   type="text"
                   name={name}
                   value={value === "Belum diatur" ? "" : value}
+                  disabled={name === "email"}
                   onChange={handleInputChange}
                   placeholder={`Masukkan ${label}`}
-                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-text focus:border-primary focus:outline-none"
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-text focus:border-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                 />
               ) : (
                 <p className="text-sm font-medium text-text">{value}</p>
@@ -113,7 +110,15 @@ export function DataDiriTab() {
       <div className="mt-6 flex gap-2">
         {!isEditing ? (
           <button
-            onClick={() => setIsEditing(true)}
+            onClick={() => {
+              setFormData({
+                full_name: user?.full_name || "",
+                username: user?.username || "",
+                phone: user?.phone || "",
+                email: user?.email || "",
+              });
+              setIsEditing(true);
+            }}
             className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90">
             Edit Profil
           </button>

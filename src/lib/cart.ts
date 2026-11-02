@@ -2,7 +2,9 @@ import type { Product, ProductType } from "./products";
 
 export interface CartItem {
   id: string;
+  backendCartItemId?: string;
   productId: string;
+  variantUuid?: string;
   name: string;
   type: ProductType;
   variant: string;
@@ -31,6 +33,9 @@ export function createCartItem(
   return {
     id: cartItemId,
     productId: product.id,
+    variantUuid: product.variants?.find(
+      (variant) => variant.variantName === variantName,
+    )?.id,
     name: product.name,
     type: product.type,
     variant: variantName,

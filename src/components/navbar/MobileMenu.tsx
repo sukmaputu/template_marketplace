@@ -10,8 +10,8 @@ import {
   User,
   UserPlus,
   X,
+  ShoppingCart,
 } from "lucide-react";
-import { Dropdown } from "@/components/ui/dropdown";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/components/auth/UseAuth";
 import { CURRENCIES, useCurrency } from "@/components/navbar/CurrencySwitcher";
@@ -54,12 +54,35 @@ export function MobileMenu() {
   const navigate = useNavigate();
   const { currency, setCurrency } = useCurrency();
   const isDark = theme === "dark";
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showConfirmSignOut, setShowConfirmSignOut] = useState(false);
 
   const { announcements, readIds, markRead, markAllRead } = useAnnouncements();
   const [readNotifIds, setReadNotifIds] = useState<Set<string>>(() => getReadNotificationIds());
   const [userOrders, setUserOrders] = useState<Order[]>(() => getStoredOrders());
+
+  useEffect(() => {
+    if (!isMenuOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      if (showNotifications) {
+        setShowNotifications(false);
+      } else {
+        setIsMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isMenuOpen, showNotifications]);
 
   useEffect(() => {
     let cancelled = false;
@@ -170,13 +193,21 @@ export function MobileMenu() {
         : NOTIFICATIONS.map((m) => {
             const idStr = String(m.id).toLowerCase();
             const isRead = readNotifIds.has(idStr) || m.is_read;
+            const notificationType = m.notification_type;
             return {
               id: m.id,
               title: m.title,
               description: m.description,
               time: m.time,
               is_read: isRead,
-              notification_type: (m.notification_type as any) || "system",
+              notification_type:
+                notificationType === "announcement" ||
+                notificationType === "order" ||
+                notificationType === "promo" ||
+                notificationType === "payment" ||
+                notificationType === "system"
+                  ? notificationType
+                  : "system",
             };
           });
 
@@ -226,18 +257,41 @@ export function MobileMenu() {
 
   return (
     <>
-      <Dropdown
-        panelClassName="w-64"
-        trigger={({ toggle }) => (
+      <button
+        type="button"
+        onClick={() => setIsMenuOpen(true)}
+        aria-label="Buka menu"
+        aria-expanded={isMenuOpen}
+        className="rounded-full p-2 text-[color:var(--color-text)] hover:bg-[color:var(--color-border)]/40">
+        <Menu className="h-5 w-5" />
+      </button>
+
+      {isMenuOpen && (
+        <div className="fixed inset-0 z-[60] lg:hidden">
           <button
-            onClick={toggle}
-            aria-label="Menu"
-            className="rounded-full p-2 text-[color:var(--color-text)] hover:bg-[color:var(--color-border)]/40">
-            <Menu className="h-5 w-5" />
-          </button>
-        )}>
-        {({ close }) => (
-          <div className="relative py-2">
+            type="button"
+            aria-label="Tutup menu"
+            onClick={() => setIsMenuOpen(false)}
+            className="absolute inset-0 h-full w-full bg-black/50 animate-in fade-in duration-200"
+          />
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menu navigasi"
+            className="absolute right-0 top-0 flex h-dvh w-[min(88vw,360px)] flex-col border-l border-[color:var(--color-border)] bg-[color:var(--color-surface)] shadow-2xl animate-in slide-in-from-right duration-300">
+            <div className="flex items-center justify-between border-b border-[color:var(--color-border)] px-4 py-4">
+              <span className="text-base font-semibold text-[color:var(--color-text)]">
+                Menu
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsMenuOpen(false)}
+                aria-label="Tutup menu"
+                className="rounded-lg p-2 text-[color:var(--color-text-secondary)] hover:bg-[color:var(--color-background)]">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="relative flex-1 overflow-y-auto py-2">
             {isAuthenticated && (
               <div className="px-4 py-3 mb-1">
                 <p className="text-xs font-semibold text-[color:var(--color-text-secondary)] uppercase tracking-wider">
@@ -291,10 +345,21 @@ export function MobileMenu() {
 
             <div className="my-1 border-t border-[color:var(--color-border)]" />
 
+            <Link
+              to="/cart"
+              onClick={() => setIsMenuOpen(false)}
+              className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-[color:var(--color-text)] hover:bg-[color:var(--color-background)]">
+              <span className="flex items-center gap-3">
+                <ShoppingCart className="h-4 w-4 text-[color:var(--color-text-secondary)]" />
+                Keranjang
+              </span>
+            </Link>
+
             {isAuthenticated ? (
               <>
                 <Link
                   to="/profile"
+                  onClick={() => setIsMenuOpen(false)}
                   className="flex items-center gap-3 px-4 py-2.5 text-sm text-[color:var(--color-text)] hover:bg-[color:var(--color-background)]">
                   <User className="h-4 w-4 text-[color:var(--color-text-secondary)]" />
                   Profil Saya
@@ -319,7 +384,7 @@ export function MobileMenu() {
                 <button
                   type="button"
                   onClick={() => {
-                    close();
+                    setIsMenuOpen(false);
                     setShowConfirmSignOut(true);
                   }}
                   className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-[color:var(--color-background)]">
@@ -331,12 +396,14 @@ export function MobileMenu() {
               <>
                 <Link
                   to="/sign-in"
+                  onClick={() => setIsMenuOpen(false)}
                   className="flex items-center gap-3 px-4 py-2.5 text-sm text-[color:var(--color-text)] hover:bg-[color:var(--color-background)]">
                   <LogIn className="h-4 w-4 text-[color:var(--color-text-secondary)]" />
                   Masuk
                 </Link>
                 <Link
                   to="/sign-up"
+                  onClick={() => setIsMenuOpen(false)}
                   className="flex items-center gap-3 px-4 py-2.5 text-sm text-[color:var(--color-text)] hover:bg-[color:var(--color-background)]">
                   <UserPlus className="h-4 w-4 text-[color:var(--color-text-secondary)]" />
                   Daftar Akun
@@ -345,7 +412,7 @@ export function MobileMenu() {
             )}
 
             {showNotifications && (
-              <div className="absolute right-0 top-0 z-50 flex h-fit w-[280px] sm:w-[320px] flex-col rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] shadow-2xl animate-in fade-in zoom-in duration-200">
+              <div className="absolute inset-0 z-10 flex flex-col bg-[color:var(--color-surface)] animate-in slide-in-from-right duration-200">
                 <div className="flex items-center justify-between border-b border-[color:var(--color-border)] p-3">
                   <span className="text-sm font-bold text-[color:var(--color-text)]">
                     Notifikasi & Pengumuman
@@ -355,11 +422,12 @@ export function MobileMenu() {
                       e.stopPropagation();
                       setShowNotifications(false);
                     }}
+                    aria-label="Kembali ke menu"
                     className="rounded-md p-1 hover:bg-[color:var(--color-background)]">
                     <X className="h-4 w-4 text-[color:var(--color-text-secondary)]" />
                   </button>
                 </div>
-                <div className="max-h-80 overflow-y-auto p-1">
+                <div className="min-h-0 flex-1 overflow-y-auto p-1">
                   <NotificationList
                     notifications={items}
                     onNotificationClick={handleNotificationClick}
@@ -371,8 +439,9 @@ export function MobileMenu() {
 
             <div className="my-1 border-t border-[color:var(--color-border)]" />
           </div>
-        )}
-      </Dropdown>
+          </aside>
+        </div>
+      )}
 
       <ConfirmSignOutModal
         open={showConfirmSignOut}

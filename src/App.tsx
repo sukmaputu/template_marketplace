@@ -14,6 +14,12 @@ const HomePage = lazy(() => import("@/pages/HomePage"));
 const ProfilePage = lazy(() => import("@/pages/ProfilePage"));
 const CartPage = lazy(() => import("@/pages/CartPage"));
 const CheckoutPage = lazy(() => import("@/pages/CheckoutPage"));
+const UploadPaymentProofPage = lazy(
+  () => import("@/pages/UploadPaymentProofPage"),
+);
+const WaitingConfirmationPage = lazy(
+  () => import("@/pages/WaitingConfirmationPage"),
+);
 const MessagePage = lazy(() => import("@/pages/MessagePage"));
 const SignInPage = lazy(() => import("@/pages/Signinpage"));
 const SignUpPage = lazy(() => import("@/pages/Signuppage"));
@@ -75,6 +81,14 @@ export default function App() {
 
                   <Route element={<RequireAuth />}>
                     <Route path="/checkout" element={<CheckoutPage />} />
+                    <Route
+                      path="/upload-payment-proof"
+                      element={<UploadPaymentProofPage />}
+                    />
+                    <Route
+                      path="/waiting-confirmation"
+                      element={<WaitingConfirmationPage />}
+                    />
                     <Route path="/profile" element={<ProfilePage />} />
                   </Route>
 

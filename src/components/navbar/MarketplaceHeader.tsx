@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+} from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Search,
@@ -37,6 +44,10 @@ import {
   clearRecentSearches,
   type Product,
 } from "@/lib/products";
+
+// Di bawah lebar ini (Tailwind `md`), search bar berubah jadi ikon
+// yang melebar saat ditekan.
+const MOBILE_SEARCH_BREAKPOINT = 768;
 
 export function MarketplaceHeader() {
   const { itemCount } = useCart();
@@ -81,6 +92,9 @@ export function MarketplaceHeader() {
     setCategory(urlCategory);
   }
 
+  // isSearchOpen juga dipakai sebagai penanda "search melebar" di mobile:
+  // saat true, logo & tombol di kanan disembunyikan (hanya di bawah md)
+  // dan search bar memenuhi baris header.
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [recentlyViewed, setRecentlyViewed] = useState<Product[]>([]);
   const {
@@ -93,6 +107,7 @@ export function MarketplaceHeader() {
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const searchWrapperRef = useRef<HTMLDivElement>(null);
   const inputColumnRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [dropdownRect, setDropdownRect] = useState<{
     left: number;
     width: number;
@@ -106,8 +121,8 @@ export function MarketplaceHeader() {
       const inputRect = inputColumnRef.current.getBoundingClientRect();
       const wrapperRect = searchWrapperRef.current.getBoundingClientRect();
 
-      // Mobile (< sm): dropdown dibuat selebar viewport dengan jarak 16px kiri-kanan
-      if (window.innerWidth < 640) {
+      // Mobile (< md): dropdown dibuat selebar viewport dengan jarak 16px kiri-kanan
+      if (window.innerWidth < MOBILE_SEARCH_BREAKPOINT) {
         const GAP = 16;
         const viewportWidth = document.documentElement.clientWidth;
         setDropdownRect({
@@ -117,7 +132,7 @@ export function MarketplaceHeader() {
         return;
       }
 
-      // Desktop/tablet: logika lama tetap sama
+      // Desktop/tablet: dropdown mengikuti lebar kolom input
       setDropdownRect({
         left: inputRect.left - wrapperRect.left,
         width: inputRect.width,
@@ -127,6 +142,13 @@ export function MarketplaceHeader() {
     updateDropdownPosition();
     window.addEventListener("resize", updateDropdownPosition);
     return () => window.removeEventListener("resize", updateDropdownPosition);
+  }, [isSearchOpen]);
+
+  // Di mobile, begitu search melebar, langsung fokus ke input agar keyboard muncul
+  useEffect(() => {
+    if (isSearchOpen && window.innerWidth < MOBILE_SEARCH_BREAKPOINT) {
+      inputRef.current?.focus();
+    }
   }, [isSearchOpen]);
 
   useEffect(() => {
@@ -366,8 +388,13 @@ export function MarketplaceHeader() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
-      <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6 lg:px-8">
-        <Link to="/" className="flex shrink-0 items-center gap-2">
+      <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:gap-4 sm:px-6 lg:px-8">
+        {/* Logo: disembunyikan di mobile saat search melebar */}
+        <Link
+          to="/"
+          className={`min-w-0 items-center gap-2 md:flex-none md:shrink-0 ${
+            isSearchOpen ? "hidden md:flex" : "flex flex-1"
+          }`}>
           <img
             src={navbarLogo}
             onError={(e) => {
@@ -375,23 +402,40 @@ export function MarketplaceHeader() {
               e.currentTarget.src = "/logo/logo_nadrical.png";
             }}
             alt={siteTitle || "Logo"}
-            className="h-[var(--logo-nav-h-mobile)] sm:h-[var(--logo-nav-h-desktop)] w-auto object-contain transition-all duration-200"
-            style={{
-              ['--logo-nav-h-mobile' as any]: `${logoNavbarMobileHeightPx || 32}px`,
-              ['--logo-nav-h-desktop' as any]: `${logoNavbarDesktopHeightPx || 40}px`,
-              maxWidth: `${logoMaxWidthPx || 180}px`,
-            }}
+            className="h-[var(--logo-nav-h-mobile)] sm:h-[var(--logo-nav-h-desktop)] w-auto shrink-0 object-contain transition-all duration-200"
+            style={
+              {
+                "--logo-nav-h-mobile": `${logoNavbarMobileHeightPx || 32}px`,
+                "--logo-nav-h-desktop": `${logoNavbarDesktopHeightPx || 40}px`,
+                maxWidth: `${logoMaxWidthPx || 180}px`,
+              } as CSSProperties
+            }
           />
-          <span className="text-lg font-bold tracking-tight text-text">
+          <span className="truncate text-lg font-bold tracking-tight text-text">
             {siteTitle || "Nadrical"}
           </span>
         </Link>
 
-        {/* Wrapper luar: hanya untuk deteksi klik-di-luar, BUKAN pembungkus dropdown */}
-        <div ref={searchWrapperRef} className="relative min-w-0 flex-1">
+        <div
+          ref={searchWrapperRef}
+          className={`relative min-w-0 ${
+            isSearchOpen ? "flex-1" : "md:flex-1"
+          }`}>
+          <button
+            type="button"
+            onClick={() => setIsSearchOpen(true)}
+            aria-label="Buka pencarian"
+            className={`h-10 w-10 items-center justify-center rounded-lg border border-border bg-surface text-text-secondary transition-colors hover:border-primary hover:text-primary md:hidden ${
+              isSearchOpen ? "hidden" : "flex"
+            }`}>
+            <Search className="h-5 w-5" />
+          </button>
+
           <form
             onSubmit={handleSearchSubmit}
-            className="flex flex-1 items-stretch overflow-hidden rounded-lg border border-border bg-surface focus-within:border-primary">
+            className={`flex-1 items-stretch overflow-hidden rounded-lg border border-border bg-surface focus-within:border-primary ${
+              isSearchOpen ? "flex" : "hidden md:flex"
+            }`}>
             <select
               value={category}
               onChange={(e) => handleCategoryChange(e.target.value)}
@@ -406,6 +450,7 @@ export function MarketplaceHeader() {
 
             <div ref={inputColumnRef} className="relative flex-1">
               <input
+                ref={inputRef}
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -434,7 +479,7 @@ export function MarketplaceHeader() {
 
           {isSearchOpen && dropdownRect && (
             <div
-              className="absolute top-full z-50 mt-2 max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-surface p-4 shadow-lg"
+              className="absolute top-full z-50 mt-2 max-h-[70dvh] overflow-y-auto rounded-lg border border-border bg-surface p-4 shadow-lg"
               style={{ left: dropdownRect.left, width: dropdownRect.width }}>
               {trimmedQuery ? (
                 <div>
@@ -697,7 +742,22 @@ export function MarketplaceHeader() {
           )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+        {/* Tombol tutup search (hanya mobile, hanya saat search melebar) */}
+        <button
+          type="button"
+          onClick={() => setIsSearchOpen(false)}
+          aria-label="Tutup pencarian"
+          className={`h-10 w-10 shrink-0 items-center justify-center rounded-lg text-text-secondary hover:bg-border/40 hover:text-text md:hidden ${
+            isSearchOpen ? "flex" : "hidden"
+          }`}>
+          <X className="h-5 w-5" />
+        </button>
+
+        {/* Kanan: disembunyikan di mobile saat search melebar */}
+        <div
+          className={`shrink-0 items-center gap-1 sm:gap-2 ${
+            isSearchOpen ? "hidden md:flex" : "flex"
+          }`}>
           {/* Notifikasi & keranjang disembunyikan di mobile, dipindah ke hamburger menu */}
           <div className="hidden lg:block">
             <NotificationMenu />

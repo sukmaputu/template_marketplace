@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Image,
 } from "@react-pdf/renderer";
+import { formatCheckoutPrice } from "@/lib/checkoutFlow";
 
 export interface InvoiceItem {
   name: string;
@@ -30,10 +31,8 @@ export interface InvoiceDocumentProps {
   taxLabel?: string;
   discountAmount?: number;
   voucherCode?: string;
-}
-
-function formatRupiah(value: number) {
-  return `Rp ${value.toLocaleString("id-ID")}`;
+  currency?: "IDR" | "USD";
+  exchangeRate?: number | null;
 }
 
 const styles = StyleSheet.create({
@@ -165,6 +164,8 @@ export function InvoiceDocument({
   taxLabel = "Pajak (PPN)",
   discountAmount = 0,
   voucherCode,
+  currency = "IDR",
+  exchangeRate,
 }: InvoiceDocumentProps) {
   const grandTotal = subtotal + packagingFee + taxAmount - discountAmount;
 
@@ -224,19 +225,21 @@ export function InvoiceDocument({
         <View style={styles.summarySection}>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Subtotal</Text>
-            <Text style={styles.summaryValue}>{formatRupiah(subtotal)}</Text>
+            <Text style={styles.summaryValue}>
+              {formatCheckoutPrice(subtotal, currency, exchangeRate)}
+            </Text>
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Packaging Fee</Text>
             <Text style={styles.summaryValue}>
-              {formatRupiah(packagingFee)}
+              {formatCheckoutPrice(packagingFee, currency, exchangeRate)}
             </Text>
           </View>
           {taxAmount > 0 && (
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>{taxLabel}</Text>
               <Text style={styles.summaryValue}>
-                {formatRupiah(taxAmount)}
+                {formatCheckoutPrice(taxAmount, currency, exchangeRate)}
               </Text>
             </View>
           )}
@@ -246,13 +249,15 @@ export function InvoiceDocument({
                 Diskon Voucher{voucherCode ? ` (${voucherCode})` : ""}
               </Text>
               <Text style={styles.summaryValue}>
-                -{formatRupiah(discountAmount)}
+                -{formatCheckoutPrice(discountAmount, currency, exchangeRate)}
               </Text>
             </View>
           )}
           <View style={[styles.summaryRow, styles.totalDivider]}>
             <Text style={{ fontWeight: 700 }}>Total</Text>
-            <Text style={{ fontWeight: 700 }}>{formatRupiah(grandTotal)}</Text>
+            <Text style={{ fontWeight: 700 }}>
+              {formatCheckoutPrice(grandTotal, currency, exchangeRate)}
+            </Text>
           </View>
         </View>
 

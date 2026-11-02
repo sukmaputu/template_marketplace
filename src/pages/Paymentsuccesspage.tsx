@@ -25,6 +25,7 @@ import type { Order } from "@/components/profile/types";
 import { useAuth } from "@/components/auth/UseAuth";
 import { PaymentProofModal } from "@/components/profile/PaymentProofModal";
 import { showToast } from "@/lib/toast";
+import { formatCheckoutPrice } from "@/lib/checkoutFlow";
 
 type PurchasedItem = InvoiceItem & {
   productId: string;
@@ -33,10 +34,6 @@ type PurchasedItem = InvoiceItem & {
 };
 
 const RECOMMENDATION_COUNT = 4;
-
-function formatRupiah(value: number) {
-  return `Rp${(value || 0).toLocaleString("id-ID")}`;
-}
 
 function pickRandomProducts(excludeIds: string[], count: number) {
   const pool = PRODUCTS.filter((p) => !excludeIds.includes(p.id));
@@ -56,8 +53,11 @@ export default function PaymentSuccessPage() {
   const orderState = location.state as
     | {
         totalPaid?: number;
+        currency?: "IDR" | "USD";
+        exchangeRate?: number | null;
         itemIds?: string[];
         orderId?: string;
+        orderUuid?: string;
         items?: PurchasedItem[];
         subtotal?: number;
         packagingFee?: number;
@@ -116,7 +116,7 @@ export default function PaymentSuccessPage() {
 
     const order: Order = {
       id: orderId,
-      uuid: orderId,
+      uuid: orderState?.orderUuid,
       status: isManual ? "pending_payment" : "processing",
       cancelDeadline: new Date(Date.now() + 1000 * 60 * 74).toISOString(),
       date: new Date().toLocaleString("id-ID", {
@@ -151,6 +151,7 @@ export default function PaymentSuccessPage() {
   }, [
     orderId,
     orderState?.items,
+    orderState?.orderUuid,
     orderState?.loyaltyPointsEarned,
     orderState?.isManual,
     orderState?.paymentMethod,
@@ -314,7 +315,11 @@ export default function PaymentSuccessPage() {
               <div className="mt-2 flex items-center justify-between text-xs text-text-secondary">
                 <span>Total Ditransfer</span>
                 <span className="font-bold text-sm text-primary">
-                  {formatRupiah(totalPaid)}
+                  {formatCheckoutPrice(
+                    totalPaid,
+                    orderState?.currency,
+                    orderState?.exchangeRate,
+                  )}
                 </span>
               </div>
 
@@ -342,7 +347,11 @@ export default function PaymentSuccessPage() {
             <div className="mt-1.5 flex items-center justify-between text-sm">
               <span className="text-text-secondary">Total Tagihan</span>
               <span className="font-semibold text-primary">
-                {formatRupiah(totalPaid)}
+                {formatCheckoutPrice(
+                  totalPaid,
+                  orderState?.currency,
+                  orderState?.exchangeRate,
+                )}
               </span>
             </div>
           </motion.div>
@@ -367,6 +376,8 @@ export default function PaymentSuccessPage() {
                   taxLabel={orderState?.taxLabel}
                   discountAmount={discountAmount}
                   voucherCode={orderState?.voucherCode}
+                  currency={orderState?.currency}
+                  exchangeRate={orderState?.exchangeRate}
                 />
               }
               fileName={`invoice-${orderId}.pdf`}
@@ -441,6 +452,8 @@ export default function PaymentSuccessPage() {
                 }
               : undefined,
           }}
+          currency={orderState?.currency}
+          exchangeRate={orderState?.exchangeRate}
           onClose={() => setIsProofModalOpen(false)}
           onSubmitted={() => {
             setIsProofModalOpen(false);

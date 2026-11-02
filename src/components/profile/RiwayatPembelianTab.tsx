@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Package, Star, X } from "lucide-react";
-import type { Order, OrderStatus } from "./types";
+import type { Order, OrderItem, OrderStatus } from "./types";
 import { ORDER_STATUS_CONFIG } from "./types";
 import { MOCK_ORDERS } from "./MockData";
 import { OrderCard } from "./OrderCard";
@@ -13,9 +13,15 @@ import {
   getStoredOrders,
   updateOrderStatusInBackend,
 } from "@/lib/orderHistory";
-import { submitProductReview } from "@/lib/products";
+import {
+  fetchProductReviews,
+  saveProductReview,
+  submitProductReview,
+  type ProductReview,
+} from "@/lib/products";
+import { saveOrder } from "@/lib/orderHistory";
 import { showToast } from "@/lib/toast";
-import { websocketService } from "@/lib/websocket";
+import { websocketService, type WSEvent } from "@/lib/websocket";
 import { useAuth } from "@/components/auth/UseAuth";
 
 type FilterKey = "ALL" | OrderStatus;
@@ -24,7 +30,7 @@ export function RiwayatPembelianTab() {
   const { user, refreshProfile } = useAuth();
   const [orders, setOrders] = useState<Order[]>(() => {
     const stored = getStoredOrders();
-    return stored.length > 0 ? stored : MOCK_ORDERS;
+    return stored.length > 0 ? stored : user ? [] : MOCK_ORDERS;
   });
   const [selectedStatus, setSelectedStatus] = useState<FilterKey>("ALL");
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -36,10 +42,13 @@ export function RiwayatPembelianTab() {
     useState<Order | null>(null);
   const [selectedOrderForCancel, setSelectedOrderForCancel] =
     useState<Order | null>(null);
-  const [selectedOrderForReview, setSelectedOrderForReview] =
-    useState<Order | null>(null);
+  const [selectedReview, setSelectedReview] = useState<{
+    order: Order;
+    item: OrderItem;
+  } | null>(null);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
   const ITEMS_PER_PAGE = 10;
 
@@ -50,7 +59,53 @@ export function RiwayatPembelianTab() {
       try {
         const fetched = await fetchOrdersFromBackend();
         if (!cancelled && fetched.length > 0) {
-          setOrders(fetched);
+          const productIds = [
+            ...new Set(
+              fetched.flatMap((order) =>
+                order.status === "completed"
+                  ? order.items
+                      .filter((item) => !item.review)
+                      .map((item) => item.productId)
+                      .filter((id): id is string => Boolean(id))
+                  : [],
+              ),
+            ),
+          ];
+          const fetchedReviews = await Promise.all(
+            productIds.map((productId) =>
+              fetchProductReviews(productId, { limit: 100 }),
+            ),
+          );
+          if (cancelled) return;
+
+          const reviewsByOrderItem = new Map<string, ProductReview>();
+          for (const result of fetchedReviews) {
+            for (const review of result.items) {
+              if (review.orderItemUuid) {
+                reviewsByOrderItem.set(review.orderItemUuid, review);
+              }
+            }
+          }
+
+          setOrders(
+            fetched.map((order) => ({
+              ...order,
+              items: order.items.map((item) => {
+                if (item.review) return item;
+                const review = reviewsByOrderItem.get(item.id);
+                return review
+                  ? {
+                      ...item,
+                      review: {
+                        rating: review.rating,
+                        comment: review.comment,
+                        createdAt: review.createdAt,
+                      },
+                    }
+                  : item;
+              }),
+            })),
+          );
           return;
         }
       } catch {
@@ -73,7 +128,7 @@ export function RiwayatPembelianTab() {
 
     const unsub1 = websocketService.on("order_updated", refreshOrders);
     const unsub2 = websocketService.on("order_status_updated", refreshOrders);
-    const unsub3 = websocketService.on("data_updated", (payload: any) => {
+    const unsub3 = websocketService.on("data_updated", (payload: WSEvent) => {
       if (!payload || payload.resource === "orders" || payload.resource === "pesanan") {
         refreshOrders();
       }
@@ -87,7 +142,7 @@ export function RiwayatPembelianTab() {
       unsub2();
       unsub3();
     };
-  }, []);
+  }, [user]);
 
   const filterTabs: { key: FilterKey; label: string }[] = [
     { key: "ALL", label: "Semua" },
@@ -123,11 +178,20 @@ export function RiwayatPembelianTab() {
 
   const handleMarkReceived = async (orderId: string) => {
     const target = orders.find((o) => o.id === orderId);
+    if (!target) return;
     const targetId = target?.uuid || orderId;
-    setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, status: "completed" } : o)),
+    const updated = await updateOrderStatusInBackend(targetId, "COMPLETED");
+    if (!updated) {
+      showToast("Pesanan belum dapat diperbarui di server.");
+      return;
+    }
+    const completedOrder: Order = { ...target, status: "completed" };
+    setOrders((previous) =>
+      previous.map((order) =>
+        order.id === orderId ? completedOrder : order,
+      ),
     );
-    await updateOrderStatusInBackend(targetId, "DONE");
+    saveOrder(completedOrder);
     if (refreshProfile) {
       void refreshProfile();
     }
@@ -135,83 +199,108 @@ export function RiwayatPembelianTab() {
 
   const handleCancelOrder = async (orderId: string) => {
     const target = orders.find((o) => o.id === orderId);
+    if (!target) return;
     const targetId = target?.uuid || orderId;
-    setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, status: "cancelled" } : o)),
+    const updated = await updateOrderStatusInBackend(targetId, "CANCELED");
+    if (!updated) {
+      showToast("Pesanan belum dapat dibatalkan di server.");
+      return;
+    }
+    const cancelledOrder: Order = { ...target, status: "cancelled" };
+    setOrders((previous) =>
+      previous.map((order) =>
+        order.id === orderId ? cancelledOrder : order,
+      ),
     );
+    saveOrder(cancelledOrder);
     setSelectedOrderForCancel(null);
-    await updateOrderStatusInBackend(targetId, "CANCELED");
   };
 
   const handleRefundSubmit = (
     orderId: string,
     reason: string,
     note: string,
-  ) => {
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === orderId ? { ...o, refundReason: reason, refundNote: note } : o,
-      ),
-    );
+    evidence: File[],
+  ): boolean => {
+    void orderId;
+    void reason;
+    void note;
+    void evidence;
+    return false;
   };
 
-  const handleSubmitReview = () => {
-    if (!selectedOrderForReview) return;
+  const handleSubmitReview = async () => {
+    if (!selectedReview || selectedReview.item.review) return;
+    const { order, item } = selectedReview;
+    if (!item.productId) {
+      showToast("ID produk tidak tersedia, ulasan tidak dapat dikirim.");
+      return;
+    }
+    if (item.id.startsWith("item-")) {
+      showToast("ID item pesanan dari server tidak tersedia, ulasan belum dapat dikirim.");
+      return;
+    }
 
-    const orderItems = selectedOrderForReview.items ?? [];
-    const validItems = orderItems.filter(
-      (item) => item.productId || item.product_name_snapshot,
-    );
+    const comment = reviewComment.trim();
+    if (!comment) {
+      showToast("Tulis ulasan terlebih dahulu.");
+      return;
+    }
+    setIsSubmittingReview(true);
+    try {
+      await submitProductReview(String(item.productId), {
+        rating: reviewRating,
+        comment,
+        order_item_uuid: item.id,
+      });
 
-    if (!validItems.length) return;
+      const createdAt = new Date().toISOString();
+      const review: ProductReview = {
+        id: `review-${order.id}-${item.id}`,
+        productId: String(item.productId),
+        orderItemUuid: item.id,
+        userName: user?.full_name || "Anda",
+        rating: reviewRating,
+        comment,
+        createdAt,
+        isVerified: true,
+      };
+      saveProductReview(review);
 
-    const productId =
-      validItems[0].productId ?? validItems[0].product_name_snapshot;
-    const orderItemId = validItems[0].id;
-
-    submitProductReview(String(productId), {
-      rating: reviewRating,
-      comment: reviewComment.trim() || "Produk sangat bagus.",
-      order_item_uuid: orderItemId,
-    }).catch((err) => {
-      console.warn("Backend review submission warning:", err);
-    });
-
-    const reviewPayload = {
-      id: `review-${selectedOrderForReview.id}-${Date.now()}`,
-      productId: String(productId),
-      userName: "Anda",
-      rating: reviewRating,
-      comment: reviewComment.trim() || "Produk sangat bagus.",
-      createdAt: new Date().toISOString(),
-      isVerified: true,
-    };
-
-    const existing = JSON.parse(
-      window.localStorage.getItem("marketplace-product-reviews") ?? "[]",
-    ) as Array<Record<string, unknown>>;
-
-    const nextReviews = [
-      reviewPayload,
-      ...existing.filter((item) => {
-        const itemProductId = String(item.productId ?? "");
-        return (
-          itemProductId !== String(reviewPayload.productId) ||
-          item.userName !== "Anda"
-        );
-      }),
-    ];
-
-    window.localStorage.setItem(
-      "marketplace-product-reviews",
-      JSON.stringify(nextReviews),
-    );
-    window.dispatchEvent(new Event("product-reviews-updated"));
-    showToast("Ulasan berhasil dikirim");
-
-    setSelectedOrderForReview(null);
-    setReviewComment("");
-    setReviewRating(5);
+      const updatedOrder: Order = {
+        ...order,
+        items: order.items.map((orderItem) =>
+          orderItem.id === item.id
+            ? {
+                ...orderItem,
+                review: { rating: review.rating, comment, createdAt },
+              }
+            : orderItem,
+        ),
+      };
+      setOrders((previous) =>
+        previous.map((candidate) =>
+          candidate.id === updatedOrder.id ? updatedOrder : candidate,
+        ),
+      );
+      saveOrder(updatedOrder);
+      setSelectedReview({
+        order: updatedOrder,
+        item: { ...item, review: { rating: review.rating, comment, createdAt } },
+      });
+      showToast("Ulasan berhasil dikirim");
+    } catch (error) {
+      const apiError = error as {
+        response?: { data?: { error?: string; message?: string } };
+      };
+      showToast(
+        apiError.response?.data?.message ||
+          apiError.response?.data?.error ||
+          "Gagal mengirim ulasan. Silakan coba lagi.",
+      );
+    } finally {
+      setIsSubmittingReview(false);
+    }
   };
 
   return (
@@ -250,7 +339,11 @@ export function RiwayatPembelianTab() {
               onMarkReceived={handleMarkReceived}
               onCancelClick={(ord) => setSelectedOrderForCancel(ord)}
               onRefundClick={(ord) => setSelectedOrderForRefund(ord)}
-              onReviewClick={(ord) => setSelectedOrderForReview(ord)}
+              onReviewClick={(ord, item) => {
+                setSelectedReview({ order: ord, item });
+                setReviewRating(item.review?.rating ?? 5);
+                setReviewComment(item.review?.comment ?? "");
+              }}
             />
           ))}
         </div>
@@ -341,16 +434,18 @@ export function RiwayatPembelianTab() {
         />
       )}
 
-      {selectedOrderForReview && (
+      {selectedReview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-lg rounded-xl border border-border bg-surface p-6 shadow-sm">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold text-text">
-                Beri Ulasan Produk
+                {selectedReview.item.review
+                  ? "Ulasan Produk"
+                  : "Beri Ulasan Produk"}
               </h3>
               <button
                 type="button"
-                onClick={() => setSelectedOrderForReview(null)}
+                onClick={() => setSelectedReview(null)}
                 className="rounded-lg p-1 text-text-secondary hover:bg-background hover:text-text">
                 <X className="h-5 w-5" />
               </button>
@@ -359,8 +454,7 @@ export function RiwayatPembelianTab() {
             <div className="mt-4">
               <p className="text-sm text-text-secondary">Produk</p>
               <p className="mt-1 text-sm font-medium text-text">
-                {selectedOrderForReview.items?.[0]?.product_name_snapshot ??
-                  "Produk pesanan"}
+                {selectedReview.item.product_name_snapshot}
               </p>
             </div>
 
@@ -372,8 +466,9 @@ export function RiwayatPembelianTab() {
                     key={star}
                     type="button"
                     onClick={() => setReviewRating(star)}
+                    disabled={Boolean(selectedReview.item.review)}
                     aria-label={`Beri rating ${star}`}
-                    className="text-2xl transition-transform hover:scale-110">
+                    className="text-2xl disabled:cursor-default">
                     <Star
                       className={`h-7 w-7 ${
                         star <= reviewRating
@@ -391,6 +486,7 @@ export function RiwayatPembelianTab() {
               <textarea
                 value={reviewComment}
                 onChange={(e) => setReviewComment(e.target.value)}
+                readOnly={Boolean(selectedReview.item.review)}
                 rows={4}
                 className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text outline-none focus:border-primary"
                 placeholder="Ceritakan pengalaman kamu membeli produk ini..."
@@ -400,16 +496,19 @@ export function RiwayatPembelianTab() {
             <div className="mt-6 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setSelectedOrderForReview(null)}
+                onClick={() => setSelectedReview(null)}
                 className="rounded-lg border border-border bg-surface px-4 py-2 text-xs font-medium text-text hover:bg-background">
-                Batal
+                Tutup
               </button>
-              <button
-                type="button"
-                onClick={handleSubmitReview}
-                className="rounded-lg bg-primary px-4 py-2 text-xs font-medium text-white hover:opacity-90">
-                Simpan Ulasan
-              </button>
+              {!selectedReview.item.review && (
+                <button
+                  type="button"
+                  onClick={() => void handleSubmitReview()}
+                  disabled={isSubmittingReview || !reviewComment.trim()}
+                  className="rounded-lg bg-primary px-4 py-2 text-xs font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
+                  {isSubmittingReview ? "Mengirim..." : "Simpan Ulasan"}
+                </button>
+              )}
             </div>
           </div>
         </div>

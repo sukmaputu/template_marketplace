@@ -437,7 +437,9 @@ export function AddressTab() {
                   ["province", "Provinsi", "DKI Jakarta"],
                 ] as const
               ).map(([field, label, placeholder]) => (
-                <label key={field} className="text-xs font-medium text-text sm:text-sm">
+                <label
+                  key={field}
+                  className="text-xs font-medium text-text sm:text-sm">
                   {label}
                   <input
                     required

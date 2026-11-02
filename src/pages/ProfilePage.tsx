@@ -31,16 +31,24 @@ interface DragState {
 
 export default function ProfilePage() {
   const { user } = useAuth();
-  const [searchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<TabKey>(() =>
-    searchParams.get("tab") === "voucher" ? "voucher" : "data-diri",
-  );
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const initialTab: TabKey = (
+    ["data-diri", "alamat", "riwayat-pembelian", "voucher", "wishlist"] as const
+  ).includes(requestedTab as TabKey)
+    ? (requestedTab as TabKey)
+    : "data-diri";
+  const activeTab = initialTab;
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 900);
     return () => clearTimeout(timer);
   }, []);
+
+  function selectTab(tab: TabKey) {
+    setSearchParams({ tab }, { replace: true });
+  }
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
@@ -259,7 +267,7 @@ export default function ProfilePage() {
                   {tabs.map((tab) => (
                     <button
                       key={tab.key}
-                      onClick={() => setActiveTab(tab.key)}
+                      onClick={() => selectTab(tab.key)}
                       className={`w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
                         activeTab === tab.key
                           ? "bg-primary/10 text-primary"

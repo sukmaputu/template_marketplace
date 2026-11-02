@@ -34,12 +34,11 @@ import {
   getProductRatingStats,
   getProductReviews,
   fetchProductReviews,
-  fetchProductRatingSummary,
   type ProductReview,
 } from "@/lib/products";
 import { useAuth } from "@/components/auth/AuthContext";
 import { getProductSpecs } from "@/lib/productSpecs";
-import { websocketService } from "@/lib/websocket";
+import { websocketService, type WSEvent } from "@/lib/websocket";
 
 // Khusus produk kelas (bukan barang fisik). Tetap dipertahankan, hanya
 // ditampilkan kalau produk BUKAN bertipe "physical".
@@ -83,11 +82,18 @@ export default function ProductDetailPage() {
     window.addEventListener("products-updated", handleUpdate);
     window.addEventListener("focus", handleUpdate);
     const unsub1 = websocketService.on("products_updated", handleUpdate);
-    const unsub2 = websocketService.on("product_updated", (payload: any) => {
-      if (!payload || !payload.product_id || payload.product_id === productId) {
-        handleUpdate();
-      }
-    });
+    const unsub2 = websocketService.on(
+      "product_updated",
+      (payload: WSEvent<Record<string, unknown>>) => {
+        if (
+          !payload ||
+          !payload.product_id ||
+          payload.product_id === productId
+        ) {
+          handleUpdate();
+        }
+      },
+    );
     return () => {
       window.removeEventListener("products-updated", handleUpdate);
       window.removeEventListener("focus", handleUpdate);
@@ -166,7 +172,13 @@ export default function ProductDetailPage() {
   }
 
   const [apiReviews, setApiReviews] = useState<ProductReview[]>([]);
-  const [apiStats, setApiStats] = useState<{ rating: number; reviewCount: number } | null>(null);
+  const [apiStats, setApiStats] = useState<{
+    rating: number;
+    reviewCount: number;
+  } | null>(null);
+  const [reviewsForProductId, setReviewsForProductId] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!product?.id) return;
@@ -174,19 +186,25 @@ export default function ProductDetailPage() {
 
     fetchProductReviews(product.id)
       .then((res) => {
-        if (!cancelled && res.items.length > 0) {
+        if (!cancelled) {
           setApiReviews(res.items);
-        }
-      })
-      .catch(() => {});
-
-    fetchProductRatingSummary(product.id)
-      .then((res) => {
-        if (!cancelled && res) {
-          setApiStats({
-            rating: res.average_rating,
-            reviewCount: res.total_reviews,
-          });
+          const reviewAverage = res.items.length
+            ? Number(
+                (
+                  res.items.reduce((sum, review) => sum + review.rating, 0) /
+                  res.items.length
+                ).toFixed(1),
+              )
+            : 0;
+          setApiStats(
+            res.stats
+              ? {
+                  rating: res.stats.average_rating ?? reviewAverage,
+                  reviewCount: res.stats.total_reviews ?? res.total,
+                }
+              : null,
+          );
+          setReviewsForProductId(product.id);
         }
       })
       .catch(() => {});
@@ -203,22 +221,31 @@ export default function ProductDetailPage() {
 
   const reviews = useMemo(() => {
     void reviewRefreshKey;
-    if (apiReviews.length > 0) return apiReviews.slice(0, 5);
+    if (reviewsForProductId === product?.id && apiReviews.length > 0) {
+      return apiReviews.slice(0, 5);
+    }
     return product ? getProductReviews(product.id).slice(0, 5) : [];
-  }, [apiReviews, product, reviewRefreshKey]);
+  }, [apiReviews, product, reviewRefreshKey, reviewsForProductId]);
 
   // Pakai review backend kalau ada, kalau tidak pakai review lokal / produk fallback
-  const displayRating =
-    apiStats && apiStats.reviewCount > 0
-      ? apiStats.rating
-      : ratingStats.reviewCount > 0
+  const hasLoadedProductReviews = reviewsForProductId === product?.id;
+  const apiAverageRating =
+    apiReviews.length > 0
+      ? Number(
+          (
+            apiReviews.reduce((sum, review) => sum + review.rating, 0) /
+            apiReviews.length
+          ).toFixed(1),
+        )
+      : 0;
+  const displayRating = hasLoadedProductReviews
+    ? (apiStats?.rating ?? apiAverageRating)
+    : ratingStats.reviewCount > 0
       ? ratingStats.rating
       : (product?.rating ?? 0);
-
-  const displayCount =
-    apiStats && apiStats.reviewCount > 0
-      ? apiStats.reviewCount
-      : ratingStats.reviewCount > 0
+  const displayCount = hasLoadedProductReviews
+    ? (apiStats?.reviewCount ?? apiReviews.length)
+    : ratingStats.reviewCount > 0
       ? ratingStats.reviewCount
       : (product?.reviewCount ?? 0);
 
@@ -420,7 +447,12 @@ export default function ProductDetailPage() {
     if (!product || isOutOfStock) return;
     navigate("/checkout", {
       state: {
-        immediateBuy: { product, quantity, variant: variantLabel },
+        immediateBuy: {
+          product,
+          quantity,
+          variant: variantLabel,
+          variantUuid: selectedVariant?.id,
+        },
       },
     });
   }
@@ -430,7 +462,7 @@ export default function ProductDetailPage() {
     window.dispatchEvent(
       new CustomEvent("open-chat-widget", {
         detail: {
-          message: `Halo, saya ingin bertanya tentang produk "${product.name}".`,
+          message: ``,
           product: {
             id: String(product.id),
             name: product.name,
