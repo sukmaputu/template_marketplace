@@ -5,6 +5,7 @@ import { api, getAuthToken, removeAuthToken, setAuthToken } from "@/lib/api";
 import { createAddressApi } from "@/lib/addresses";
 import { chatService } from "@/services/chat.service";
 import { websocketService } from "@/lib/websocket";
+import { clearStoredOrders } from "@/lib/orderHistory";
 
 const DEMO_ACCOUNT = {
   email: "sukma@email.com",
@@ -103,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
         setUser(nextUser);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
+        window.dispatchEvent(new Event("order-history-updated"));
         return true;
       }
     } catch {
@@ -123,6 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
       setUser(nextUser);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
+      window.dispatchEvent(new Event("order-history-updated"));
       chatService.transferGuestHistory({
         id: nextUser.username || nextUser.email,
         email: nextUser.email,
@@ -189,6 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
         setUser(nextUser);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
+        window.dispatchEvent(new Event("order-history-updated"));
 
         if (params.address?.trim()) {
           try {
@@ -344,6 +348,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     removeAuthToken();
     localStorage.removeItem(STORAGE_KEY);
+    clearStoredOrders();
   }
 
   function addLoyaltyPoints(points: number) {

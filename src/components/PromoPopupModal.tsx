@@ -5,15 +5,18 @@ import { usePageSettings } from "@/hooks/usePageSettings";
 export function PromoPopupModal() {
   const {
     popupBanner,
+    popupMobileImage,
     popupBannerLink,
     isPopupEnabled,
+    popupDesktopMaxWidth,
+    popupDesktopAspectRatio,
     popupMobileMaxWidth,
     popupMobileAspectRatio,
     popupObjectFit,
   } = usePageSettings();
   const [isOpen, setIsOpen] = useState(false);
 
-  const popupKey = `marketplace_popup_${popupBanner}_${popupMobileMaxWidth}_${popupMobileAspectRatio}`;
+  const popupKey = `marketplace_popup_${popupBanner}_${popupMobileMaxWidth}_${popupDesktopMaxWidth}_${popupMobileAspectRatio}_${popupDesktopAspectRatio}`;
 
   useEffect(() => {
     if (!popupBanner || !isPopupEnabled) {
@@ -35,10 +38,9 @@ export function PromoPopupModal() {
 
   if (!isOpen || !popupBanner || !isPopupEnabled) return null;
 
-  const effectiveAspectRatio =
-    popupMobileAspectRatio && popupMobileAspectRatio !== "auto"
-      ? popupMobileAspectRatio
-      : "1 / 1";
+  const effectiveMobAR = popupMobileAspectRatio || "1 / 1";
+  const effectiveDeskAR = popupDesktopAspectRatio || "1 / 1";
+  const isExternal = /^https?:\/\//i.test(popupBannerLink);
 
   return (
     <div
@@ -48,10 +50,11 @@ export function PromoPopupModal() {
       aria-modal="true"
     >
       <div
-        className="relative w-full max-w-[var(--popup-mobile-w)] sm:max-w-md max-h-[90vh] flex flex-col overflow-hidden rounded-2xl bg-[color:var(--color-surface)] border border-[color:var(--color-border)] shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+        className="relative w-full max-w-[var(--popup-mobile-w)] sm:max-w-[var(--popup-desktop-w)] max-h-[90vh] flex flex-col overflow-hidden rounded-2xl bg-[color:var(--color-surface)] border border-[color:var(--color-border)] shadow-2xl animate-in fade-in zoom-in-95 duration-200"
         style={
           {
             "--popup-mobile-w": `${popupMobileMaxWidth || 320}px`,
+            "--popup-desktop-w": `${popupDesktopMaxWidth || 480}px`,
           } as React.CSSProperties
         }
         onClick={(e) => e.stopPropagation()}
@@ -70,19 +73,29 @@ export function PromoPopupModal() {
         <a
           href={popupBannerLink}
           onClick={handleClose}
-          className="block relative w-full max-h-[68vh] overflow-hidden bg-black/10 cursor-pointer group"
-          style={{
-            aspectRatio: effectiveAspectRatio,
-          }}
+          target={isExternal ? "_blank" : undefined}
+          rel={isExternal ? "noopener noreferrer" : undefined}
+          className="block relative w-full max-h-[68vh] overflow-hidden bg-black/10 cursor-pointer group aspect-[var(--popup-mob-ar)] sm:aspect-[var(--popup-desk-ar)]"
+          style={
+            {
+              ["--popup-mob-ar" as string]: effectiveMobAR,
+              ["--popup-desk-ar" as string]: effectiveDeskAR,
+            } as React.CSSProperties
+          }
         >
-          <img
-            src={popupBanner}
-            alt="Promo Spesial"
-            className="h-full w-full transition duration-300 group-hover:scale-102"
-            style={{
-              objectFit: popupObjectFit || "cover",
-            }}
-          />
+          <picture className="block h-full w-full">
+            {popupMobileImage && (
+              <source media="(max-width: 639px)" srcSet={popupMobileImage} />
+            )}
+            <img
+              src={popupBanner}
+              alt="Promo Spesial"
+              className="h-full w-full max-h-[68vh] transition duration-300 group-hover:scale-102"
+              style={{
+                objectFit: popupObjectFit || "cover",
+              }}
+            />
+          </picture>
         </a>
 
         {/* Footer Action */}
@@ -102,6 +115,8 @@ export function PromoPopupModal() {
             <a
               href={popupBannerLink}
               onClick={handleClose}
+              target={isExternal ? "_blank" : undefined}
+              rel={isExternal ? "noopener noreferrer" : undefined}
               className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-[color:var(--color-primary)] text-white hover:opacity-90 shadow-sm transition"
             >
               Lihat Promo

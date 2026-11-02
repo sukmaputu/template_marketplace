@@ -407,7 +407,7 @@ export function MarketplaceHeader() {
               {
                 "--logo-nav-h-mobile": `${logoNavbarMobileHeightPx || 32}px`,
                 "--logo-nav-h-desktop": `${logoNavbarDesktopHeightPx || 40}px`,
-                maxWidth: `${logoMaxWidthPx || 180}px`,
+                maxWidth: `${Math.max(logoMaxWidthPx || 220, 260)}px`,
               } as CSSProperties
             }
           />

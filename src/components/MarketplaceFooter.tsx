@@ -49,7 +49,7 @@ export function MarketplaceFooter() {
                 style={{
                   ['--logo-foot-h-mobile' as any]: `${logoFooterMobileHeightPx || 36}px`,
                   ['--logo-foot-h-desktop' as any]: `${logoFooterDesktopHeightPx || 44}px`,
-                  maxWidth: `${logoMaxWidthPx || 180}px`,
+                  maxWidth: `${Math.max(logoMaxWidthPx || 220, 260)}px`,
                 }}
                 onError={(event) => {
                   event.currentTarget.onerror = null;

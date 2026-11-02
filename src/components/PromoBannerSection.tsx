@@ -15,6 +15,7 @@ export type BannerSlide = {
   subtitle: string;
   ctaLabel: string;
   ctaHref: string;
+  desktopTemplate?: string;
   desktopHeightPx?: number; // 380 | 480 | 600 | 720 | custom
   mobileTemplate?: string; // marketplace_2_1 | widescreen_16_9 | showcase_4_3 | editorial_4_5 | custom
   mobileHeightPx?: number;
@@ -22,6 +23,7 @@ export type BannerSlide = {
 
 interface RawSlideItem {
   image?: unknown;
+  imageMobile?: unknown;
   mobileImage?: unknown;
   url?: unknown;
   src?: unknown;
@@ -31,6 +33,7 @@ interface RawSlideItem {
   ctaLabel?: unknown;
   ctaHref?: unknown;
   href?: unknown;
+  desktopTemplate?: unknown;
   desktopHeightPx?: unknown;
   mobileTemplate?: unknown;
   mobileHeightPx?: unknown;
@@ -64,7 +67,6 @@ const DEFAULT_SLIDES: BannerSlide[] = [
   },
 ];
 
-// Rasio banner di layar HP (sesuai pilihan admin panel)
 const MOBILE_RATIO: Record<string, string> = {
   marketplace_2_1: "aspect-[2/1]", // Ramping
   widescreen_16_9: "aspect-[16/9]", // Ideal
@@ -74,6 +76,12 @@ const MOBILE_RATIO: Record<string, string> = {
 
 const DEFAULT_DESKTOP_HEIGHT = 480;
 const DEFAULT_MOBILE_CUSTOM_HEIGHT = 220;
+const DESKTOP_TEMPLATE_HEIGHTS: Record<string, number> = {
+  compact: 380,
+  standard: 480,
+  large: 600,
+  cinematic: 720,
+};
 
 const clamp = (n: number, min: number, max: number) =>
   Math.min(max, Math.max(min, n));
@@ -114,6 +122,16 @@ function parseDynamicBannerSlides(rawValue?: string): BannerSlide[] | null {
                     : "";
             const img = resolveBannerPath(rawImg);
             if (!img) return null;
+            const rawMobImg =
+              typeof item.imageMobile === "string"
+                ? item.imageMobile
+                : typeof item.mobileImage === "string"
+                  ? item.mobileImage
+                  : "";
+            const imgMob =
+              rawMobImg && rawMobImg !== "pending"
+                ? resolveBannerPath(rawMobImg)
+                : undefined;
             const rawHref =
               typeof item.ctaHref === "string"
                 ? item.ctaHref
@@ -122,10 +140,7 @@ function parseDynamicBannerSlides(rawValue?: string): BannerSlide[] | null {
                   : "#catalog";
             return {
               image: img,
-              mobileImage:
-                typeof item.mobileImage === "string" && item.mobileImage.trim()
-                  ? resolveBannerPath(item.mobileImage.trim())
-                  : undefined,
+              mobileImage: imgMob,
               badge: typeof item.badge === "string" ? item.badge.trim() : "",
               title: typeof item.title === "string" ? item.title.trim() : "",
               subtitle:
@@ -133,6 +148,10 @@ function parseDynamicBannerSlides(rawValue?: string): BannerSlide[] | null {
               ctaLabel:
                 typeof item.ctaLabel === "string" ? item.ctaLabel.trim() : "",
               ctaHref: sanitizeUrl(rawHref, "#catalog"),
+              desktopTemplate:
+                typeof item.desktopTemplate === "string"
+                  ? item.desktopTemplate
+                  : undefined,
               desktopHeightPx:
                 typeof item.desktopHeightPx === "number"
                   ? item.desktopHeightPx
@@ -271,39 +290,38 @@ export function PromoBannerSection({
   // ---- Ukuran banner mengikuti pengaturan admin ----
   const currentSlide = bannerSlides[safeIndex] || bannerSlides[0];
 
+  const desktopTemplate = currentSlide?.desktopTemplate;
   const desktopH = clamp(
-    currentSlide?.desktopHeightPx ?? DEFAULT_DESKTOP_HEIGHT,
+    currentSlide?.desktopHeightPx ??
+      DESKTOP_TEMPLATE_HEIGHTS[desktopTemplate ?? ""] ??
+      DEFAULT_DESKTOP_HEIGHT,
     200,
     1000,
   );
   const mobileTemplate = currentSlide?.mobileTemplate || "widescreen_16_9";
-
-  // Mobile: pakai rasio. Desktop (sm ke atas): pakai tinggi tetap (px).
-  let sizeClass = `${
-    MOBILE_RATIO[mobileTemplate] ?? "aspect-[16/9]"
-  } sm:aspect-auto sm:h-[var(--banner-desktop-h)]`;
-
-  const cssVars: Record<string, string> = {
+  const mobileAspectClass =
+    mobileTemplate === "custom"
+      ? "h-[var(--banner-mobile-h)]"
+      : (MOBILE_RATIO[mobileTemplate] ?? "aspect-[16/9]");
+  const mobileInlineHeight = clamp(
+    currentSlide?.mobileHeightPx ?? DEFAULT_MOBILE_CUSTOM_HEIGHT,
+    120,
+    700,
+  );
+  const cssVars = {
     "--banner-desktop-h": `${desktopH}px`,
-  };
-
-  if (mobileTemplate === "custom") {
-    const mobileH = clamp(
-      currentSlide?.mobileHeightPx ?? DEFAULT_MOBILE_CUSTOM_HEIGHT,
-      120,
-      700,
-    );
-    sizeClass = "h-[var(--banner-mobile-h)] sm:h-[var(--banner-desktop-h)]";
-    cssVars["--banner-mobile-h"] = `${mobileH}px`;
-  }
+    ...(mobileTemplate === "custom"
+      ? { "--banner-mobile-h": `${mobileInlineHeight}px` }
+      : {}),
+  } as CSSProperties;
 
   return (
     <section className="w-full mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <div
         onMouseEnter={() => setIsPaused(true)}
         onMouseLeave={() => setIsPaused(false)}
-        className={`group relative w-full ${sizeClass} overflow-hidden rounded-xl bg-neutral-200 dark:bg-neutral-700 select-none transition-[height] duration-300`}
-        style={cssVars as CSSProperties}>
+        className={`group relative w-full ${mobileAspectClass} sm:h-[var(--banner-desktop-h)] sm:aspect-auto overflow-hidden rounded-xl bg-neutral-200 dark:bg-neutral-700 select-none transition-all duration-300`}
+        style={cssVars}>
         <div
           className="flex h-full transition-transform duration-500 ease-out"
           style={{
@@ -320,7 +338,7 @@ export function PromoBannerSection({
               <div
                 key={`${slide.image}-${i}`}
                 className="relative flex h-full w-full shrink-0 items-center justify-center bg-neutral-200 dark:bg-neutral-700">
-                <picture>
+                <picture className="absolute inset-0 h-full w-full">
                   {slide.mobileImage && (
                     <source
                       media="(max-width: 639px)"
@@ -330,7 +348,7 @@ export function PromoBannerSection({
                   <img
                     src={slide.image}
                     alt={`Banner promo ${i + 1}`}
-                    className="absolute inset-0 h-full w-full object-cover object-center"
+                    className="h-full w-full object-cover object-center"
                     onError={(e) => {
                       e.currentTarget.onerror = null;
                       e.currentTarget.src = "/banner/slide1.jpg";
