@@ -1162,21 +1162,69 @@ export function mapBackendToProduct(p: any): Product {
   };
 }
 
+// In-memory cache & in-flight deduplication for marketplace products
+const productsCache = new Map<number, { data: Product[]; timestamp: number }>();
+const PRODUCTS_CACHE_TTL_MS = 15_000; // 15s TTL for catalog queries
+const inflightProductsPromises = new Map<number, Promise<Product[]>>();
+
+export function invalidateProductsCache(): void {
+  productsCache.clear();
+}
+
+export async function fetchMarketplaceProducts(limit = 6, forceRefresh = false): Promise<Product[]> {
+  const cached = productsCache.get(limit);
+  if (!forceRefresh && cached && Date.now() - cached.timestamp < PRODUCTS_CACHE_TTL_MS) {
+    return cached.data;
+  }
+  const existingInflight = inflightProductsPromises.get(limit);
+  if (existingInflight) {
+    return existingInflight;
+  }
+  const promise = (async () => {
+    try {
+      const res = await api.get("/ecommerce/products", {
+        params: { limit },
+      });
+      const items = res.data?.data;
+      if (Array.isArray(items)) {
+        const backendItems = items.map(mapBackendToProduct);
+        productsCache.set(limit, { data: backendItems, timestamp: Date.now() });
+        return backendItems;
+      }
+    } catch {
+      // Fallback to static PRODUCTS
+    } finally {
+      inflightProductsPromises.delete(limit);
+    }
+    return cached?.data ?? PRODUCTS;
+  })();
+  inflightProductsPromises.set(limit, promise);
+  return promise;
+}
+
 export function useMarketplaceProducts(limit = 6) {
-  const [products, setProducts] = useState<Product[]>(PRODUCTS);
-  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState<Product[]>(() => {
+    const cached = productsCache.get(limit);
+    return cached ? cached.data : PRODUCTS;
+  });
+  const [loading, setLoading] = useState(!productsCache.has(limit));
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    const handleUpdate = () => setRefreshKey((k) => k + 1);
-    window.addEventListener("products-updated", handleUpdate);
-    window.addEventListener("categories-updated", handleUpdate);
-    window.addEventListener("focus", handleUpdate);
-    const unsub = websocketService.on("products_updated", handleUpdate);
+    const handleRemoteUpdate = () => {
+      invalidateProductsCache();
+      setRefreshKey((k) => k + 1);
+    };
+    const handleSoftUpdate = () => setRefreshKey((k) => k + 1);
+
+    window.addEventListener("products-updated", handleRemoteUpdate);
+    window.addEventListener("categories-updated", handleRemoteUpdate);
+    window.addEventListener("focus", handleSoftUpdate);
+    const unsub = websocketService.on("products_updated", handleRemoteUpdate);
     return () => {
-      window.removeEventListener("products-updated", handleUpdate);
-      window.removeEventListener("categories-updated", handleUpdate);
-      window.removeEventListener("focus", handleUpdate);
+      window.removeEventListener("products-updated", handleRemoteUpdate);
+      window.removeEventListener("categories-updated", handleRemoteUpdate);
+      window.removeEventListener("focus", handleSoftUpdate);
       unsub();
     };
   }, []);
@@ -1184,24 +1232,15 @@ export function useMarketplaceProducts(limit = 6) {
   useEffect(() => {
     let cancelled = false;
 
-    async function fetchProducts() {
-      try {
-        const res = await api.get("/ecommerce/products", {
-          params: { limit },
-        });
-        const items = res.data?.data;
-        if (Array.isArray(items) && !cancelled) {
-          const backendItems = items.map(mapBackendToProduct);
-          setProducts(backendItems);
-        }
-      } catch {
-        // Fallback to static PRODUCTS
-      } finally {
-        if (!cancelled) setLoading(false);
+    async function load() {
+      const data = await fetchMarketplaceProducts(limit);
+      if (!cancelled) {
+        setProducts(data);
+        setLoading(false);
       }
     }
 
-    fetchProducts();
+    void load();
     return () => {
       cancelled = true;
     };
@@ -1226,27 +1265,91 @@ interface BackendCategory {
   is_active?: boolean;
 }
 
+// In-memory cache & in-flight deduplication for categories
+interface CategoryCache {
+  data: CategoryItem[];
+  timestamp: number;
+}
+let categoriesCache: CategoryCache | null = null;
+const CATEGORIES_CACHE_TTL_MS = 60_000; // 60s TTL for static categories
+let inflightCategoriesPromise: Promise<CategoryItem[]> | null = null;
+
+export function invalidateCategoriesCache(): void {
+  categoriesCache = null;
+}
+
+export async function fetchCategoriesCached(forceRefresh = false): Promise<CategoryItem[]> {
+  if (!forceRefresh && categoriesCache && Date.now() - categoriesCache.timestamp < CATEGORIES_CACHE_TTL_MS) {
+    return categoriesCache.data;
+  }
+  if (inflightCategoriesPromise) {
+    return inflightCategoriesPromise;
+  }
+  inflightCategoriesPromise = (async () => {
+    try {
+      const res = await api.get("/ecommerce/categories");
+      const items = res.data?.data;
+      if (Array.isArray(items)) {
+        const mapped: CategoryItem[] = (items as BackendCategory[])
+          .filter((cat) => cat.is_active !== false)
+          .map((cat) => {
+            const categoryId = cat.slug || cat.uuid || "uncategorized";
+            return {
+              id: categoryId,
+              uuid: cat.uuid,
+              slug: categoryId,
+              label: cat.name,
+              description: cat.description || "",
+            };
+          });
+        categoriesCache = { data: mapped, timestamp: Date.now() };
+        return mapped;
+      }
+    } catch {
+      // Fallback to static CATEGORY_DETAILS
+    } finally {
+      inflightCategoriesPromise = null;
+    }
+    return (
+      categoriesCache?.data ??
+      CATEGORY_DETAILS.map((c) => ({
+        id: c.id,
+        slug: c.id,
+        label: c.label,
+        description: c.description,
+      }))
+    );
+  })();
+  return inflightCategoriesPromise;
+}
+
 export function useCategories() {
-  const [categories, setCategories] = useState<CategoryItem[]>(() =>
-    CATEGORY_DETAILS.map((c) => ({
+  const [categories, setCategories] = useState<CategoryItem[]>(() => {
+    if (categoriesCache) return categoriesCache.data;
+    return CATEGORY_DETAILS.map((c) => ({
       id: c.id,
       slug: c.id,
       label: c.label,
       description: c.description,
-    })),
-  );
-  const [loading, setLoading] = useState(true);
+    }));
+  });
+  const [loading, setLoading] = useState(!categoriesCache);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    const handleUpdate = () => setRefreshKey((k) => k + 1);
-    window.addEventListener("categories-updated", handleUpdate);
-    window.addEventListener("focus", handleUpdate);
-    const unsub1 = websocketService.on("categories_updated", handleUpdate);
-    const unsub2 = websocketService.on("category_updated", handleUpdate);
+    const handleRemoteUpdate = () => {
+      invalidateCategoriesCache();
+      setRefreshKey((k) => k + 1);
+    };
+    const handleSoftUpdate = () => setRefreshKey((k) => k + 1);
+
+    window.addEventListener("categories-updated", handleRemoteUpdate);
+    window.addEventListener("focus", handleSoftUpdate);
+    const unsub1 = websocketService.on("categories_updated", handleRemoteUpdate);
+    const unsub2 = websocketService.on("category_updated", handleRemoteUpdate);
     return () => {
-      window.removeEventListener("categories-updated", handleUpdate);
-      window.removeEventListener("focus", handleUpdate);
+      window.removeEventListener("categories-updated", handleRemoteUpdate);
+      window.removeEventListener("focus", handleSoftUpdate);
       unsub1();
       unsub2();
     };
@@ -1255,33 +1358,15 @@ export function useCategories() {
   useEffect(() => {
     let cancelled = false;
 
-    async function fetchCategories() {
-      try {
-        const res = await api.get("/ecommerce/categories");
-        const items = res.data?.data;
-        if (Array.isArray(items) && !cancelled) {
-          const mapped: CategoryItem[] = (items as BackendCategory[])
-            .filter((cat) => cat.is_active !== false)
-            .map((cat) => {
-              const categoryId = cat.slug || cat.uuid || "uncategorized";
-              return {
-                id: categoryId,
-                uuid: cat.uuid,
-                slug: categoryId,
-                label: cat.name,
-                description: cat.description || "",
-              };
-            });
-          setCategories(mapped);
-        }
-      } catch {
-        // Fallback to static CATEGORY_DETAILS
-      } finally {
-        if (!cancelled) setLoading(false);
+    async function load() {
+      const data = await fetchCategoriesCached();
+      if (!cancelled) {
+        setCategories(data);
+        setLoading(false);
       }
     }
 
-    fetchCategories();
+    void load();
     return () => {
       cancelled = true;
     };

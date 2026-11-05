@@ -56,6 +56,12 @@ interface BackendOrderItem {
     image?: string;
     name?: string;
   };
+  review?: {
+    uuid?: string;
+    rating: number;
+    comment: string;
+    created_at?: string;
+  };
 }
 
 interface BackendOrder {
@@ -152,6 +158,13 @@ function mapBackendOrder(bo: BackendOrder): Order {
       unit_price: Number(item.unit_price ?? item.price ?? 0),
       quantity: Number(item.quantity ?? 1),
       image: resolveAssetUrl(item.product_image_snapshot || item.product?.image || ""),
+      review: item.review
+        ? {
+            rating: item.review.rating,
+            comment: item.review.comment,
+            createdAt: item.review.created_at || "",
+          }
+        : undefined,
     })),
   };
 }
@@ -194,65 +207,75 @@ export function saveOrder(order: Order) {
   });
 }
 
+let inflightOrdersRequest: Promise<Order[]> | null = null;
+
 export async function fetchOrdersFromBackend(): Promise<Order[]> {
   if (!getAuthToken()) {
     clearStoredOrders();
     return [];
   }
 
-  const key = getScopedOrderKey();
-
-  try {
-    const res = await api.get("/ecommerce/orders", {
-      params: { limit: 50, scope: "my" },
-    });
-    const items = res.data?.data;
-    if (Array.isArray(items)) {
-      const backendOrders = items.map(mapBackendOrder);
-      const localOrders = getStoredOrders();
-      const localOrdersById = new Map(
-        localOrders.map((order) => [order.id, order]),
-      );
-
-      const seen = new Set<string>();
-      const combined: Order[] = [];
-
-      for (const backendOrder of backendOrders) {
-        const localOrder = localOrdersById.get(backendOrder.id);
-        const order = localOrder
-          ? {
-              ...backendOrder,
-              items: backendOrder.items.map((item) => ({
-                ...item,
-                review: localOrder.items.find(
-                  (localItem) => localItem.id === item.id,
-                )?.review,
-              })),
-            }
-          : backendOrder;
-        if (!seen.has(order.id)) {
-          seen.add(order.id);
-          combined.push(order);
-        }
-      }
-
-      for (const lo of localOrders) {
-        if (!seen.has(lo.id)) {
-          seen.add(lo.id);
-          combined.push(lo);
-        }
-      }
-
-      if (typeof window !== "undefined" && key) {
-        window.localStorage.setItem(key, JSON.stringify(combined));
-      }
-      return combined;
-    }
-  } catch {
-    // Return stored orders on transient network failure
+  if (inflightOrdersRequest) {
+    return inflightOrdersRequest;
   }
 
-  return getStoredOrders();
+  inflightOrdersRequest = (async () => {
+    const key = getScopedOrderKey();
+
+    try {
+      const res = await api.get("/ecommerce/orders");
+      const items = res.data?.data;
+      if (Array.isArray(items)) {
+        const backendOrders = items.map(mapBackendOrder);
+        const localOrders = getStoredOrders();
+        const localOrdersById = new Map(
+          localOrders.map((order) => [order.id, order]),
+        );
+
+        const seen = new Set<string>();
+        const combined: Order[] = [];
+
+        for (const backendOrder of backendOrders) {
+          const localOrder = localOrdersById.get(backendOrder.id);
+          const order = localOrder
+            ? {
+                ...backendOrder,
+                items: backendOrder.items.map((item) => ({
+                  ...item,
+                  review: item.review || localOrder.items.find(
+                    (localItem) => localItem.id === item.id,
+                  )?.review,
+                })),
+              }
+            : backendOrder;
+          if (!seen.has(order.id)) {
+            seen.add(order.id);
+            combined.push(order);
+          }
+        }
+
+        for (const lo of localOrders) {
+          if (!seen.has(lo.id)) {
+            seen.add(lo.id);
+            combined.push(lo);
+          }
+        }
+
+        if (typeof window !== "undefined" && key) {
+          window.localStorage.setItem(key, JSON.stringify(combined));
+        }
+        return combined;
+      }
+    } catch {
+      // Return stored orders on transient network failure
+    }
+
+    return getStoredOrders();
+  })().finally(() => {
+    inflightOrdersRequest = null;
+  });
+
+  return inflightOrdersRequest;
 }
 
 export async function updateOrderStatusInBackend(
@@ -263,7 +286,6 @@ export async function updateOrderStatusInBackend(
     await api.patch(
       `/ecommerce/orders/${encodeURIComponent(orderIdOrUuid)}/status`,
       { status },
-      { params: { scope: "my" } },
     );
     return true;
   } catch (err) {
