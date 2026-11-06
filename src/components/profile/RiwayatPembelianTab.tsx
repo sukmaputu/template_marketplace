@@ -13,7 +13,6 @@ import {
   updateOrderStatusInBackend,
 } from "@/lib/orderHistory";
 import {
-  fetchProductReviews,
   saveProductReview,
   submitProductReview,
   type ProductReview,
@@ -61,58 +60,9 @@ export function RiwayatPembelianTab() {
       }
       try {
         const fetched = await fetchOrdersFromBackend();
-        if (!cancelled && fetched.length > 0) {
-          const productIds = [
-            ...new Set(
-              fetched.flatMap((order) =>
-                order.status === "completed"
-                  ? order.items
-                      .filter((item) => !item.review)
-                      .map((item) => item.productId)
-                      .filter((id): id is string => Boolean(id))
-                  : [],
-              ),
-            ),
-          ];
-          const fetchedReviews = await Promise.all(
-            productIds.map((productId) =>
-              fetchProductReviews(productId, { limit: 100 }),
-            ),
-          );
-          if (cancelled) return;
-
-          const reviewsByOrderItem = new Map<string, ProductReview>();
-          for (const result of fetchedReviews) {
-            for (const review of result.items) {
-              if (review.orderItemUuid) {
-                reviewsByOrderItem.set(review.orderItemUuid, review);
-              }
-            }
-          }
-
-          setOrders(
-            fetched.map((order) => ({
-              ...order,
-              items: order.items.map((item) => {
-                if (item.review) return item;
-                const review = reviewsByOrderItem.get(item.id);
-                return review
-                  ? {
-                      ...item,
-                      review: {
-                        rating: review.rating,
-                        comment: review.comment,
-                        createdAt: review.createdAt,
-                      },
-                    }
-                  : item;
-              }),
-            })),
-          );
-          return;
-        }
         if (!cancelled) {
           setOrders(fetched);
+          return;
         }
       } catch {
         // ignore

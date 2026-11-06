@@ -55,7 +55,7 @@ export function MarketplaceHeader() {
   const { formatPrice } = useCurrency();
   const navigate = useNavigate();
   const { categories } = useCategories();
-  const { products: marketplaceProducts } = useMarketplaceProducts(50);
+  const { products: marketplaceProducts } = useMarketplaceProducts(12);
   const allProducts = useMemo(
     () => (marketplaceProducts.length > 0 ? marketplaceProducts : PRODUCTS),
     [marketplaceProducts],

@@ -124,33 +124,53 @@ export function markAllAnnouncementsAsRead(announcements: Announcement[]): void 
   }
 }
 
+// In-memory cache & in-flight deduplication for active announcements
+interface ActiveAnnouncementCache {
+  data: Announcement[];
+  timestamp: number;
+}
+
+let activeAnnouncementsCache: ActiveAnnouncementCache | null = null;
+const ANNOUNCEMENTS_CACHE_TTL_MS = 30_000; // 30 seconds TTL for static announcements
+let inflightActiveAnnouncements: Promise<Announcement[]> | null = null;
+
+export function invalidateAnnouncementsCache(): void {
+  activeAnnouncementsCache = null;
+}
+
 // API methods
 export const announcementApi = {
-  async getActive(): Promise<Announcement[]> {
-    try {
-      const res = await api.get<{
-        success: boolean;
-        message: string;
-        data?: Announcement[];
-      }>("/cms/announcements/active");
-      if (res.data?.data && Array.isArray(res.data.data)) {
-        return res.data.data;
-      }
-    } catch (err) {
-      console.warn("[announcementApi.getActive] Primary API failed, trying localhost fallback:", err);
+  async getActive(forceRefresh = false): Promise<Announcement[]> {
+    if (!forceRefresh && activeAnnouncementsCache && (Date.now() - activeAnnouncementsCache.timestamp < ANNOUNCEMENTS_CACHE_TTL_MS)) {
+      return activeAnnouncementsCache.data;
     }
 
-    try {
-      const fallbackRes = await fetch("http://localhost:8080/api/v1/cms/announcements/active");
-      if (fallbackRes.ok) {
-        const json = await fallbackRes.json();
-        return json.data ?? [];
-      }
-    } catch {
-      // ignore
+    if (inflightActiveAnnouncements) {
+      return inflightActiveAnnouncements;
     }
 
-    return [];
+    inflightActiveAnnouncements = (async () => {
+      try {
+        const res = await api.get<{
+          success: boolean;
+          message: string;
+          data?: Announcement[];
+        }>("/cms/announcements/active");
+        const items = res.data?.data && Array.isArray(res.data.data) ? res.data.data : [];
+        activeAnnouncementsCache = {
+          data: items,
+          timestamp: Date.now(),
+        };
+        return items;
+      } catch (err) {
+        console.warn("[announcementApi.getActive] Failed:", err);
+        return activeAnnouncementsCache?.data ?? [];
+      } finally {
+        inflightActiveAnnouncements = null;
+      }
+    })();
+
+    return inflightActiveAnnouncements;
   },
 
   async getAll(): Promise<Announcement[]> {
@@ -209,23 +229,27 @@ export function useAnnouncements() {
     // Initial fetch
     void fetchActive();
 
-    // 1. WebSocket listeners
-    const unsubUpdate = websocketService.on("announcement_updated", () => {
+    // 1. WebSocket listeners (explicit invalidation)
+    const handleRemoteUpdate = () => {
+      invalidateAnnouncementsCache();
       void fetchActive();
-    });
-    const unsubAnnounce = websocketService.on("announcement", () => {
-      void fetchActive();
-    });
+    };
+    const unsubUpdate = websocketService.on("announcement_updated", handleRemoteUpdate);
+    const unsubAnnounce = websocketService.on("announcement", handleRemoteUpdate);
     const unsubData = websocketService.on("data_updated", (payload: any) => {
       if (!payload || payload.resource === "announcements" || payload.resource === "pengumuman") {
-        void fetchActive();
+        handleRemoteUpdate();
       }
     });
 
     // 2. DOM Custom events for multi-tab & window sync
     const handleSync = () => void fetchActive();
+    const handleEventSync = () => {
+      invalidateAnnouncementsCache();
+      void fetchActive();
+    };
     const handleReadSync = () => syncReadStatus();
-    window.addEventListener("announcements-updated", handleSync);
+    window.addEventListener("announcements-updated", handleEventSync);
     window.addEventListener("announcement-read-updated", handleReadSync);
     window.addEventListener("notifications-read-updated", handleReadSync);
     window.addEventListener("focus", handleSync);
@@ -235,7 +259,7 @@ export function useAnnouncements() {
       unsubUpdate();
       unsubAnnounce();
       unsubData();
-      window.removeEventListener("announcements-updated", handleSync);
+      window.removeEventListener("announcements-updated", handleEventSync);
       window.removeEventListener("announcement-read-updated", handleReadSync);
       window.removeEventListener("notifications-read-updated", handleReadSync);
       window.removeEventListener("focus", handleSync);

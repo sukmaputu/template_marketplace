@@ -1,9 +1,12 @@
 import axios from 'axios';
 
+export const API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL ||
+  'http://127.0.0.1:8080/api/v1'
+).replace(/\/+$/, '');
+
 export const api = axios.create({
-  baseURL:
-    import.meta.env.VITE_API_BASE_URL ||
-    'https://demo-be-eco.nadrical.my.id/api/v1',
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
     Accept: 'application/json',
@@ -27,7 +30,8 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       const url = String(error.config?.url || '');
-      if (!url.includes('/auth/login')) {
+      // Do not clear user auth session if 401 is an access rejection on a specific order resource
+      if (!url.includes('/auth/login') && !url.includes('/ecommerce/orders/')) {
         localStorage.removeItem('token');
         sessionStorage.removeItem('token');
         localStorage.removeItem('auth-user');

@@ -35,7 +35,7 @@ export function WishlistTab() {
   const [pendingRemovalId, setPendingRemovalId] = useState<string | null>(null);
   const isLoading = false;
 
-  const { products } = useMarketplaceProducts(50);
+  const { products } = useMarketplaceProducts(12);
   const { formatPrice } = useCurrency();
   const { addToCart } = useCart();
   const navigate = useNavigate();
