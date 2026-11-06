@@ -46,6 +46,8 @@ function loadStoredUser(): AuthUser | null {
   }
 }
 
+let inFlightProfilePromise: Promise<void> | null = null;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(() => {
     const storedUser = loadStoredUser();
@@ -61,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         full_name: user.full_name,
       });
     }
-  }, [user]);
+  }, [user?.email, user?.id]);
 
   async function login(email: string, password: string): Promise<boolean> {
     const normalizedIdentifier = email.trim().toLowerCase();
@@ -231,42 +233,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshProfile = useCallback(async () => {
     const token = getAuthToken();
     if (!token) return;
-    try {
-      const res = await api.get<{
-        success: boolean;
-        data?: {
-          uuid?: string;
-          email?: string;
-          username?: string;
-          full_name?: string;
-          phone?: string;
-          address?: string;
-          loyalty_points?: number;
-        };
-      }>("/auth/profile");
-      const akun = res.data?.data;
-      if (akun) {
-        setUser((prev) => {
-          const nextUser: AuthUser = {
-            id: akun.uuid ?? prev?.id,
-            full_name:
-              akun.full_name ||
-              akun.username ||
-              prev?.full_name ||
-              DEMO_ACCOUNT.full_name,
-            email: akun.email || prev?.email || "",
-            phone: akun.phone || prev?.phone || DEMO_ACCOUNT.phone,
-            username: akun.username || prev?.username || DEMO_ACCOUNT.username,
-            address: akun.address || prev?.address || DEMO_ACCOUNT.address,
-            loyalty_points: akun.loyalty_points ?? prev?.loyalty_points ?? 0,
+    if (inFlightProfilePromise) return inFlightProfilePromise;
+
+    inFlightProfilePromise = (async () => {
+      try {
+        const res = await api.get<{
+          success: boolean;
+          data?: {
+            uuid?: string;
+            email?: string;
+            username?: string;
+            full_name?: string;
+            phone?: string;
+            address?: string;
+            loyalty_points?: number;
           };
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
-          return nextUser;
-        });
+        }>("/auth/profile");
+        const akun = res.data?.data;
+        if (akun) {
+          setUser((prev) => {
+            const nextUser: AuthUser = {
+              id: akun.uuid ?? prev?.id,
+              full_name:
+                akun.full_name ||
+                akun.username ||
+                prev?.full_name ||
+                DEMO_ACCOUNT.full_name,
+              email: akun.email || prev?.email || "",
+              phone: akun.phone || prev?.phone || DEMO_ACCOUNT.phone,
+              username: akun.username || prev?.username || DEMO_ACCOUNT.username,
+              address: akun.address || prev?.address || DEMO_ACCOUNT.address,
+              loyalty_points: akun.loyalty_points ?? prev?.loyalty_points ?? 0,
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
+            return nextUser;
+          });
+        }
+      } catch {
+        // ignore
+      } finally {
+        inFlightProfilePromise = null;
       }
-    } catch {
-      // ignore
-    }
+    })();
+
+    return inFlightProfilePromise;
   }, []);
 
   async function updateProfile(data: {

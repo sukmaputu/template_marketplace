@@ -463,7 +463,7 @@ export default function HomePage() {
         : []
       : pagedProducts;
 
-  const { products: allMarketplaceProducts } = useMarketplaceProducts(50);
+  const { products: allMarketplaceProducts } = useMarketplaceProducts(20);
   const catalogPool = useMemo(
     () =>
       allMarketplaceProducts.length > 0 ? allMarketplaceProducts : PRODUCTS,

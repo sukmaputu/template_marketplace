@@ -93,6 +93,11 @@ function saveStorage(conversations: ChatConversation[], messages: ChatMessage[])
   }
 }
 
+const inFlightMarketplaceSyncs = new Map<string, Promise<ChatConversation>>();
+const recentMarketplaceSyncs = new Map<string, { conv: ChatConversation; timestamp: number }>();
+const SYNC_CACHE_TTL_MS = 15000;
+const transferredIdentities = new Set<string>();
+
 class ChatService {
   public getGuestId(): string {
     try {
@@ -306,94 +311,127 @@ class ChatService {
   }
 
   private async syncConversationRemote(identity: ChatIdentity, localConv: ChatConversation): Promise<ChatConversation> {
-    try {
-      const res = await fetch(`${API_BASE}/ecommerce/chats`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customer_user_id:
-            identity.customer_user_id && !identity.customer_user_id.startsWith("guest-")
-              ? identity.customer_user_id
-              : null,
-          customer_name: identity.customer_name || localConv.customer_name || "Tamu",
-          customer_email: identity.customer_email || localConv.customer_email || "",
-          customer_phone: identity.customer_phone || localConv.customer_phone || "",
-        }),
-      });
+    const cacheKey = [
+      identity.customer_user_id || "",
+      identity.customer_email || "",
+      localConv.id || "",
+    ].join(":");
 
-      if (!res.ok) return localConv;
-      const data = await res.json();
-      const remoteConv = data?.data;
-      if (!remoteConv || !remoteConv.id) return localConv;
+    const recent = recentMarketplaceSyncs.get(cacheKey);
+    if (recent && Date.now() - recent.timestamp < SYNC_CACHE_TTL_MS) {
+      return recent.conv;
+    }
 
-      const { conversations, messages } = loadStorage();
-      const oldId = localConv.id;
-      const remoteId = remoteConv.id;
+    const existingPromise = inFlightMarketplaceSyncs.get(cacheKey);
+    if (existingPromise) {
+      return existingPromise;
+    }
 
-      // Update conversation with remote canonical DB id and properties
-      const updatedConversations = conversations.map((c) => {
-        if (c.id === oldId || c.id === remoteId) {
-          return {
-            ...c,
-            id: remoteId,
-            customer_name: remoteConv.customer_name || c.customer_name,
-            customer_email: remoteConv.customer_email || c.customer_email,
-            customer_phone: remoteConv.customer_phone || c.customer_phone,
-            is_guest: remoteConv.is_guest ?? c.is_guest,
-            status: remoteConv.status || c.status,
-            last_activity_at: remoteConv.last_activity_at || c.last_activity_at,
-          };
-        }
-        return c;
-      });
+    const syncPromise = (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/ecommerce/chats`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversation_id:
+              localConv.id && !localConv.id.startsWith("guest-") ? localConv.id : undefined,
+            customer_user_id:
+              identity.customer_user_id && !identity.customer_user_id.startsWith("guest-")
+                ? identity.customer_user_id
+                : null,
+            customer_name: identity.customer_name || localConv.customer_name || "Tamu",
+            customer_email: identity.customer_email || localConv.customer_email || "",
+            customer_phone: identity.customer_phone || localConv.customer_phone || "",
+          }),
+        });
 
-      // Re-map messages to the canonical database conversation ID
-      const updatedMessages = messages.map((m) => {
-        if (m.conversation_id === oldId) {
-          return { ...m, conversation_id: remoteId };
-        }
-        return m;
-      });
+        if (!res.ok) return localConv;
+        const data = await res.json();
+        const remoteConv = data?.data;
+        if (!remoteConv || !remoteConv.id) return localConv;
 
-      // Merge messages from remote DB if available
-      if (Array.isArray(remoteConv.messages) && remoteConv.messages.length > 0) {
-        for (const rm of remoteConv.messages) {
-          const exists = updatedMessages.some((m) => m.id === rm.id);
-          if (!exists) {
-            updatedMessages.push({
-              id: rm.id,
-              conversation_id: remoteId,
-              sender_role: rm.sender_role,
-              sender_user_id: rm.sender_user_id || null,
-              sender_name: rm.sender_name,
-              sender_avatar: rm.sender_avatar,
-              message: rm.message,
-              reply_to_id: rm.reply_to_id || null,
-              reply_to: rm.reply_to || null,
-              is_read: rm.is_read,
-              created_at: rm.created_at,
-            });
+        const { conversations, messages } = loadStorage();
+        const oldId = localConv.id;
+        const remoteId = remoteConv.id;
+
+        // Update conversation with remote canonical DB id and properties
+        const updatedConversations = conversations.map((c) => {
+          if (c.id === oldId || c.id === remoteId) {
+            return {
+              ...c,
+              id: remoteId,
+              customer_name: remoteConv.customer_name || c.customer_name,
+              customer_email: remoteConv.customer_email || c.customer_email,
+              customer_phone: remoteConv.customer_phone || c.customer_phone,
+              is_guest: remoteConv.is_guest ?? c.is_guest,
+              status: remoteConv.status || c.status,
+              last_activity_at: remoteConv.last_activity_at || c.last_activity_at,
+            };
+          }
+          return c;
+        });
+
+        // Re-map messages to the canonical database conversation ID
+        const updatedMessages = messages.map((m) => {
+          if (m.conversation_id === oldId) {
+            return { ...m, conversation_id: remoteId };
+          }
+          return m;
+        });
+
+        // Merge messages from remote DB if available
+        if (Array.isArray(remoteConv.messages) && remoteConv.messages.length > 0) {
+          for (const rm of remoteConv.messages) {
+            const exists = updatedMessages.some((m) => m.id === rm.id);
+            if (!exists) {
+              updatedMessages.push({
+                id: rm.id,
+                conversation_id: remoteId,
+                sender_role: rm.sender_role,
+                sender_user_id: rm.sender_user_id || null,
+                sender_name: rm.sender_name,
+                sender_avatar: rm.sender_avatar,
+                message: rm.message,
+                reply_to_id: rm.reply_to_id || null,
+                reply_to: rm.reply_to || null,
+                is_read: rm.is_read,
+                created_at: rm.created_at,
+              });
+            }
           }
         }
-      }
 
-      saveStorage(updatedConversations, updatedMessages);
-      const active = updatedConversations.find((c) => c.id === remoteId);
-      const resultConv = active || { ...localConv, id: remoteId };
+        saveStorage(updatedConversations, updatedMessages);
+        const active = updatedConversations.find((c) => c.id === remoteId);
+        const resultConv = active || { ...localConv, id: remoteId };
 
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("marketplace-chat-conversation-synced", {
-            detail: { oldId, conversation: resultConv },
-          }),
-        );
+        recentMarketplaceSyncs.set(cacheKey, { conv: resultConv, timestamp: Date.now() });
+        const canonicalKey = [
+          identity.customer_user_id || "",
+          identity.customer_email || "",
+          remoteId,
+        ].join(":");
+        recentMarketplaceSyncs.set(canonicalKey, { conv: resultConv, timestamp: Date.now() });
+
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("marketplace-chat-conversation-synced", {
+              detail: { oldId, conversation: resultConv },
+            }),
+          );
+        }
+        return resultConv;
+      } catch (err) {
+        // Offline fallback: graceful resilience
+        console.warn("[ChatService] Failed to sync with backend DB:", err);
+        return localConv;
+      } finally {
+        inFlightMarketplaceSyncs.delete(cacheKey);
       }
-      return resultConv;
-    } catch (err) {
-      // Offline fallback: graceful resilience
-      console.warn("[ChatService] Failed to sync with backend DB:", err);
-      return localConv;
-    }
+    })();
+
+    inFlightMarketplaceSyncs.set(cacheKey, syncPromise);
+    return syncPromise;
   }
 
   public async ensureConversationAsync(identity: ChatIdentity): Promise<ChatConversation> {
@@ -750,10 +788,16 @@ class ChatService {
     phone?: string;
     full_name?: string;
   }): { transferred: boolean; conversation?: ChatConversation } {
-    const { conversations, messages } = loadStorage();
     const normalizedEmail = (user.email || "").trim().toLowerCase();
     const normalizedPhone = (user.phone || "").trim();
     const targetUserId = user.id ? String(user.id) : (user.email || "");
+    const transferKey = `${targetUserId}:${normalizedEmail}`;
+
+    if (transferredIdentities.has(transferKey)) {
+      return { transferred: false };
+    }
+
+    const { conversations, messages } = loadStorage();
 
     const guestConvIndex = conversations.findIndex((c) => {
       if (c.customer_user_id === targetUserId) return false;
@@ -764,7 +808,12 @@ class ChatService {
       return emailMatch || phoneMatch;
     });
 
-    // Also persist transfer to backend PostgreSQL DB only if user has a valid authenticated JWT token
+    if (guestConvIndex === -1) {
+      transferredIdentities.add(transferKey);
+      return { transferred: false };
+    }
+
+    // Persist transfer to backend PostgreSQL DB only if user has an actual guest conversation to transfer
     const token = getAuthToken();
     if (token) {
       api
@@ -779,9 +828,7 @@ class ChatService {
         });
     }
 
-    if (guestConvIndex === -1) {
-      return { transferred: false };
-    }
+    transferredIdentities.add(transferKey);
 
     const targetConv = conversations[guestConvIndex];
     const updatedConv: ChatConversation = {

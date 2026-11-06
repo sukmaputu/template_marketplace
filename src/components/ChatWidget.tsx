@@ -261,35 +261,42 @@ export function ChatWidget() {
       if (cancelled) return;
       setConversation(syncedConv);
 
-      const page = await chatService.fetchMessagesPage(syncedConv.id, 50);
-      if (
-        !cancelled &&
-        (page.messages.length > 0 || local.messages.length === 0)
-      ) {
-        setMessages((prev) => {
-          const map = new Map<string, ChatMessage>();
-          page.messages.forEach((m) => map.set(String(m.id), m));
-          prev.forEach((m) => {
-            const alreadyInMap =
-              map.has(String(m.id)) ||
-              (m.client_temp_id &&
-                Array.from(map.values()).some(
-                  (pm) =>
-                    pm.id === m.client_temp_id ||
-                    pm.client_temp_id === m.client_temp_id,
-                ));
-            if (!alreadyInMap) {
-              map.set(String(m.id), m);
-            }
+      const cachedAfterSync = chatService.getLocalMessagesPage(syncedConv.id, 50);
+      if (cachedAfterSync.messages.length > 0) {
+        setMessages(cachedAfterSync.messages);
+        setHasMore(cachedAfterSync.hasMore);
+        hasMoreRef.current = cachedAfterSync.hasMore;
+      } else {
+        const page = await chatService.fetchMessagesPage(syncedConv.id, 50);
+        if (
+          !cancelled &&
+          (page.messages.length > 0 || local.messages.length === 0)
+        ) {
+          setMessages((prev) => {
+            const map = new Map<string, ChatMessage>();
+            page.messages.forEach((m) => map.set(String(m.id), m));
+            prev.forEach((m) => {
+              const alreadyInMap =
+                map.has(String(m.id)) ||
+                (m.client_temp_id &&
+                  Array.from(map.values()).some(
+                    (pm) =>
+                      pm.id === m.client_temp_id ||
+                      pm.client_temp_id === m.client_temp_id,
+                  ));
+              if (!alreadyInMap) {
+                map.set(String(m.id), m);
+              }
+            });
+            return Array.from(map.values()).sort(
+              (a, b) =>
+                new Date(a.created_at || 0).getTime() -
+                new Date(b.created_at || 0).getTime(),
+            );
           });
-          return Array.from(map.values()).sort(
-            (a, b) =>
-              new Date(a.created_at || 0).getTime() -
-              new Date(b.created_at || 0).getTime(),
-          );
-        });
-        setHasMore(page.hasMore);
-        hasMoreRef.current = page.hasMore;
+          setHasMore(page.hasMore);
+          hasMoreRef.current = page.hasMore;
+        }
       }
     }
 

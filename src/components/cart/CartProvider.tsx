@@ -7,6 +7,7 @@ import { api, getAuthToken } from "@/lib/api";
 import { showToast } from "@/lib/toast";
 
 const CART_STORAGE_KEY = "marketplace-cart";
+let inFlightCartSyncPromise: Promise<void> | null = null;
 
 function loadSavedCart(): CartItem[] {
   if (typeof window === "undefined") return [];
@@ -39,54 +40,62 @@ export function CartProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      try {
-        const response = await api.get("/ecommerce/cart");
-        const data = response.data?.data;
-        const remoteItems: unknown[] = Array.isArray(data)
-          ? data
-          : data && typeof data === "object"
-            ? ((data as { items?: unknown[]; cart_items?: unknown[] }).items ??
-              (data as { cart_items?: unknown[] }).cart_items ??
-              [])
-            : [];
-        if (cancelled) return;
+      if (inFlightCartSyncPromise) return inFlightCartSyncPromise;
 
-        setItems((current) =>
-          current.map((item) => {
-            const match = remoteItems.find((remote) => {
-              if (!remote || typeof remote !== "object") return false;
-              const row = remote as {
-                uuid?: string;
-                id?: string;
-                product_uuid?: string;
-                product_id?: string;
-                variant_uuid?: string;
-                variant_name?: string;
-                product?: { uuid?: string; id?: string };
-              };
-              const productId =
-                row.product_uuid ||
-                row.product_id ||
-                row.product?.uuid ||
-                row.product?.id;
-              const variantMatches = item.variantUuid
-                ? row.variant_uuid === item.variantUuid
-                : !row.variant_uuid || row.variant_name === item.variant;
-              return productId === item.productId && variantMatches;
-            });
-            if (!match || typeof match !== "object") return item;
-            const row = match as { uuid?: string; id?: string };
-            const backendCartItemId = row.uuid || row.id;
-            return backendCartItemId
-              ? { ...item, backendCartItemId }
-              : item;
-          }),
-        );
-      } catch {
-        if (!cancelled) {
-          showToast("Keranjang belum dapat disinkronkan dengan server.");
+      inFlightCartSyncPromise = (async () => {
+        try {
+          const response = await api.get("/ecommerce/cart");
+          const data = response.data?.data;
+          const remoteItems: unknown[] = Array.isArray(data)
+            ? data
+            : data && typeof data === "object"
+              ? ((data as { items?: unknown[]; cart_items?: unknown[] }).items ??
+                (data as { cart_items?: unknown[] }).cart_items ??
+                [])
+              : [];
+          if (cancelled) return;
+
+          setItems((current) =>
+            current.map((item) => {
+              const match = remoteItems.find((remote) => {
+                if (!remote || typeof remote !== "object") return false;
+                const row = remote as {
+                  uuid?: string;
+                  id?: string;
+                  product_uuid?: string;
+                  product_id?: string;
+                  variant_uuid?: string;
+                  variant_name?: string;
+                  product?: { uuid?: string; id?: string };
+                };
+                const productId =
+                  row.product_uuid ||
+                  row.product_id ||
+                  row.product?.uuid ||
+                  row.product?.id;
+                const variantMatches = item.variantUuid
+                  ? row.variant_uuid === item.variantUuid
+                  : !row.variant_uuid || row.variant_name === item.variant;
+                return productId === item.productId && variantMatches;
+              });
+              if (!match || typeof match !== "object") return item;
+              const row = match as { uuid?: string; id?: string };
+              const backendCartItemId = row.uuid || row.id;
+              return backendCartItemId
+                ? { ...item, backendCartItemId }
+                : item;
+            }),
+          );
+        } catch {
+          if (!cancelled) {
+            showToast("Keranjang belum dapat disinkronkan dengan server.");
+          }
+        } finally {
+          inFlightCartSyncPromise = null;
         }
-      }
+      })();
+
+      return inFlightCartSyncPromise;
     }
 
     void syncBackendCartIds();
