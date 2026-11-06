@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Building2, Clock, Upload } from "lucide-react";
+import { Building2, Check, Clock, Copy, Upload } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { MarketplaceFooter } from "@/components/MarketplaceFooter";
 import { PaymentProofModal } from "@/components/profile/PaymentProofModal";
@@ -22,6 +22,7 @@ export default function UploadPaymentProofPage() {
     () => routeState ?? loadCheckoutOrderState(),
   );
   const [isProofModalOpen, setIsProofModalOpen] = useState(false);
+  const [copiedAccount, setCopiedAccount] = useState<string | null>(null);
 
   useLayoutEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -60,6 +61,26 @@ export default function UploadPaymentProofPage() {
           })),
         }
       : null;
+
+  async function copyAccountNumber(accountNumber?: string) {
+    if (!accountNumber) return;
+
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard API is unavailable");
+      }
+      await navigator.clipboard.writeText(accountNumber);
+      setCopiedAccount(accountNumber);
+      showToast("Nomor rekening berhasil disalin.");
+      window.setTimeout(() => {
+        setCopiedAccount((current) =>
+          current === accountNumber ? null : current,
+        );
+      }, 2000);
+    } catch {
+      showToast("Gagal menyalin nomor rekening. Silakan salin secara manual.");
+    }
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -123,9 +144,38 @@ export default function UploadPaymentProofPage() {
                     orderState.paymentMethod.name}
                 </p>
                 {orderState.paymentMethod.account_number && (
-                  <p className="mt-1 font-mono text-lg font-bold text-text">
-                    {orderState.paymentMethod.account_number}
-                  </p>
+                  <div className="mt-1 flex items-center justify-between gap-3">
+                    <p className="min-w-0 break-all font-mono text-lg font-bold text-text">
+                      {orderState.paymentMethod.account_number}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void copyAccountNumber(
+                          orderState.paymentMethod?.account_number,
+                        )
+                      }
+                      aria-label={
+                        copiedAccount ===
+                        orderState.paymentMethod.account_number
+                          ? "Nomor rekening tersalin"
+                          : "Salin nomor rekening"
+                      }
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-border/30">
+                      {copiedAccount ===
+                      orderState.paymentMethod.account_number ? (
+                        <>
+                          <Check className="h-3.5 w-3.5 text-emerald-600" />
+                          Tersalin
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3.5 w-3.5" />
+                          Salin
+                        </>
+                      )}
+                    </button>
+                  </div>
                 )}
                 <p className="mt-1 text-xs text-text-secondary">
                   Atas Nama{" "}

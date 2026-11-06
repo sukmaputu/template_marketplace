@@ -439,7 +439,7 @@ export default function ProductDetailPage() {
 
   function handleKeranjang() {
     if (!product || isOutOfStock) return;
-    addToCart(product, quantity, variantLabel);
+    addToCart(product, quantity, variantLabel, selectedVariant?.id);
     showToast(`${product.name} added to cart`);
   }
 
@@ -448,7 +448,11 @@ export default function ProductDetailPage() {
     navigate("/checkout", {
       state: {
         immediateBuy: {
-          product,
+          product: {
+            ...product,
+            basePrice: unitPrice,
+            stock: availableStock,
+          },
           quantity,
           variant: variantLabel,
           variantUuid: selectedVariant?.id,

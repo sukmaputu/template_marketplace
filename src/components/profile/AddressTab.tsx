@@ -11,6 +11,8 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/components/auth/UseAuth";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import {
   createAddressApi,
   deleteAddressApi,
@@ -50,18 +52,9 @@ export function AddressTab() {
   );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [saveError, setSaveError] = useState("");
   const [isSearchingZip, setIsSearchingZip] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-
-  useEffect(() => {
-    if (!isModalOpen) return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [isModalOpen]);
 
   // Sync addresses from backend whenever user/email is ready or updated in another tab/browser
   useEffect(() => {
@@ -133,6 +126,7 @@ export function AddressTab() {
 
   function openCreate() {
     setEditingId(null);
+    setSaveError("");
     setForm({
       ...EMPTY_FORM,
       recipientName: user?.full_name ?? "",
@@ -143,6 +137,7 @@ export function AddressTab() {
 
   function openEdit(address: SavedAddress) {
     setEditingId(address.id);
+    setSaveError("");
     setForm({
       label: address.label,
       recipientName: address.recipientName,
@@ -157,6 +152,7 @@ export function AddressTab() {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setSaveError("");
     setIsSaving(true);
     try {
       if (editingId) {
@@ -189,14 +185,15 @@ export function AddressTab() {
       setIsModalOpen(false);
     } catch (err) {
       console.error("Error saving address:", err);
+      setSaveError("Gagal menyimpan alamat. Silakan coba lagi.");
     } finally {
       setIsSaving(false);
     }
   }
 
-  async function handleDelete(id: string) {
+  async function handleDelete(id: string): Promise<boolean> {
     const addressToDelete = addresses.find((address) => address.id === id);
-    if (!addressToDelete) return;
+    if (!addressToDelete) return false;
 
     const needsNewDefault =
       addressToDelete.isDefault ||
@@ -218,9 +215,11 @@ export function AddressTab() {
 
       await deleteAddressApi(id, email);
       setAddresses((prev) => prev.filter((address) => address.id !== id));
+      return true;
     } catch (err) {
       console.error("Error deleting address:", err);
       showToast("Gagal menghapus alamat. Silakan coba lagi.");
+      return false;
     }
   }
 
@@ -229,8 +228,9 @@ export function AddressTab() {
 
     setIsDeleting(true);
     try {
-      await handleDelete(deletingAddressId);
-      setDeletingAddressId(null);
+      if (await handleDelete(deletingAddressId)) {
+        setDeletingAddressId(null);
+      }
     } finally {
       setIsDeleting(false);
     }
@@ -264,13 +264,13 @@ export function AddressTab() {
             Simpan beberapa alamat untuk mempercepat proses checkout.
           </p>
         </div>
-        <button
+        <Button
           type="button"
           onClick={openCreate}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:opacity-90">
+          className="h-auto shrink-0 gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:opacity-90">
           <Plus className="h-4 w-4" />
           Tambah Alamat
-        </button>
+        </Button>
       </div>
 
       {isLoading && addresses.length === 0 ? (
@@ -404,14 +404,15 @@ export function AddressTab() {
       )}
 
       {isModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="address-modal-title">
+        <Dialog
+          labelledBy="address-modal-title"
+          onClose={() => setIsModalOpen(false)}
+          closeDisabled={isSaving}
+          overlayClassName="z-50 p-2 sm:p-4"
+          contentClassName="max-h-[calc(100dvh-1rem)] w-full max-w-lg rounded-xl bg-surface p-3 shadow-xl sm:p-6">
           <form
             onSubmit={handleSubmit}
-            className="max-h-[calc(100dvh-1rem)] w-full max-w-lg rounded-xl bg-surface p-3 shadow-xl sm:p-6">
+            aria-busy={isSaving}>
             <div className="flex items-center justify-between">
               <h3
                 id="address-modal-title"
@@ -421,8 +422,9 @@ export function AddressTab() {
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
+                disabled={isSaving}
                 aria-label="Tutup"
-                className="rounded-md p-1 text-text-secondary hover:bg-background">
+                className="rounded-md p-1 text-text-secondary hover:bg-background disabled:opacity-50">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -465,56 +467,64 @@ export function AddressTab() {
                 />
               </label>
             </div>
+            {saveError && (
+              <p role="alert" className="mt-3 text-sm text-red-600">
+                {saveError}
+              </p>
+            )}
             <div className="mt-3 flex justify-end gap-2 sm:mt-6">
-              <button
+              <Button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:bg-background">
-                Batal
-              </button>
-              <button
-                type="submit"
                 disabled={isSaving}
-                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
-                {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
-                Simpan Alamat
-              </button>
+                variant="outline"
+                className="h-auto rounded-lg border-border px-4 py-2 text-sm font-medium text-text hover:bg-background">
+                Batal
+              </Button>
+              <Button
+                type="submit"
+                loading={isSaving}
+                loadingText="Menyimpan..."
+                className="h-auto rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+                {editingId ? "Simpan Perubahan" : "Simpan Alamat"}
+              </Button>
             </div>
           </form>
-        </div>
+        </Dialog>
       )}
 
       {deletingAddressId && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="delete-address-title">
-          <div className="w-full max-w-sm rounded-xl border border-border bg-surface p-6 shadow-xl">
+        <Dialog
+          labelledBy="delete-address-title"
+          onClose={() => setDeletingAddressId(null)}
+          closeDisabled={isDeleting}
+          overlayClassName="z-[60] p-4"
+          contentClassName="w-full max-w-sm rounded-xl border border-border bg-surface p-6 shadow-xl">
             <h3
               id="delete-address-title"
               className="text-base font-semibold text-text">
-              Anda yakin ingin menhapus alamat ini ?
+              Anda yakin ingin menghapus alamat ini?
             </h3>
             <div className="mt-6 flex justify-end gap-2">
-              <button
+              <Button
                 type="button"
                 onClick={() => setDeletingAddressId(null)}
                 disabled={isDeleting}
-                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:bg-background disabled:opacity-50">
+                variant="outline"
+                className="h-auto rounded-lg border-border px-4 py-2 text-sm font-medium text-text hover:bg-background">
                 Tidak
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={confirmDeleteAddress}
-                disabled={isDeleting}
-                className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">
-                {isDeleting && <Loader2 className="h-4 w-4 animate-spin" />}
+                loading={isDeleting}
+                loadingText="Menghapus..."
+                variant="destructive"
+                className="h-auto rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">
                 Hapus
-              </button>
+              </Button>
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
     </div>
   );

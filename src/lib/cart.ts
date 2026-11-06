@@ -1,4 +1,8 @@
-import type { Product, ProductType } from "./products";
+import {
+  getVariantPrice,
+  type Product,
+  type ProductType,
+} from "./products";
 
 export interface CartItem {
   id: string;
@@ -27,25 +31,28 @@ export function createCartItem(
   product: Product,
   quantity: number = 1,
   variantName: string = "Varian standar",
+  variantUuid?: string,
 ): CartItem {
   const cartItemId = `${product.id}::${variantName}`;
+  const selectedVariant =
+    product.variants?.find((variant) => variant.id === variantUuid) ??
+    product.variants?.find((variant) => variant.variantName === variantName);
+  const availableStock = selectedVariant?.stock ?? product.stock;
 
   return {
     id: cartItemId,
     productId: product.id,
-    variantUuid: product.variants?.find(
-      (variant) => variant.variantName === variantName,
-    )?.id,
+    variantUuid: selectedVariant?.id,
     name: product.name,
     type: product.type,
     variant: variantName,
     image: product.image,
-    basePrice: product.basePrice,
+    basePrice: getVariantPrice(product, selectedVariant),
     comparePrice: product.comparePrice,
     quantity: quantity,
-    selected: !(product.stock !== undefined && product.stock <= 0),
+    selected: !(availableStock !== undefined && availableStock <= 0),
     categoryId: product.categoryId,
-    stock: product.stock,
+    stock: availableStock,
   };
 }
 

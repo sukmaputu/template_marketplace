@@ -17,6 +17,7 @@ import {
   Zap,
   Ticket,
   ChevronRight,
+  ChevronDown,
   Loader2,
   Plus,
   X,
@@ -25,6 +26,8 @@ import {
   Info,
 } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { useCart } from "@/components/cart/useCart";
 import { useBlocker, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/components/auth/UseAuth";
@@ -120,9 +123,25 @@ const DEMO_MANUAL_PAYMENT_METHOD: GatewayPaymentMethod = {
 };
 
 const SHIPPING_METHODS: ShippingMethod[] = [
-  { id: "standard", label: "Standard", eta: "3-5 hari kerja", cost: 8000, courier_name: "Internal" },
-  { id: "express", label: "Express", eta: "1-2 hari kerja", cost: 25000, courier_name: "Internal Express" },
+  {
+    id: "standard",
+    label: "Standard",
+    eta: "3-5 hari kerja",
+    cost: 8000,
+    courier_name: "Internal",
+  },
+  {
+    id: "express",
+    label: "Express",
+    eta: "1-2 hari kerja",
+    cost: 25000,
+    courier_name: "Internal Express",
+  },
 ];
+
+function createFallbackOrderId() {
+  return `ORD-${Date.now()}`;
+}
 
 function parseEtaDays(eta: string): { min: number; max: number } {
   const match = eta.match(/(\d+)(?:-(\d+))?/);
@@ -223,6 +242,8 @@ export default function CheckoutPage() {
       )?.id ?? null,
   );
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
+  const [isSavingAddress, setIsSavingAddress] = useState(false);
+  const [addressSaveError, setAddressSaveError] = useState("");
   const [showAddressList, setShowAddressList] = useState(false);
   const [quickAddress, setQuickAddress] = useState({
     label: "Rumah",
@@ -240,8 +261,8 @@ export default function CheckoutPage() {
   const postalCode = selectedAddress?.postalCode ?? "";
   const city = selectedAddress?.city ?? "";
   const address = selectedAddress?.addressLine ?? "";
-  const [shippingMethodId, setShippingMethodId] =
-    useState<string>("standard");
+  const [shippingMethodId, setShippingMethodId] = useState<string>("standard");
+  const [showAllShippingMethods, setShowAllShippingMethods] = useState(false);
   const [availableShippingMethods, setAvailableShippingMethods] =
     useState<ShippingMethod[]>(SHIPPING_METHODS);
   const [paymentMethods, setPaymentMethods] = useState<GatewayPaymentMethod[]>([
@@ -330,9 +351,10 @@ export default function CheckoutPage() {
     };
   }, [user?.email, user]);
 
-  async function saveQuickAddress() {
-    if (Object.values(quickAddress).some((value) => !value.trim())) return;
-
+  async function saveQuickAddress(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAddressSaveError("");
+    setIsSavingAddress(true);
     try {
       const isDefault = savedAddresses.length === 0;
       const created = await createAddressApi(
@@ -348,6 +370,9 @@ export default function CheckoutPage() {
       setIsAddressModalOpen(false);
     } catch (err) {
       console.error("Failed to save quick address:", err);
+      setAddressSaveError("Gagal menyimpan alamat. Silakan coba lagi.");
+    } finally {
+      setIsSavingAddress(false);
     }
   }
 
@@ -366,9 +391,11 @@ export default function CheckoutPage() {
           const mapped: Voucher[] = list.map((v) => {
             const isPercentage = v.voucher_type === "percentage";
             const discountValue = Number(v.discount_value) || 0;
-            const maxDiscount = v.max_discount_amount !== null && v.max_discount_amount !== undefined
-              ? Number(v.max_discount_amount)
-              : undefined;
+            const maxDiscount =
+              v.max_discount_amount !== null &&
+              v.max_discount_amount !== undefined
+                ? Number(v.max_discount_amount)
+                : undefined;
             return {
               id: v.uuid || v.id || v.code,
               code: v.code,
@@ -380,7 +407,9 @@ export default function CheckoutPage() {
               discount_percent: isPercentage ? discountValue : undefined,
               max_discount_amount: maxDiscount,
               voucher_type: v.voucher_type,
-              min_purchase_amount: v.min_purchase_amount ? Number(v.min_purchase_amount) : undefined,
+              min_purchase_amount: v.min_purchase_amount
+                ? Number(v.min_purchase_amount)
+                : undefined,
               min_purchase: v.min_purchase_amount
                 ? `Min. belanja ${formatPrice(Number(v.min_purchase_amount))}`
                 : undefined,
@@ -401,10 +430,14 @@ export default function CheckoutPage() {
           setSelectedVoucher((prev) => {
             if (!prev || prev.code === LOYALTY_REWARD_VOUCHER.code) return prev;
             const stillActive = mapped.some(
-              (v) => v.code.toUpperCase() === prev.code.toUpperCase() || v.id === prev.id,
+              (v) =>
+                v.code.toUpperCase() === prev.code.toUpperCase() ||
+                v.id === prev.id,
             );
             if (!stillActive) {
-              setVoucherError(`Voucher "${prev.code}" telah dinonaktifkan atau berakhir.`);
+              setVoucherError(
+                `Voucher "${prev.code}" telah dinonaktifkan atau berakhir.`,
+              );
               return null;
             }
             return prev;
@@ -511,7 +544,9 @@ export default function CheckoutPage() {
           const list: GatewayShippingMethod[] = shipRes.value.data?.data || [];
           if (Array.isArray(list) && list.length > 0) {
             const mapped: ShippingMethod[] = list.map((m) => {
-              const cost = (m.base_cost && m.base_cost > 0 ? m.base_cost : 9000) + (m.additional_fee || 0);
+              const cost =
+                (m.base_cost && m.base_cost > 0 ? m.base_cost : 9000) +
+                (m.additional_fee || 0);
               const eta = m.etd ? `${m.etd} hari kerja` : "2-4 hari kerja";
               const label = `${m.courier_name} (${m.service_name})`;
               return {
@@ -607,7 +642,9 @@ export default function CheckoutPage() {
       });
       const applyData = res.data?.data;
       if (applyData?.valid) {
-        const existing = availableVouchers.find((v) => v.code.toUpperCase() === code);
+        const existing = availableVouchers.find(
+          (v) => v.code.toUpperCase() === code,
+        );
         const voucherToSelect: Voucher = existing
           ? { ...existing, discount_amount: applyData.discount_amount }
           : {
@@ -625,7 +662,10 @@ export default function CheckoutPage() {
         setShowVoucherList(false);
         return;
       } else {
-        setVoucherError(applyData?.message || "Kode voucher tidak valid atau syarat belum terpenuhi.");
+        setVoucherError(
+          applyData?.message ||
+            "Kode voucher tidak valid atau syarat belum terpenuhi.",
+        );
         return;
       }
     } catch {
@@ -657,7 +697,55 @@ export default function CheckoutPage() {
     availableShippingMethods[0] ??
     SHIPPING_METHODS[0];
   const shippingCost = shippingMethod?.cost ?? 8000;
-  const estimatedDeliveryLabel = getEstimatedDeliveryLabel(shippingMethod?.eta ?? "3-5 hari kerja");
+  const estimatedDeliveryLabel = getEstimatedDeliveryLabel(
+    shippingMethod?.eta ?? "3-5 hari kerja",
+  );
+
+  // Opsi pengiriman lain (selain yang sedang dipilih) untuk dropdown "Lihat lainnya"
+  const otherShippingMethods = availableShippingMethods.filter(
+    (m) => m.id !== shippingMethod.id,
+  );
+
+  function renderShippingOption(method: ShippingMethod, isSelected: boolean) {
+    const isExpress =
+      method.id.toLowerCase().includes("express") ||
+      method.label.toLowerCase().includes("express") ||
+      method.label.toLowerCase().includes("kilat") ||
+      method.label.toLowerCase().includes("next");
+    const Icon = isExpress ? Zap : Truck;
+    return (
+      <button
+        key={method.id}
+        type="button"
+        onClick={() => {
+          setShippingMethodId(method.id);
+          setShowAllShippingMethods(false);
+        }}
+        className={`flex w-full items-start gap-3 rounded-lg border p-4 text-left transition-colors ${
+          isSelected
+            ? "border-primary bg-primary/5"
+            : "border-border bg-surface hover:border-primary/50"
+        }`}>
+        <span
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${isSelected ? "bg-primary text-white" : "bg-background text-text-secondary"}`}>
+          <Icon className="h-4 w-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center justify-between gap-2">
+            <span className="text-sm font-semibold text-text">
+              {method.label}
+            </span>
+            <span className="text-sm font-semibold text-text">
+              {formatPrice(method.cost)}
+            </span>
+          </span>
+          <span className="mt-0.5 block text-xs text-text-secondary">
+            Estimasi {method.eta}
+          </span>
+        </span>
+      </button>
+    );
+  }
 
   const immediateBuy = location.state?.immediateBuy as
     | {
@@ -725,9 +813,15 @@ export default function CheckoutPage() {
   }, []);
 
   useEffect(() => {
-    const idsToCheck = immediateBuy
-      ? [immediateBuy.product.id]
-      : selectedItems.map((i) => i.productId);
+    const itemsToCheck = immediateBuy
+      ? [
+          {
+            productId: immediateBuy.product.id,
+            variantUuid: immediateBuy.variantUuid,
+          },
+        ]
+      : selectedItems;
+    const idsToCheck = itemsToCheck.map((item) => item.productId);
 
     if (idsToCheck.length === 0) return;
     let cancelled = false;
@@ -737,17 +831,38 @@ export default function CheckoutPage() {
       uniqueIds.map(async (id) => {
         try {
           const res = await api.get(`/ecommerce/products/${id}`);
-          return { id, stock: res.data?.data?.stock as number | undefined };
+          return {
+            id,
+            product: res.data?.data as
+              | {
+                  stock?: number;
+                  variants?: Array<{
+                    uuid?: string;
+                    id?: string | number;
+                    stock?: number | null;
+                  }>;
+                }
+              | undefined,
+          };
         } catch {
-          return { id, stock: undefined };
+          return { id, product: undefined };
         }
       }),
     ).then((results) => {
       if (cancelled) return;
       const map: Record<string, number> = {};
-      for (const r of results) {
-        if (typeof r.stock === "number") {
-          map[r.id] = r.stock;
+      for (const item of itemsToCheck) {
+        const product = results.find(
+          (result) => result.id === item.productId,
+        )?.product;
+        const variant = item.variantUuid
+          ? product?.variants?.find(
+              (row) => String(row.uuid ?? row.id) === item.variantUuid,
+            )
+          : undefined;
+        const stock = variant?.stock ?? product?.stock;
+        if (typeof stock === "number") {
+          map[`${item.productId}::${item.variantUuid ?? ""}`] = stock;
         }
       }
       setLiveStocks(map);
@@ -759,8 +874,8 @@ export default function CheckoutPage() {
   }, [immediateBuy, selectedItems, stockRefreshKey]);
 
   const getItemStock = useCallback(
-    (productId: string, fallbackStock?: number) => {
-      return liveStocks[productId] ?? fallbackStock;
+    (productId: string, variantUuid?: string, fallbackStock?: number) => {
+      return liveStocks[`${productId}::${variantUuid ?? ""}`] ?? fallbackStock;
     },
     [liveStocks],
   );
@@ -769,12 +884,13 @@ export default function CheckoutPage() {
     if (immediateBuy) {
       const stock = getItemStock(
         immediateBuy.product.id,
+        immediateBuy.variantUuid,
         (immediateBuy.product as { stock?: number }).stock,
       );
       return stock !== undefined && stock <= 0;
     }
     return selectedItems.some((item) => {
-      const stock = getItemStock(item.productId);
+      const stock = getItemStock(item.productId, item.variantUuid);
       return stock !== undefined && stock <= 0;
     });
   }, [immediateBuy, selectedItems, getItemStock]);
@@ -830,7 +946,7 @@ export default function CheckoutPage() {
     (p) => p.uuid === selectedPaymentMethodUuid,
   );
 
-  const paymentFee = useMemo(() => {
+  const paymentFee = (() => {
     if (!selectedPaymentMethod) return 0;
     if (selectedPaymentMethod.fee_type === "PERCENTAGE") {
       return Math.round(
@@ -838,7 +954,7 @@ export default function CheckoutPage() {
       );
     }
     return Math.round(selectedPaymentMethod.additional_fee || 0);
-  }, [selectedPaymentMethod, totalHarga]);
+  })();
 
   const isManualFallback = useMemo(() => {
     if (paymentMethods.length === 0) return true;
@@ -858,8 +974,7 @@ export default function CheckoutPage() {
       taxTotal,
   );
 
-  const rupiahPerPoint =
-    Number(settingsMap?.loyalty_rupiah_per_point) || 10000;
+  const rupiahPerPoint = Number(settingsMap?.loyalty_rupiah_per_point) || 10000;
   const loyaltyPointsEarned = Math.max(
     0,
     Math.floor(totalTagihan / rupiahPerPoint),
@@ -879,7 +994,9 @@ export default function CheckoutPage() {
     }
     setFormErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
-      alert("Silakan lengkapi kota dan kode pos pengiriman (5 digit angka) terlebih dahulu.");
+      alert(
+        "Silakan lengkapi kota dan kode pos pengiriman (5 digit angka) terlebih dahulu.",
+      );
       setIsAddressModalOpen(true);
       return false;
     }
@@ -891,7 +1008,9 @@ export default function CheckoutPage() {
   async function handleBayarSekarang(e: FormEvent) {
     e.preventDefault();
     if (selectedItems.length === 0) {
-      alert("Tidak ada produk yang dipilih untuk dipesan. Silakan pilih produk di keranjang terlebih dahulu.");
+      alert(
+        "Tidak ada produk yang dipilih untuk dipesan. Silakan pilih produk di keranjang terlebih dahulu.",
+      );
       return;
     }
     if (hasOutOfStockItems) {
@@ -901,7 +1020,9 @@ export default function CheckoutPage() {
       return;
     }
     if (currency === "USD" && !rate) {
-      alert(currencyError ?? "Kurs USD belum tersedia. Silakan coba lagi nanti.");
+      alert(
+        currencyError ?? "Kurs USD belum tersedia. Silakan coba lagi nanti.",
+      );
       return;
     }
     if (!selectedPaymentMethod && !isManualFallback) {
@@ -956,8 +1077,7 @@ export default function CheckoutPage() {
           shippingAddress: {
             recipientName:
               selectedAddress?.recipientName || user?.full_name || "Pelanggan",
-            phone:
-              selectedAddress?.phone || user?.phone || "+62 812 3456 7890",
+            phone: selectedAddress?.phone || user?.phone || "+62 812 3456 7890",
             addressLine: address,
             city: city,
             province: selectedAddress?.province || "",
@@ -978,10 +1098,7 @@ export default function CheckoutPage() {
       }
     };
 
-    const navigateToPaymentProof = (
-      orderId: string,
-      orderUuid?: string,
-    ) => {
+    const navigateToPaymentProof = (orderId: string, orderUuid?: string) => {
       if (!immediateBuy) {
         clearSelected();
       }
@@ -1013,8 +1130,7 @@ export default function CheckoutPage() {
           name:
             selectedAddress?.recipientName || user?.full_name || "Pelanggan",
           email: user?.email || "-",
-          phone:
-            selectedAddress?.phone || user?.phone || "+62 812 3456 7890",
+          phone: selectedAddress?.phone || user?.phone || "+62 812 3456 7890",
         },
         items: selectedItems.map((item) => ({
           productId: item.productId,
@@ -1061,7 +1177,10 @@ export default function CheckoutPage() {
       const res = await api.post("/ecommerce/orders", payload);
       const orderData = res.data?.data;
       const createdOrderId =
-        orderData?.order_number || orderData?.uuid || orderData?.id || `ORD-${Date.now()}`;
+        orderData?.order_number ||
+        orderData?.uuid ||
+        orderData?.id ||
+        createFallbackOrderId();
       const createdOrderUuid = orderData?.uuid;
 
       recordLocalOrder(createdOrderId, createdOrderUuid);
@@ -1069,7 +1188,10 @@ export default function CheckoutPage() {
     } catch (err: unknown) {
       console.error(err);
       const axiosErr = err as {
-        response?: { data?: { error?: string; message?: string }; status?: number };
+        response?: {
+          data?: { error?: string; message?: string };
+          status?: number;
+        };
       };
       const errorMessage =
         axiosErr.response?.data?.error ||
@@ -1150,7 +1272,7 @@ export default function CheckoutPage() {
                           setShowAddressList((visible) => !visible)
                         }
                         className="shrink-0 text-xs font-semibold text-primary hover:underline">
-                        Ganti
+                        {showAddressList ? "Batal" : "Ganti"}
                       </button>
                     </div>
                   </div>
@@ -1190,12 +1312,12 @@ export default function CheckoutPage() {
               </div>
 
               {isAddressModalOpen && (
-                <div
-                  className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-                  role="dialog"
-                  aria-modal="true"
-                  aria-labelledby="quick-address-title">
-                  <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-surface p-6 shadow-xl">
+                <Dialog
+                  labelledBy="quick-address-title"
+                  onClose={() => setIsAddressModalOpen(false)}
+                  closeDisabled={isSavingAddress}
+                  contentClassName="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-surface p-6 shadow-xl">
+                  <form onSubmit={saveQuickAddress} aria-busy={isSavingAddress}>
                     <div className="flex items-center justify-between">
                       <h2
                         id="quick-address-title"
@@ -1205,8 +1327,9 @@ export default function CheckoutPage() {
                       <button
                         type="button"
                         onClick={() => setIsAddressModalOpen(false)}
+                        disabled={isSavingAddress}
                         aria-label="Tutup"
-                        className="rounded-md p-1 text-text-secondary hover:bg-background">
+                        className="rounded-md p-1 text-text-secondary hover:bg-background disabled:opacity-50">
                         <X className="h-5 w-5" />
                       </button>
                     </div>
@@ -1253,22 +1376,30 @@ export default function CheckoutPage() {
                         />
                       </label>
                     </div>
+                    {addressSaveError && (
+                      <p role="alert" className="mt-4 text-sm text-red-600">
+                        {addressSaveError}
+                      </p>
+                    )}
                     <div className="mt-6 flex justify-end gap-2">
-                      <button
+                      <Button
                         type="button"
                         onClick={() => setIsAddressModalOpen(false)}
-                        className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:bg-background">
+                        disabled={isSavingAddress}
+                        variant="outline"
+                        className="h-auto rounded-lg border-border px-4 py-2 text-sm font-medium text-text hover:bg-background">
                         Batal
-                      </button>
-                      <button
-                        type="button"
-                        onClick={saveQuickAddress}
-                        className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+                      </Button>
+                      <Button
+                        type="submit"
+                        loading={isSavingAddress}
+                        loadingText="Menyimpan..."
+                        className="h-auto rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90">
                         Simpan & Pilih
-                      </button>
+                      </Button>
                     </div>
-                  </div>
-                </div>
+                  </form>
+                </Dialog>
               )}
 
               <div className="rounded-xl border border-border bg-surface p-5">
@@ -1295,7 +1426,8 @@ export default function CheckoutPage() {
                             <p className="text-xs text-text-secondary">
                               {selectedVoucher
                                 ? `Hemat ${
-                                    selectedVoucher.discount_amount !== undefined
+                                    selectedVoucher.discount_amount !==
+                                    undefined
                                       ? formatPrice(
                                           selectedVoucher.discount_amount,
                                         )
@@ -1313,8 +1445,7 @@ export default function CheckoutPage() {
                                 setSelectedVoucher(null);
                               }}
                               className="rounded-full p-1 text-text-secondary hover:bg-red-50 hover:text-red-600"
-                              title="Hapus voucher"
-                            >
+                              title="Hapus voucher">
                               <X className="h-4 w-4" />
                             </span>
                             <ChevronRight className="h-5 w-5 text-text-secondary" />
@@ -1360,7 +1491,8 @@ export default function CheckoutPage() {
                         <div className="h-px flex-1 bg-border" />
                       </div>
 
-                      {availableVouchers.filter((v) => v.status === "aktif").length === 0 ? (
+                      {availableVouchers.filter((v) => v.status === "aktif")
+                        .length === 0 ? (
                         <div className="rounded-lg border border-dashed border-border py-6 text-center text-xs text-text-secondary">
                           Belum ada voucher diskon yang aktif saat ini.
                         </div>
@@ -1379,14 +1511,18 @@ export default function CheckoutPage() {
                                 onClick={async () => {
                                   if (belowMinimum) return;
                                   try {
-                                    const res = await api.post("/ecommerce/vouchers/apply", {
-                                      code: v.code,
-                                      order_total: totalHarga,
-                                    });
+                                    const res = await api.post(
+                                      "/ecommerce/vouchers/apply",
+                                      {
+                                        code: v.code,
+                                        order_total: totalHarga,
+                                      },
+                                    );
                                     if (res.data?.data?.valid) {
                                       setSelectedVoucher({
                                         ...v,
-                                        discount_amount: res.data.data.discount_amount,
+                                        discount_amount:
+                                          res.data.data.discount_amount,
                                       });
                                       setShowVoucherList(false);
                                       return;
@@ -1441,45 +1577,38 @@ export default function CheckoutPage() {
                 <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
                   Metode Pengiriman <span className="text-red-600">*</span>
                 </h2>
-                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {availableShippingMethods.map((method) => {
-                    const isExpress =
-                      method.id.toLowerCase().includes("express") ||
-                      method.label.toLowerCase().includes("express") ||
-                      method.label.toLowerCase().includes("kilat") ||
-                      method.label.toLowerCase().includes("next");
-                    const Icon = isExpress ? Zap : Truck;
-                    const isSelected = shippingMethodId === method.id;
-                    return (
+                <div className="mt-3">
+                  {/* Opsi yang sedang dipilih (default: opsi pertama) */}
+                  {renderShippingOption(shippingMethod, true)}
+
+                  {otherShippingMethods.length > 0 && (
+                    <>
                       <button
-                        key={method.id}
                         type="button"
-                        onClick={() => setShippingMethodId(method.id)}
-                        className={`flex items-start gap-3 rounded-lg border p-4 text-left transition-colors ${
-                          isSelected
-                            ? "border-primary bg-primary/5"
-                            : "border-border hover:border-primary/50"
-                        }`}>
-                        <span
-                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${isSelected ? "bg-primary text-white" : "bg-background text-text-secondary"}`}>
-                          <Icon className="h-4 w-4" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-center justify-between gap-2">
-                            <span className="text-sm font-semibold text-text">
-                              {method.label}
-                            </span>
-                            <span className="text-sm font-semibold text-text">
-                              {formatPrice(method.cost)}
-                            </span>
-                          </span>
-                          <span className="mt-0.5 block text-xs text-text-secondary">
-                            Estimasi {method.eta}
-                          </span>
-                        </span>
+                        onClick={() =>
+                          setShowAllShippingMethods((visible) => !visible)
+                        }
+                        aria-expanded={showAllShippingMethods}
+                        className="mt-3 flex w-full items-center justify-center gap-1 py-1 text-sm font-semibold text-primary hover:underline">
+                        {showAllShippingMethods
+                          ? "Sembunyikan"
+                          : "Lihat lainnya"}
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform duration-200 ${
+                            showAllShippingMethods ? "rotate-180" : ""
+                          }`}
+                        />
                       </button>
-                    );
-                  })}
+
+                      {showAllShippingMethods && (
+                        <div className="mt-2 max-h-64 space-y-2 overflow-y-auto rounded-lg border border-border bg-background p-2">
+                          {otherShippingMethods.map((method) =>
+                            renderShippingOption(method, false),
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -1585,8 +1714,12 @@ export default function CheckoutPage() {
                       <span>{formatPrice(protectionCost + insuranceCost)}</span>
                     </div>
                     {taxLines.map((t) => (
-                      <div key={t.uuid} className="mt-2 flex items-center justify-between">
-                        <span>{t.name} ({t.ratePercent}%)</span>
+                      <div
+                        key={t.uuid}
+                        className="mt-2 flex items-center justify-between">
+                        <span>
+                          {t.name} ({t.ratePercent}%)
+                        </span>
                         <span>{formatPrice(t.amount)}</span>
                       </div>
                     ))}
@@ -1609,9 +1742,12 @@ export default function CheckoutPage() {
                   <div className="mt-3 flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200">
                     <Info className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
                     <div>
-                      <p className="font-semibold">Mode Transfer Bank Manual Aktif</p>
+                      <p className="font-semibold">
+                        Mode Transfer Bank Manual Aktif
+                      </p>
                       <p className="mt-0.5 text-text-secondary text-[11px]">
-                        Metode transfer demo tersedia untuk pengujian. Jangan lakukan transfer sungguhan ke rekening demo.
+                        Metode transfer demo tersedia untuk pengujian. Jangan
+                        lakukan transfer sungguhan ke rekening demo.
                       </p>
                     </div>
                   </div>
@@ -1620,12 +1756,15 @@ export default function CheckoutPage() {
                 <div className="mt-3 space-y-2">
                   {paymentMethods.length > 0 ? (
                     paymentMethods.map((method) => {
-                      const isSelected = selectedPaymentMethodUuid === method.uuid;
+                      const isSelected =
+                        selectedPaymentMethodUuid === method.uuid;
                       const hasAdditionalFee = (method.additional_fee || 0) > 0;
                       return (
                         <div
                           key={method.uuid}
-                          onClick={() => setSelectedPaymentMethodUuid(method.uuid)}
+                          onClick={() =>
+                            setSelectedPaymentMethodUuid(method.uuid)
+                          }
                           className={`cursor-pointer rounded-lg border p-3 transition-colors ${
                             isSelected
                               ? "border-primary bg-primary/5"
@@ -1662,7 +1801,9 @@ export default function CheckoutPage() {
                               type="radio"
                               name="payment-method"
                               checked={isSelected}
-                              onChange={() => setSelectedPaymentMethodUuid(method.uuid)}
+                              onChange={() =>
+                                setSelectedPaymentMethodUuid(method.uuid)
+                              }
                               className="h-4 w-4 accent-primary"
                             />
                           </div>
@@ -1675,10 +1816,17 @@ export default function CheckoutPage() {
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    navigator.clipboard.writeText(method.account_number || "");
-                                    setCopiedAccount(method.account_number || "");
+                                    navigator.clipboard.writeText(
+                                      method.account_number || "",
+                                    );
+                                    setCopiedAccount(
+                                      method.account_number || "",
+                                    );
                                     showToast("Nomor rekening disalin!");
-                                    setTimeout(() => setCopiedAccount(null), 2000);
+                                    setTimeout(
+                                      () => setCopiedAccount(null),
+                                      2000,
+                                    );
                                   }}
                                   className="inline-flex items-center gap-1 rounded bg-surface px-1.5 py-0.5 text-[11px] font-sans font-medium text-primary hover:bg-border/30">
                                   {copiedAccount === method.account_number ? (
@@ -1695,7 +1843,10 @@ export default function CheckoutPage() {
                                 </button>
                               </div>
                               <p className="mt-1 text-[11px] text-text-secondary">
-                                a.n. {method.account_holder || method.account_holder_name || "Official Store"}
+                                a.n.{" "}
+                                {method.account_holder ||
+                                  method.account_holder_name ||
+                                  "Official Store"}
                               </p>
                               {method.instructions && (
                                 <p className="mt-1 text-[10px] text-text-secondary italic">
@@ -1746,7 +1897,9 @@ export default function CheckoutPage() {
                     </div>
                   )}
                   {taxLines.map((t) => (
-                    <div key={t.uuid} className="flex items-center justify-between">
+                    <div
+                      key={t.uuid}
+                      className="flex items-center justify-between">
                       <span>
                         {t.name} ({t.ratePercent}%)
                       </span>

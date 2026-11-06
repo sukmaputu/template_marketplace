@@ -23,7 +23,15 @@ export default function CartPage() {
   const [pendingRemovalId, setPendingRemovalId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const productIdsKey = Array.from(new Set(items.map((i) => i.productId))).sort().join(",");
+  const cartItemsKey = JSON.stringify(
+    items
+      .map((item) => ({
+        id: item.id,
+        productId: item.productId,
+        variantUuid: item.variantUuid,
+      }))
+      .sort((first, second) => first.id.localeCompare(second.id)),
+  );
 
   useEffect(() => {
     const handleUpdate = () => setRefreshKey((k) => k + 1);
@@ -40,25 +48,51 @@ export default function CartPage() {
   }, []);
 
   useEffect(() => {
-    if (!productIdsKey) return;
+    const stockTargets = JSON.parse(cartItemsKey) as Array<{
+      id: string;
+      productId: string;
+      variantUuid?: string;
+    }>;
+    if (stockTargets.length === 0) return;
     let cancelled = false;
 
-    const uniqueIds = productIdsKey.split(",").filter(Boolean);
+    const uniqueIds = Array.from(
+      new Set(stockTargets.map((item) => item.productId)),
+    );
     Promise.all(
       uniqueIds.map(async (id) => {
         try {
           const res = await api.get(`/ecommerce/products/${id}`);
-          return { id, stock: res.data?.data?.stock as number | undefined };
+          return {
+            id,
+            product: res.data?.data as
+              | {
+                  stock?: number;
+                  variants?: Array<{
+                    uuid?: string;
+                    id?: string | number;
+                    stock?: number | null;
+                  }>;
+                }
+              | undefined,
+          };
         } catch {
-          return { id, stock: undefined };
+          return { id, product: undefined };
         }
       }),
     ).then((results) => {
       if (cancelled) return;
       const map: Record<string, number> = {};
-      for (const r of results) {
-        if (typeof r.stock === "number") {
-          map[r.id] = r.stock;
+      for (const item of stockTargets) {
+        const product = results.find((result) => result.id === item.productId)?.product;
+        const variant = item.variantUuid
+          ? product?.variants?.find(
+              (row) => String(row.uuid ?? row.id) === item.variantUuid,
+            )
+          : undefined;
+        const stock = variant?.stock ?? product?.stock;
+        if (typeof stock === "number") {
+          map[item.id] = stock;
         }
       }
       setLiveStocks(map);
@@ -67,10 +101,10 @@ export default function CartPage() {
     return () => {
       cancelled = true;
     };
-  }, [productIdsKey, refreshKey]);
+  }, [cartItemsKey, refreshKey]);
 
   const getItemStock = (item: (typeof items)[number]) => {
-    return liveStocks[item.productId] ?? item.stock;
+    return liveStocks[item.id] ?? item.stock;
   };
 
   const allSelected = items.length > 0 && items.every((item) => item.selected);

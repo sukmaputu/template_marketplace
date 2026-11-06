@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { AtSign, Mail, Phone, Save, User, Loader2 } from "lucide-react";
+import { AtSign, Mail, Phone, Save, User } from "lucide-react";
 import { useAuth } from "@/components/auth/UseAuth";
+import { Button } from "@/components/ui/button";
 import { showToast } from "@/lib/toast";
 
 export function DataDiriTab() {
@@ -81,69 +82,75 @@ export function DataDiriTab() {
         Informasi pribadi akun Anda sesuai data sistem.
       </p>
 
-      <div className="mt-6 space-y-5">
-        {fields.map(({ label, name, value, icon: Icon }) => (
-          <div key={label} className="flex items-start gap-3">
-            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-background border border-border">
-              <Icon className="h-4 w-4 text-text-secondary" />
-            </span>
-            <div className="flex-1">
-              <p className="text-xs text-text-secondary">{label}</p>
-              {isEditing ? (
-                <input
-                  type="text"
-                  name={name}
-                  value={value === "Belum diatur" ? "" : value}
-                  disabled={name === "email"}
-                  onChange={handleInputChange}
-                  placeholder={`Masukkan ${label}`}
-                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-text focus:border-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                />
-              ) : (
-                <p className="text-sm font-medium text-text">{value}</p>
-              )}
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void handleSave();
+        }}>
+        <div className="mt-6 space-y-5">
+          {fields.map(({ label, name, value, icon: Icon }) => (
+            <div key={label} className="flex items-start gap-3">
+              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-background">
+                <Icon className="h-4 w-4 text-text-secondary" />
+              </span>
+              <div className="flex-1">
+                <p className="text-xs text-text-secondary">{label}</p>
+                {isEditing ? (
+                  <input
+                    type="text"
+                    name={name}
+                    value={value === "Belum diatur" ? "" : value}
+                    disabled={name === "email"}
+                    onChange={handleInputChange}
+                    placeholder={`Masukkan ${label}`}
+                    className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-text focus:border-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                ) : (
+                  <p className="text-sm font-medium text-text">{value}</p>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
 
-      <div className="mt-6 flex gap-2">
-        {!isEditing ? (
-          <button
-            onClick={() => {
-              setFormData({
-                full_name: user?.full_name || "",
-                username: user?.username || "",
-                phone: user?.phone || "",
-                email: user?.email || "",
-              });
-              setIsEditing(true);
-            }}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90">
-            Edit Profil
-          </button>
-        ) : (
-          <>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
-              {saving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-              {saving ? "Menyimpan..." : "Simpan Perubahan"}
-            </button>
-            <button
-              onClick={() => setIsEditing(false)}
-              disabled={saving}
-              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-text hover:bg-background">
-              Batal
-            </button>
-          </>
-        )}
-      </div>
+        <div className="mt-6 flex gap-2">
+          {!isEditing ? (
+            <Button
+              type="button"
+              onClick={() => {
+                setFormData({
+                  full_name: user?.full_name || "",
+                  username: user?.username || "",
+                  phone: user?.phone || "",
+                  email: user?.email || "",
+                });
+                setIsEditing(true);
+              }}
+              className="h-auto rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+              Edit Profil
+            </Button>
+          ) : (
+            <>
+              <Button
+                type="submit"
+                loading={saving}
+                loadingText="Menyimpan..."
+                className="h-auto gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+                {!saving && <Save className="h-4 w-4" />}
+                Simpan Perubahan
+              </Button>
+              <Button
+                type="button"
+                onClick={() => setIsEditing(false)}
+                disabled={saving}
+                variant="outline"
+                className="h-auto rounded-lg border-border bg-surface px-4 py-2 text-sm font-medium text-text hover:bg-background">
+                Batal
+              </Button>
+            </>
+          )}
+        </div>
+      </form>
     </div>
   );
 }

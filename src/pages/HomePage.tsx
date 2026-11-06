@@ -22,6 +22,7 @@ import {
   getTopRecommendedProducts,
   getRelatedProducts,
   PRODUCTS,
+  useProductFilterOptions,
 } from "@/lib/products";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
 // import { PromoModal } from "@/components/PromoModal";
@@ -34,7 +35,6 @@ const SORT_OPTIONS = [
 ];
 
 const PAGE_SIZE = 6;
-const DEFAULT_MIN_PRICE = 0;
 
 // ---- UI-only filter options (belum ada di backend) ----
 // Begitu backend expose field ini (misal attributes: { color, size, useCase, style }),
@@ -164,21 +164,6 @@ function formatRupiah(value: number) {
   return `Rp ${value.toLocaleString("id-ID")}`;
 }
 
-function normalizePriceRange(
-  minValue: number,
-  maxValue: number,
-  fallbackMax: number,
-): [number, number] {
-  const safeMin = Number.isFinite(minValue)
-    ? Math.max(DEFAULT_MIN_PRICE, minValue)
-    : DEFAULT_MIN_PRICE;
-  const safeMax = Number.isFinite(maxValue)
-    ? Math.max(safeMin, maxValue)
-    : Math.max(safeMin, fallbackMax);
-
-  return [safeMin, safeMax];
-}
-
 export default function HomePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { currency, rate } = useCurrency();
@@ -192,10 +177,6 @@ export default function HomePage() {
     [currency, rate],
   );
 
-  const priceRangeDefaults = useMemo(() => {
-    return [0, convertPriceToCurrentCurrency(20000000)] as [number, number];
-  }, [convertPriceToCurrentCurrency]);
-
   const { categories } = useCategories();
   const initialCategory = searchParams.get("category");
   const [selectedCategories, setSelectedCategories] = useState<string[]>(() => {
@@ -204,10 +185,34 @@ export default function HomePage() {
     }
     return [];
   });
-  const [priceRange, setPriceRange] = useState<[number, number]>([
-    0,
-    priceRangeDefaults[1],
-  ]);
+  const categoryParam =
+    selectedCategories.length > 0 ? selectedCategories.join(",") : undefined;
+  const categoryUuidParam = selectedCategories
+    .map(
+      (selected) =>
+        categories.find(
+          (category) =>
+            category.slug === selected ||
+            category.id === selected ||
+            category.uuid === selected,
+        )?.uuid,
+    )
+    .filter((categoryUuid): categoryUuid is string => Boolean(categoryUuid))
+    .join(",");
+  const { filterOptions } = useProductFilterOptions({
+    search: searchQuery,
+    category: categoryParam,
+    categoryUuid: categoryUuidParam || undefined,
+  });
+  const priceRangeDefaults = useMemo(() => {
+    const backendMax = filterOptions?.price_range?.max_price;
+    const maxPrice =
+      typeof backendMax === "number" && Number.isFinite(backendMax)
+        ? backendMax
+        : 20000000;
+    return [0, convertPriceToCurrentCurrency(maxPrice)] as [number, number];
+  }, [convertPriceToCurrentCurrency, filterOptions?.price_range?.max_price]);
+
   const [minPriceInput, setMinPriceInput] = useState("");
   const [maxPriceInput, setMaxPriceInput] = useState("");
   const previousCurrencyRef = useRef(currency);
@@ -319,21 +324,6 @@ export default function HomePage() {
     return currency === "USD" && rate ? Math.round(val / rate) : val;
   }, [maxPriceInput, currency, rate]);
 
-  const categoryParam =
-    selectedCategories.length > 0 ? selectedCategories.join(",") : undefined;
-  const categoryUuidParam = selectedCategories
-    .map(
-      (selected) =>
-        categories.find(
-          (category) =>
-            category.slug === selected ||
-            category.id === selected ||
-            category.uuid === selected,
-        )?.uuid,
-    )
-    .filter((categoryUuid): categoryUuid is string => Boolean(categoryUuid))
-    .join(",");
-
   const {
     products: serverProducts,
     total: serverTotal,
@@ -360,33 +350,20 @@ export default function HomePage() {
 
     const previousCurrency = previousCurrencyRef.current;
 
-    setPriceRange(([currentMin, currentMax]) => {
-      const convertValue = (value: number) => {
-        if (previousCurrency === currency) return value;
-        if (previousCurrency === "IDR" && currency === "USD" && rate) {
-          return value * rate;
-        }
-        if (previousCurrency === "USD" && currency === "IDR" && rate) {
-          return value / rate;
-        }
-        return value;
-      };
-
-      const convertedRange = normalizePriceRange(
-        convertValue(currentMin),
-        convertValue(currentMax),
-        priceRangeDefaults[1],
-      );
-
-      if (minPriceInput) {
-        setMinPriceInput(String(convertedRange[0]));
+    const convertValue = (value: string) => {
+      const numericValue = Number(value);
+      if (!Number.isFinite(numericValue)) return value;
+      if (previousCurrency === "IDR" && currency === "USD" && rate) {
+        return String(numericValue * rate);
       }
-      if (maxPriceInput) {
-        setMaxPriceInput(String(convertedRange[1]));
+      if (previousCurrency === "USD" && currency === "IDR" && rate) {
+        return String(numericValue / rate);
       }
+      return value;
+    };
 
-      return convertedRange;
-    });
+    if (minPriceInput) setMinPriceInput(convertValue(minPriceInput));
+    if (maxPriceInput) setMaxPriceInput(convertValue(maxPriceInput));
 
     previousCurrencyRef.current = currency;
   }, [currency, rate, priceRangeDefaults, minPriceInput, maxPriceInput]);
@@ -420,39 +397,17 @@ export default function HomePage() {
   }
 
   function handleMinPriceChange(nextValue: string) {
-    const nextMin = nextValue === "" ? 0 : Number(nextValue);
     setMinPriceInput(nextValue);
-
-    const finalMin = Number.isFinite(nextMin) ? Math.max(0, nextMin) : 0;
-    const finalMax = maxPriceInput
-      ? Number(maxPriceInput)
-      : priceRangeDefaults[1];
-
-    setPriceRange(
-      normalizePriceRange(finalMin, finalMax, priceRangeDefaults[1]),
-    );
     resetToFirstPage();
   }
 
   function handleMaxPriceChange(nextValue: string) {
-    const nextMax =
-      nextValue === "" ? priceRangeDefaults[1] : Number(nextValue);
     setMaxPriceInput(nextValue);
-
-    const finalMin = minPriceInput ? Number(minPriceInput) : 0;
-    const finalMax = Number.isFinite(nextMax)
-      ? Math.max(0, nextMax)
-      : priceRangeDefaults[1];
-
-    setPriceRange(
-      normalizePriceRange(finalMin, finalMax, priceRangeDefaults[1]),
-    );
     resetToFirstPage();
   }
 
   function handleClearFilters() {
     setSelectedCategories([]);
-    setPriceRange([0, priceRangeDefaults[1]]);
     setMinPriceInput("");
     setMaxPriceInput("");
     setDiscountOnly(false);
@@ -535,7 +490,6 @@ export default function HomePage() {
     selectedCategories,
     sortBy,
     searchQuery,
-    priceRange,
     discountOnly,
     selectedColors,
     selectedSizes,
@@ -869,7 +823,7 @@ export default function HomePage() {
         <div className="mt-6 flex flex-col gap-8 lg:mt-8 lg:flex-row">
           {/* ================= Sidebar filter (desktop) ================= */}
           <aside className="hidden w-64 shrink-0 lg:sticky lg:top-24 lg:block lg:h-fit lg:overflow-clip">
-            <div className="lg:max-h-[calc(100vh-7rem)] overflow-y-auto">
+            <div className="lg:max-h-[calc(100vh-7rem)] overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="flex items-center gap-2 text-sm font-bold text-text">
                   <SlidersHorizontal className="h-4 w-4 text-primary" />

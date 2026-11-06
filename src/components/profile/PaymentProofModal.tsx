@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Clock,
   Copy,
+  ExternalLink,
   RefreshCw,
   UploadCloud,
   X,
@@ -57,7 +58,7 @@ export function PaymentProofModal({
   const [bankAccounts, setBankAccounts] =
     useState<BankAccount[]>(DEFAULT_BANKS);
   const [selectedBankIdx, setSelectedBankIdx] = useState(0);
-  const [showUploadForm, setShowUploadForm] = useState(!hasProof || isRejected);
+  const [showUploadForm, setShowUploadForm] = useState(!hasProof);
   const [senderName, setSenderName] = useState(payment?.sender_name || "");
   const [senderBank, setSenderBank] = useState(payment?.sender_bank || "BCA");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -219,7 +220,9 @@ export function PaymentProofModal({
         aria-modal="true"
         aria-labelledby="payment-modal-title"
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[96dvh] w-full max-w-md flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xl lg:max-w-4xl">
+        className={`flex max-h-[96dvh] w-full ${
+          showUploadForm ? "max-w-4xl" : "max-w-xl"
+        } flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xl transition-[max-width] duration-300`}>
         {/* Header (tetap, selalu terlihat) */}
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-3 py-2.5 sm:px-5 sm:py-3">
           <div className="flex min-w-0 items-center gap-2">
@@ -242,7 +245,10 @@ export function PaymentProofModal({
 
         {/* Body: 1 kolom di mobile, 2 kolom di desktop agar tidak memanjang ke bawah.
             overflow-y-auto hanya sebagai jaring pengaman untuk layar yang sangat pendek. */}
-        <div className="grid min-h-0 gap-3 overflow-y-auto p-3 sm:p-5 lg:grid-cols-2 lg:gap-5">
+        <div
+          className={`grid min-h-0 gap-3 overflow-y-auto p-3 sm:p-5 lg:gap-5 ${
+            showUploadForm ? "lg:grid-cols-2" : "grid-cols-1"
+          }`}>
           {/* ===== Kolom kiri: status + rekening ===== */}
           <div className="flex flex-col gap-3">
             {/* Status */}
@@ -258,7 +264,7 @@ export function PaymentProofModal({
                   </p>
                 </div>
               </div>
-            ) : isPending && !showUploadForm ? (
+            ) : isPending ? (
               <div className="flex items-start justify-between gap-3 rounded-lg border border-blue-500/30 bg-blue-500/10 p-2.5 text-xs text-blue-900 dark:text-blue-300">
                 <div className="flex min-w-0 items-start gap-2.5">
                   <Clock className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
@@ -277,13 +283,10 @@ export function PaymentProofModal({
                     href={resolveProofUrl(payment.payment_proof_url)}
                     target="_blank"
                     rel="noreferrer"
-                    className="shrink-0 rounded border border-border p-1 hover:border-primary"
-                    title="Lihat Bukti">
-                    <img
-                      src={resolveProofUrl(payment.payment_proof_url)}
-                      alt="Bukti Transfer"
-                      className="h-10 w-10 rounded object-cover"
-                    />
+                    aria-label="Lihat bukti transfer di tab baru"
+                    className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-md border border-blue-500/20 bg-white/50 px-2 text-[11px] font-medium text-blue-800 hover:border-blue-500 hover:bg-white dark:bg-slate-900/30 dark:text-blue-200 dark:hover:bg-slate-900">
+                    <span className="whitespace-nowrap">Lihat Bukti</span>
+                    <ExternalLink className="h-3 w-3" />
                   </a>
                 )}
               </div>
@@ -376,13 +379,22 @@ export function PaymentProofModal({
                 </div>
               </div>
             )}
+
+            {!isPaid && hasProof && !showUploadForm && (
+              <button
+                type="button"
+                onClick={() => setShowUploadForm(true)}
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-primary px-3 py-2 text-xs font-medium text-primary hover:bg-primary/5">
+                <RefreshCw className="h-3 w-3" />
+                Unggah Ulang Bukti Transfer
+              </button>
+            )}
           </div>
 
           {/* ===== Kolom kanan: form unggah ===== */}
-          {!isPaid && (
+          {!isPaid && showUploadForm && (
             <div className="flex flex-col">
-              {showUploadForm ? (
-                <form onSubmit={handleSubmit} className="flex flex-col gap-2.5">
+              <form onSubmit={handleSubmit} className="flex flex-col gap-2.5">
                   <div className="grid grid-cols-2 gap-2.5">
                     <div className="min-w-0">
                       <label className="block text-xs font-medium text-text-secondary">
@@ -479,18 +491,7 @@ export function PaymentProofModal({
                       )}
                     </button>
                   </div>
-                </form>
-              ) : (
-                <div className="flex justify-end lg:justify-start">
-                  <button
-                    type="button"
-                    onClick={() => setShowUploadForm(true)}
-                    className="flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-                    <RefreshCw className="h-3 w-3" /> Unggah Ulang Bukti
-                    Transfer
-                  </button>
-                </div>
-              )}
+              </form>
             </div>
           )}
         </div>

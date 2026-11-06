@@ -135,23 +135,26 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addToCart = useCallback(
-    (product: Product, quantity = 1, variant?: string) => {
-    if (product.stock !== undefined && product.stock <= 0) {
+    (
+      product: Product,
+      quantity = 1,
+      variant?: string,
+      variantUuid?: string,
+    ) => {
+    const resolvedVariant = variant ?? "Varian standar";
+    const selectedVariant =
+      product.variants?.find((item) => item.id === variantUuid) ??
+      product.variants?.find(
+        (item) => item.variantName === resolvedVariant,
+      );
+    const availableStock = selectedVariant?.stock ?? product.stock;
+    if (availableStock !== undefined && availableStock <= 0) {
       return;
     }
 
-    const resolvedVariant = variant ?? "Varian standar";
     const cartItemId = `${product.id}::${resolvedVariant}`;
-    const variantUuid = product.variants?.find(
-      (item) => item.variantName === resolvedVariant,
-    )?.id;
     const existing = items.find((item) => item.id === cartItemId);
-    const maxQuantity =
-      existing?.stock !== undefined && existing.stock > 0
-        ? existing.stock
-        : product.stock !== undefined && product.stock > 0
-          ? product.stock
-          : 999;
+    const maxQuantity = existing?.stock ?? availableStock ?? 999;
     const nextQuantity = Math.min(
       (existing?.quantity ?? 0) + quantity,
       maxQuantity,
@@ -163,14 +166,22 @@ export function CartProvider({ children }: { children: ReactNode }) {
         return prev.map((item) => {
           if (item.id !== cartItemId) return item;
           const maxQty =
-            item.stock !== undefined && item.stock > 0 ? item.stock : 999;
+            item.stock ?? 999;
           return {
             ...item,
             quantity: Math.min(item.quantity + quantity, maxQty),
           };
         });
       }
-      return [...prev, createCartItem(product, nextQuantity, resolvedVariant)];
+      return [
+        ...prev,
+        createCartItem(
+        product,
+        nextQuantity,
+        resolvedVariant,
+        selectedVariant?.id,
+        ),
+      ];
     });
 
     if (getAuthToken()) {
@@ -183,7 +194,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
             product_id: product.id,
             product_uuid: product.id,
             quantity: existing ? nextQuantity - existing.quantity : nextQuantity,
-            variant_uuid: variantUuid,
+            variant_uuid: selectedVariant?.id,
           });
       void request
         .then((response) => {

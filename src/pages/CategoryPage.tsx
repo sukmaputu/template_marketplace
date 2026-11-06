@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ChevronDown, Loader2 } from "lucide-react";
+import { ChevronDown, Loader2, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { MarketplaceFooter } from "@/components/MarketplaceFooter";
 import { ProductCard } from "@/components/ProductCard";
+import { Pagination } from "@/components/ui/pagination";
 import { useCategories, usePaginatedProducts } from "@/lib/products";
 
 const SORT_OPTIONS = [
@@ -16,18 +17,38 @@ const SORT_OPTIONS = [
 export default function CategoryPage() {
   const params = useParams();
   const categoryId = params.categoryId ?? "teknologi-informasi";
+  const [pagination, setPagination] = useState({ categoryId, page: 1 });
+  const currentPage =
+    pagination.categoryId === categoryId ? pagination.page : 1;
+  const setCurrentPage = (page: number) => setPagination({ categoryId, page });
   const [sortBy, setSortBy] = useState("default");
+  const [minPriceInput, setMinPriceInput] = useState("");
+  const [maxPriceInput, setMaxPriceInput] = useState("");
+  const [discountInput, setDiscountInput] = useState(false);
+  const [minPrice, setMinPrice] = useState<number>();
+  const [maxPrice, setMaxPrice] = useState<number>();
+  const [discountOnly, setDiscountOnly] = useState(false);
+  const [filterError, setFilterError] = useState("");
   const { categories } = useCategories();
-  const category = categories.find(
+  const filterCategory = categories.find(
     (item) =>
       item.slug === categoryId ||
       item.id === categoryId ||
       item.uuid === categoryId,
   );
-  const { products: serverProducts, loading } = usePaginatedProducts({
+  const {
+    products: serverProducts,
+    totalPages,
+    currentPage: serverCurrentPage,
+    loading,
+  } = usePaginatedProducts({
+    page: currentPage,
     category: categoryId,
-    categoryUuid: category?.uuid,
-    limit: 30,
+    categoryUuid: filterCategory?.uuid,
+    minPrice,
+    maxPrice,
+    discountOnly,
+    limit: 12,
   });
 
   const products = useMemo(() => {
@@ -38,6 +59,48 @@ export default function CategoryPage() {
       sorted.sort((a, b) => b.basePrice - a.basePrice);
     return sorted;
   }, [sortBy, serverProducts]);
+
+  const category = filterCategory;
+
+  function applyFilters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextMinPrice = minPriceInput ? Number(minPriceInput) : undefined;
+    const nextMaxPrice = maxPriceInput ? Number(maxPriceInput) : undefined;
+
+    if (
+      (nextMinPrice !== undefined && !Number.isFinite(nextMinPrice)) ||
+      (nextMaxPrice !== undefined && !Number.isFinite(nextMaxPrice))
+    ) {
+      setFilterError("Masukkan rentang harga yang valid.");
+      return;
+    }
+
+    if (
+      nextMinPrice !== undefined &&
+      nextMaxPrice !== undefined &&
+      nextMinPrice > nextMaxPrice
+    ) {
+      setFilterError("Harga minimum tidak boleh melebihi harga maksimum.");
+      return;
+    }
+
+    setFilterError("");
+    setMinPrice(nextMinPrice);
+    setMaxPrice(nextMaxPrice);
+    setDiscountOnly(discountInput);
+    setCurrentPage(1);
+  }
+
+  function resetFilters() {
+    setMinPriceInput("");
+    setMaxPriceInput("");
+    setDiscountInput(false);
+    setMinPrice(undefined);
+    setMaxPrice(undefined);
+    setDiscountOnly(false);
+    setFilterError("");
+    setCurrentPage(1);
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-background transition-colors">
@@ -84,16 +147,87 @@ export default function CategoryPage() {
           </div>
         </div>
 
+        <form
+          onSubmit={applyFilters}
+          className="mt-6 flex flex-col gap-4 rounded-xl border border-border bg-surface p-4 sm:flex-row sm:items-end">
+          <div className="flex items-center gap-2 text-sm font-semibold text-text">
+            <SlidersHorizontal className="h-4 w-4 text-primary" />
+            Filter
+          </div>
+          <label className="flex-1 text-xs font-medium text-text-secondary">
+            Harga minimum
+            <input
+              type="number"
+              min="0"
+              inputMode="numeric"
+              value={minPriceInput}
+              onChange={(event) => setMinPriceInput(event.target.value)}
+              placeholder="Contoh: 50000"
+              className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-text outline-none focus:border-primary"
+            />
+          </label>
+          <label className="flex-1 text-xs font-medium text-text-secondary">
+            Harga maksimum
+            <input
+              type="number"
+              min="0"
+              inputMode="numeric"
+              value={maxPriceInput}
+              onChange={(event) => setMaxPriceInput(event.target.value)}
+              placeholder="Contoh: 500000"
+              className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-text outline-none focus:border-primary"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm text-text">
+            <input
+              type="checkbox"
+              checked={discountInput}
+              onChange={(event) => setDiscountInput(event.target.checked)}
+              className="h-4 w-4 rounded accent-primary"
+            />
+            Sedang diskon
+          </label>
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+              Terapkan
+            </button>
+            <button
+              type="button"
+              onClick={resetFilters}
+              aria-label="Reset filter"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm text-text-secondary hover:bg-background">
+              <RotateCcw className="h-4 w-4" />
+              Reset
+            </button>
+          </div>
+          {filterError && (
+            <p role="alert" className="text-xs text-red-600 sm:basis-full">
+              {filterError}
+            </p>
+          )}
+        </form>
+
         {loading ? (
           <div className="flex min-h-[30vh] items-center justify-center">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : products.length > 0 ? (
-          <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
-            {products.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
+          <>
+            <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+              {products.map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
+            </div>
+            <div className="mt-6 overflow-hidden rounded-xl border border-border bg-surface">
+              <Pagination
+                currentPage={serverCurrentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+              />
+            </div>
+          </>
         ) : (
           <p className="mt-12 text-center text-sm text-text-secondary">
             Belum ada produk di kategori ini.

@@ -181,17 +181,6 @@ export function OrderCard({
             </>
           )}
 
-          {order.status !== "pending_payment" &&
-            (order.payment?.payment_proof_url || order.payment?.payment_proof) &&
-            onUploadProofClick && (
-            <button
-              type="button"
-              onClick={() => onUploadProofClick(order)}
-              className="rounded-lg border border-border px-3.5 py-1.5 text-xs font-medium text-text hover:bg-background">
-              Bukti Bayar
-            </button>
-          )}
-
           {order.status === "processing" && (
             <button
               onClick={() => onTrackClick(order)}
