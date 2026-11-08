@@ -28,6 +28,9 @@ const NotFoundPage = lazy(() => import("@/pages/NotFoundPage"));
 const ProductDetailPage = lazy(() => import("@/pages/ProductDetailPage"));
 
 const PaymentSuccessPage = lazy(() => import("@/pages/Paymentsuccesspage"));
+const PaymentProofPreviewPage = lazy(
+  () => import("@/pages/PaymentProofPreviewPage"),
+);
 
 const RequireAuth = lazy(() =>
   import("@/components/auth/RequireAuth").then((mod) => ({
@@ -106,6 +109,16 @@ export default function App() {
                   <Route
                     path="/payment-success"
                     element={<PaymentSuccessPage />}
+                  />
+                  <Route
+                    path="/preview/riwayat-pembelian-bukti"
+                    element={
+                      import.meta.env.DEV ? (
+                        <PaymentProofPreviewPage />
+                      ) : (
+                        <NotFoundPage />
+                      )
+                    }
                   />
                   <Route path="/settings" element={<SettingsPage />} />
                   <Route path="/help" element={<HelpPage />} />

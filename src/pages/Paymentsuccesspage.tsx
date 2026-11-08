@@ -103,6 +103,19 @@ export default function PaymentSuccessPage() {
   const [isProofModalOpen, setIsProofModalOpen] = useState(false);
   const [isProofSubmitted, setIsProofSubmitted] = useState(false);
   const [copiedAccount, setCopiedAccount] = useState<string | null>(null);
+  const [submittedPayment, setSubmittedPayment] = useState<Order["payment"]>(
+    () =>
+      orderState?.paymentMethod
+        ? {
+            payment_method: orderState.paymentMethod.name,
+            payment_status: "pending",
+            sender_bank:
+              orderState.paymentMethod.bank_name ||
+              orderState.paymentMethod.name,
+            amount_paid: totalPaid,
+          }
+        : undefined,
+  );
 
   useEffect(() => {
     if (!orderState?.items?.length) return;
@@ -327,10 +340,23 @@ export default function PaymentSuccessPage() {
                 <button
                   type="button"
                   onClick={() => setIsProofModalOpen(true)}
-                  className="w-full flex items-center justify-center gap-2 rounded-lg bg-primary py-2.5 text-xs font-semibold text-white shadow-sm hover:opacity-90">
-                  <Upload className="h-4 w-4" />
-                  {isProofSubmitted ? "Lihat / Ganti Bukti Bayar" : "Unggah Bukti Bayar Sekarang"}
+                  className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
+                  {isProofSubmitted ? (
+                    <Check className="h-4 w-4 shrink-0" />
+                  ) : (
+                    <Upload className="h-4 w-4 shrink-0" />
+                  )}
+                  <span>
+                    {isProofSubmitted
+                      ? "Lihat Bukti Pembayaran"
+                      : "Unggah Bukti Bayar"}
+                  </span>
                 </button>
+                {isProofSubmitted && (
+                  <p className="mt-2 text-center text-xs leading-relaxed text-text-secondary">
+                    Bukti berhasil dikirim dan sedang menunggu verifikasi admin.
+                  </p>
+                )}
               </div>
             </motion.div>
           )}
@@ -441,21 +467,13 @@ export default function PaymentSuccessPage() {
             status: "pending_payment",
             date: "",
             items: [],
-            payment: orderState?.paymentMethod
-              ? {
-                  payment_method: orderState.paymentMethod.name,
-                  payment_status: "pending",
-                  sender_bank:
-                    orderState.paymentMethod.bank_name ||
-                    orderState.paymentMethod.name,
-                  amount_paid: totalPaid,
-                }
-              : undefined,
+            payment: submittedPayment,
           }}
           currency={orderState?.currency}
           exchangeRate={orderState?.exchangeRate}
           onClose={() => setIsProofModalOpen(false)}
-          onSubmitted={() => {
+          onSubmitted={(payment) => {
+            if (payment) setSubmittedPayment(payment);
             setIsProofModalOpen(false);
             setIsProofSubmitted(true);
             showToast("Bukti pembayaran berhasil diunggah! Menunggu verifikasi admin.");

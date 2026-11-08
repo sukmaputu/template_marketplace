@@ -23,7 +23,6 @@ import {
   X,
   Copy,
   Check,
-  Info,
 } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { Button } from "@/components/ui/button";
@@ -1316,6 +1315,7 @@ export default function CheckoutPage() {
                   labelledBy="quick-address-title"
                   onClose={() => setIsAddressModalOpen(false)}
                   closeDisabled={isSavingAddress}
+                  mobileSheet
                   contentClassName="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-surface p-6 shadow-xl">
                   <form onSubmit={saveQuickAddress} aria-busy={isSavingAddress}>
                     <div className="flex items-center justify-between">
@@ -1735,23 +1735,6 @@ export default function CheckoutPage() {
                     Metode Pembayaran
                   </h2>
                 </div>
-
-                {(isManualFallback ||
-                  selectedPaymentMethod?.uuid ===
-                    DEMO_MANUAL_PAYMENT_METHOD.uuid) && (
-                  <div className="mt-3 flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200">
-                    <Info className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
-                    <div>
-                      <p className="font-semibold">
-                        Mode Transfer Bank Manual Aktif
-                      </p>
-                      <p className="mt-0.5 text-text-secondary text-[11px]">
-                        Metode transfer demo tersedia untuk pengujian. Jangan
-                        lakukan transfer sungguhan ke rekening demo.
-                      </p>
-                    </div>
-                  </div>
-                )}
 
                 <div className="mt-3 space-y-2">
                   {paymentMethods.length > 0 ? (

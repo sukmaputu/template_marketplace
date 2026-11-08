@@ -27,6 +27,7 @@ import {
   useCurrency,
 } from "@/components/navbar/CurrencySwitcher";
 import { usePageSettings } from "@/hooks/usePageSettings";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
   PRODUCTS,
   POPULAR_SEARCH_TERMS,
@@ -79,6 +80,7 @@ export function MarketplaceHeader() {
 
   const urlQuery = searchParams.get("q") ?? "";
   const urlCategory = searchParams.get("category") ?? "all";
+  const debouncedQuery = useDebouncedValue(query.trim(), 400);
 
   const [prevUrlQuery, setPrevUrlQuery] = useState(urlQuery);
   if (urlQuery !== prevUrlQuery) {
@@ -91,6 +93,32 @@ export function MarketplaceHeader() {
     setPrevUrlCategory(urlCategory);
     setCategory(urlCategory);
   }
+
+  useEffect(() => {
+    if (query.trim() !== debouncedQuery) return;
+
+    const currentQuery = searchParams.get("q") ?? "";
+    if (debouncedQuery === currentQuery.trim()) return;
+
+    const nextParams = new URLSearchParams(searchParams);
+    if (debouncedQuery) {
+      nextParams.set("q", debouncedQuery);
+    } else {
+      nextParams.delete("q");
+    }
+
+    if (category && category !== "all") {
+      nextParams.set("category", category);
+    } else {
+      nextParams.delete("category");
+    }
+
+    nextParams.set("page", "1");
+    navigate({
+      pathname: "/",
+      search: nextParams.toString() ? `?${nextParams.toString()}` : "",
+    });
+  }, [category, debouncedQuery, navigate, query, searchParams]);
 
   // isSearchOpen juga dipakai sebagai penanda "search melebar" di mobile:
   // saat true, logo & tombol di kanan disembunyikan (hanya di bawah md)

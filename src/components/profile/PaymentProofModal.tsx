@@ -14,6 +14,7 @@ import type { Order } from "./types";
 import { api } from "@/lib/api";
 import { showToast } from "@/lib/toast";
 import { formatCheckoutPrice } from "@/lib/checkoutFlow";
+import { Dialog } from "@/components/ui/dialog";
 
 interface BankAccount {
   bank: string;
@@ -42,17 +43,28 @@ export function PaymentProofModal({
   onSubmitted,
   currency = "IDR",
   exchangeRate,
+  previewOnly = false,
 }: {
   order: Order;
   onClose: () => void;
-  onSubmitted: () => void;
+  onSubmitted: (payment?: Order["payment"]) => void;
   currency?: "IDR" | "USD";
   exchangeRate?: number | null;
+  previewOnly?: boolean;
 }) {
   const payment = order.payment;
-  const isPaid = order.status === "completed" || payment?.status === "PAID";
-  const isRejected = payment?.status === "REJECTED";
-  const hasProof = Boolean(payment?.payment_proof_url);
+  const paymentStatus = (
+    payment?.status ||
+    payment?.payment_status ||
+    ""
+  ).toUpperCase();
+  const isRejected = paymentStatus === "REJECTED";
+  const isPaid =
+    !isRejected &&
+    (["paid", "processing", "shipping", "completed"].includes(order.status) ||
+      ["PAID", "APPROVED", "VERIFIED", "SUCCESS"].includes(paymentStatus));
+  const proofUrl = payment?.payment_proof_url || payment?.payment_proof;
+  const hasProof = Boolean(proofUrl);
   const isPending = !isPaid && hasProof && !isRejected;
 
   const [bankAccounts, setBankAccounts] =
@@ -67,6 +79,7 @@ export function PaymentProofModal({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (previewOnly) return;
     api
       .get("/ecommerce/payment-methods?is_enabled=true")
       .then((res) => {
@@ -94,7 +107,7 @@ export function PaymentProofModal({
         }
       })
       .catch(() => {});
-  }, []);
+  }, [previewOnly]);
 
   // Bersihkan object URL preview agar tidak bocor memori
   useEffect(() => {
@@ -102,20 +115,6 @@ export function PaymentProofModal({
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
-
-  // Kunci scroll halaman di belakang modal + tutup dengan Escape
-  useEffect(() => {
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !isSubmitting) onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [onClose, isSubmitting]);
 
   const copyText = (text: string, label: string) => {
     navigator.clipboard?.writeText(text).then(() => {
@@ -192,7 +191,15 @@ export function PaymentProofModal({
       setShowUploadForm(false);
       setSelectedFile(null);
       setPreviewUrl(null);
-      onSubmitted();
+      onSubmitted({
+        ...payment,
+        status: "PENDING",
+        payment_status: "pending",
+        sender_name: senderName.trim(),
+        sender_bank: senderBank.trim(),
+        amount_paid: order.grand_total,
+        payment_proof_url: proofUrl,
+      });
     } catch (err: unknown) {
       const apiError = err as {
         response?: { data?: { error?: string; message?: string } };
@@ -212,15 +219,13 @@ export function PaymentProofModal({
   const activeBank = bankAccounts[selectedBankIdx] ?? bankAccounts[0];
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4"
-      onClick={() => !isSubmitting && onClose()}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="payment-modal-title"
-        onClick={(e) => e.stopPropagation()}
-        className={`flex max-h-[96dvh] w-full ${
+    <Dialog
+      labelledBy="payment-modal-title"
+      onClose={onClose}
+      closeDisabled={isSubmitting}
+      closeOnBackdrop
+      mobileSheet
+      contentClassName={`flex max-h-[96dvh] w-full ${
           showUploadForm ? "max-w-4xl" : "max-w-xl"
         } flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xl transition-[max-width] duration-300`}>
         {/* Header (tetap, selalu terlihat) */}
@@ -262,6 +267,18 @@ export function PaymentProofModal({
                   <p className="mt-0.5 text-text-secondary">
                     Pembayaran pesanan ini telah disetujui oleh admin toko.
                   </p>
+                  {proofUrl && (
+                    <a
+                      href={
+                        previewOnly ? proofUrl : resolveProofUrl(proofUrl)
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2 inline-flex min-h-9 items-center gap-1.5 rounded-md border border-emerald-500/30 bg-white/60 px-3 text-xs font-semibold text-emerald-800 transition-colors hover:bg-white dark:bg-slate-900/30 dark:text-emerald-200 dark:hover:bg-slate-900">
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Lihat bukti transfer
+                    </a>
+                  )}
                 </div>
               </div>
             ) : isPending ? (
@@ -278,9 +295,11 @@ export function PaymentProofModal({
                     </p>
                   </div>
                 </div>
-                {payment?.payment_proof_url && (
+                {proofUrl && (
                   <a
-                    href={resolveProofUrl(payment.payment_proof_url)}
+                    href={
+                      previewOnly ? proofUrl : resolveProofUrl(proofUrl)
+                    }
                     target="_blank"
                     rel="noreferrer"
                     aria-label="Lihat bukti transfer di tab baru"
@@ -495,7 +514,6 @@ export function PaymentProofModal({
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }

@@ -18,6 +18,7 @@ import { AddressTab } from "@/components/profile/AddressTab";
 import { RiwayatPembelianTab } from "@/components/profile/RiwayatPembelianTab";
 import { VoucherTab } from "@/components/profile/VoucherTab";
 import { WishlistTab } from "@/components/profile/WishlistTab";
+import { Dialog } from "@/components/ui/dialog";
 
 const CROP_SIZE = 280; // ukuran area crop (px) di dalam modal
 const OUTPUT_SIZE = 512; // resolusi hasil crop yang disimpan
@@ -292,10 +293,13 @@ export default function ProfilePage() {
       </div>
 
       {pendingImage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-sm rounded-xl border border-border bg-surface p-6 shadow-sm">
+        <Dialog
+          labelledBy="profile-crop-title"
+          onClose={handleCancelCrop}
+          mobileSheet
+          contentClassName="w-full max-w-sm border border-border bg-surface p-4 shadow-xl sm:p-6">
             <div className="flex items-center justify-between border-b border-border pb-4">
-              <h3 className="text-base font-semibold text-text">
+              <h3 id="profile-crop-title" className="text-base font-semibold text-text">
                 Atur Foto Profil
               </h3>
               <button
@@ -359,8 +363,7 @@ export default function ProfilePage() {
                 Simpan
               </button>
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
     </div>
   );

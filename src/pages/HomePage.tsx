@@ -25,6 +25,7 @@ import {
   useProductFilterOptions,
 } from "@/lib/products";
 import { useCurrency } from "@/components/navbar/CurrencySwitcher";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 // import { PromoModal } from "@/components/PromoModal";
 
 const SORT_OPTIONS = [
@@ -215,6 +216,11 @@ export default function HomePage() {
 
   const [minPriceInput, setMinPriceInput] = useState("");
   const [maxPriceInput, setMaxPriceInput] = useState("");
+  const priceInputs = useMemo(
+    () => ({ minPriceInput, maxPriceInput }),
+    [minPriceInput, maxPriceInput],
+  );
+  const debouncedPriceInputs = useDebouncedValue(priceInputs, 400);
   const previousCurrencyRef = useRef(currency);
   const [discountOnly, setDiscountOnly] = useState(false);
   const [sortBy, setSortBy] = useState("default");
@@ -311,18 +317,18 @@ export default function HomePage() {
   }
 
   const effectiveMinPrice = useMemo(() => {
-    if (!minPriceInput) return undefined;
-    const val = Number(minPriceInput);
+    if (!debouncedPriceInputs.minPriceInput) return undefined;
+    const val = Number(debouncedPriceInputs.minPriceInput);
     if (!Number.isFinite(val) || val <= 0) return undefined;
     return currency === "USD" && rate ? Math.round(val / rate) : val;
-  }, [minPriceInput, currency, rate]);
+  }, [debouncedPriceInputs.minPriceInput, currency, rate]);
 
   const effectiveMaxPrice = useMemo(() => {
-    if (!maxPriceInput) return undefined;
-    const val = Number(maxPriceInput);
+    if (!debouncedPriceInputs.maxPriceInput) return undefined;
+    const val = Number(debouncedPriceInputs.maxPriceInput);
     if (!Number.isFinite(val) || val <= 0) return undefined;
     return currency === "USD" && rate ? Math.round(val / rate) : val;
-  }, [maxPriceInput, currency, rate]);
+  }, [debouncedPriceInputs.maxPriceInput, currency, rate]);
 
   const {
     products: serverProducts,

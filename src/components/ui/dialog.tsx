@@ -10,6 +10,7 @@ interface DialogProps {
   closeOnEscape?: boolean;
   closeOnBackdrop?: boolean;
   closeDisabled?: boolean;
+  mobileSheet?: boolean;
 }
 
 const FOCUSABLE_SELECTOR = [
@@ -30,6 +31,7 @@ export function Dialog({
   closeOnEscape = true,
   closeOnBackdrop = false,
   closeDisabled = false,
+  mobileSheet = false,
 }: DialogProps) {
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -85,7 +87,9 @@ export function Dialog({
   return (
     <div
       className={cn(
-        "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4",
+        mobileSheet
+          ? "fixed inset-0 z-[110] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
+          : "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4",
         overlayClassName,
       )}
       role="presentation"
@@ -105,7 +109,18 @@ export function Dialog({
         aria-labelledby={labelledBy}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
-        className={cn("outline-none", contentClassName)}>
+        className={cn(
+          "outline-none",
+          contentClassName,
+          mobileSheet &&
+            "relative max-h-[90dvh] w-full overflow-y-auto rounded-t-2xl pt-7 pb-[max(1rem,env(safe-area-inset-bottom))] animate-in slide-in-from-bottom-4 duration-300 sm:max-h-[calc(100dvh-2rem)] sm:rounded-xl sm:pt-0 sm:animate-none",
+        )}>
+        {mobileSheet && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute left-1/2 top-2 z-10 h-1 w-10 -translate-x-1/2 rounded-full bg-text-secondary/30 sm:hidden"
+          />
+        )}
         {children}
       </div>
     </div>

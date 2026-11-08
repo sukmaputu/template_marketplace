@@ -21,6 +21,7 @@ import { saveOrder } from "@/lib/orderHistory";
 import { showToast } from "@/lib/toast";
 import { websocketService, type WSEvent } from "@/lib/websocket";
 import { useAuth } from "@/components/auth/UseAuth";
+import { Dialog } from "@/components/ui/dialog";
 
 type FilterKey = "ALL" | OrderStatus;
 
@@ -390,10 +391,13 @@ export function RiwayatPembelianTab() {
       )}
 
       {selectedReview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-lg rounded-xl border border-border bg-surface p-6 shadow-sm">
+        <Dialog
+          labelledBy="product-review-title"
+          onClose={() => setSelectedReview(null)}
+          mobileSheet
+          contentClassName="w-full max-w-lg border border-border bg-surface p-4 shadow-xl sm:p-6">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold text-text">
+              <h3 id="product-review-title" className="text-base font-semibold text-text">
                 {selectedReview.item.review
                   ? "Ulasan Produk"
                   : "Beri Ulasan Produk"}
@@ -465,8 +469,7 @@ export function RiwayatPembelianTab() {
                 </button>
               )}
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
     </div>
   );

@@ -408,11 +408,9 @@ export function AddressTab() {
           labelledBy="address-modal-title"
           onClose={() => setIsModalOpen(false)}
           closeDisabled={isSaving}
-          overlayClassName="z-50 p-2 sm:p-4"
+          mobileSheet
           contentClassName="max-h-[calc(100dvh-1rem)] w-full max-w-lg rounded-xl bg-surface p-3 shadow-xl sm:p-6">
-          <form
-            onSubmit={handleSubmit}
-            aria-busy={isSaving}>
+          <form onSubmit={handleSubmit} aria-busy={isSaving}>
             <div className="flex items-center justify-between">
               <h3
                 id="address-modal-title"
@@ -500,30 +498,30 @@ export function AddressTab() {
           closeDisabled={isDeleting}
           overlayClassName="z-[60] p-4"
           contentClassName="w-full max-w-sm rounded-xl border border-border bg-surface p-6 shadow-xl">
-            <h3
-              id="delete-address-title"
-              className="text-base font-semibold text-text">
-              Anda yakin ingin menghapus alamat ini?
-            </h3>
-            <div className="mt-6 flex justify-end gap-2">
-              <Button
-                type="button"
-                onClick={() => setDeletingAddressId(null)}
-                disabled={isDeleting}
-                variant="outline"
-                className="h-auto rounded-lg border-border px-4 py-2 text-sm font-medium text-text hover:bg-background">
-                Tidak
-              </Button>
-              <Button
-                type="button"
-                onClick={confirmDeleteAddress}
-                loading={isDeleting}
-                loadingText="Menghapus..."
-                variant="destructive"
-                className="h-auto rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">
-                Hapus
-              </Button>
-            </div>
+          <h3
+            id="delete-address-title"
+            className="text-base font-semibold text-text">
+            Anda yakin ingin menghapus alamat ini?
+          </h3>
+          <div className="mt-6 flex justify-end gap-2">
+            <Button
+              type="button"
+              onClick={() => setDeletingAddressId(null)}
+              disabled={isDeleting}
+              variant="outline"
+              className="h-auto rounded-lg border-border px-4 py-2 text-sm font-medium text-text hover:bg-background">
+              Tidak
+            </Button>
+            <Button
+              type="button"
+              onClick={confirmDeleteAddress}
+              loading={isDeleting}
+              loadingText="Menghapus..."
+              variant="destructive"
+              className="h-auto rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">
+              Hapus
+            </Button>
+          </div>
         </Dialog>
       )}
     </div>
