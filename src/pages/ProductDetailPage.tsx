@@ -160,6 +160,9 @@ export default function ProductDetailPage() {
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(
     null,
   );
+  const [selectedDimensions, setSelectedDimensions] = useState<
+    Record<string, string>
+  >({});
 
   const [prevProductId, setPrevProductId] = useState(productId);
   if (productId !== prevProductId) {
@@ -169,6 +172,7 @@ export default function ProductDetailPage() {
     setManualSchedule(null);
     setManualLevel(null);
     setSelectedVariantId(null);
+    setSelectedDimensions({});
   }
 
   const [apiReviews, setApiReviews] = useState<ProductReview[]>([]);
@@ -276,6 +280,26 @@ export default function ProductDetailPage() {
 
   const variants = useMemo(() => product?.variants ?? [], [product]);
 
+  useEffect(() => {
+    if (!product?.variantOptions?.length) return;
+    const initial: Record<string, string> = {};
+    const firstInStockVariant = product.variants?.find((v) => (v.stock ?? 0) > 0);
+    if (firstInStockVariant?.options && Object.keys(firstInStockVariant.options).length > 0) {
+      Object.assign(initial, firstInStockVariant.options);
+    }
+    for (const group of product.variantOptions) {
+      if (!initial[group.name] && group.values?.length) {
+        const firstVal = group.values[0];
+        const valStr =
+          typeof firstVal === "string"
+            ? firstVal.trim()
+            : (firstVal?.value || firstVal?.name || "").trim();
+        if (valStr) initial[group.name] = valStr;
+      }
+    }
+    setSelectedDimensions(initial);
+  }, [product?.id, product?.variantOptions, product?.variants]);
+
   // Spesifikasi: pakai data backend kalau suatu saat tersedia,
   // kalau tidak pakai data hardcode di lib/productSpecs.ts
   const specs = useMemo(
@@ -283,8 +307,28 @@ export default function ProductDetailPage() {
       product?.specs?.length ? product.specs : getProductSpecs(product?.sku),
     [product],
   );
-  const selectedVariant =
-    variants.find((v) => v.id === selectedVariantId) ?? variants[0] ?? null;
+  const selectedVariant = useMemo(() => {
+    if (!variants.length) return null;
+    if (
+      product?.variantOptions?.length &&
+      Object.keys(selectedDimensions).length > 0
+    ) {
+      const matched = variants.find(
+        (v) =>
+          v.options &&
+          product.variantOptions!.every((group) => {
+            const expected = selectedDimensions[group.name];
+            if (!expected) return true;
+            const actual = v.options?.[group.name];
+            return actual && actual.toLowerCase() === expected.toLowerCase();
+          }),
+      );
+      if (matched) return matched;
+    }
+    return (
+      variants.find((v) => v.id === selectedVariantId) ?? variants[0] ?? null
+    );
+  }, [variants, product?.variantOptions, selectedDimensions, selectedVariantId]);
 
   const unitPrice = product
     ? getVariantPrice(product, selectedVariant ?? undefined)
@@ -296,10 +340,27 @@ export default function ProductDetailPage() {
   const availableStock = selectedVariant?.stock ?? product?.stock;
 
   const variantLabel = useMemo(() => {
-    if (isPhysical) return selectedVariant?.variantName ?? "Standar";
+    if (isPhysical) {
+      if (
+        product?.variantOptions?.length &&
+        Object.keys(selectedDimensions).length > 0
+      ) {
+        return Object.entries(selectedDimensions)
+          .map(([dim, val]) => `${dim}: ${val}`)
+          .join(" • ");
+      }
+      return selectedVariant?.variantName ?? "Standar";
+    }
     const parts = [selectedSchedule, selectedLevel].filter(Boolean);
     return parts.length > 0 ? parts.join(" • ") : "Standar";
-  }, [isPhysical, selectedVariant, selectedSchedule, selectedLevel]);
+  }, [
+    isPhysical,
+    product?.variantOptions,
+    selectedDimensions,
+    selectedVariant,
+    selectedSchedule,
+    selectedLevel,
+  ]);
 
   const [recommendations, setRecommendations] = useState<Product[]>([]);
 
@@ -713,8 +774,80 @@ export default function ProductDetailPage() {
               </div>
             )}
 
-            {/* Khusus barang fisik: pilihan varian */}
-            {isPhysical && variants.length > 0 && (
+            {/* Khusus barang fisik: pilihan varian multi-dimensi atau single */}
+            {isPhysical && product?.variantOptions && product.variantOptions.length > 0 ? (
+              <div className="mt-6 space-y-4">
+                {product.variantOptions.map((group) => {
+                  const values = (group.values || [])
+                    .map((v: any) =>
+                      typeof v === "string"
+                        ? v.trim()
+                        : (v?.value || v?.name || "").trim(),
+                    )
+                    .filter(Boolean);
+                  return (
+                    <div key={group.name}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold text-text">
+                          {group.name}
+                        </span>
+                        {selectedDimensions[group.name] && (
+                          <span className="text-xs font-semibold text-primary">
+                            {selectedDimensions[group.name]}
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {values.map((val) => {
+                          const isSelected =
+                            selectedDimensions[group.name]?.toLowerCase() ===
+                            val.toLowerCase();
+                          const testCombo = {
+                            ...selectedDimensions,
+                            [group.name]: val,
+                          };
+                          const candidateVariant = variants.find(
+                            (v) =>
+                              v.options &&
+                              Object.entries(testCombo).every(
+                                ([dKey, dVal]) =>
+                                  !dVal ||
+                                  v.options?.[dKey]?.toLowerCase() ===
+                                    dVal.toLowerCase(),
+                              ),
+                          );
+                          const isUnavailable =
+                            !candidateVariant ||
+                            (candidateVariant.stock !== undefined &&
+                              candidateVariant.stock <= 0);
+
+                          return (
+                            <button
+                              key={val}
+                              type="button"
+                              disabled={Boolean(isUnavailable)}
+                              onClick={() => {
+                                setSelectedDimensions((prev) => ({
+                                  ...prev,
+                                  [group.name]: val,
+                                }));
+                                setQuantity(1);
+                              }}
+                              className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                                isSelected
+                                  ? "border-primary bg-primary text-white shadow-sm"
+                                  : "border-border text-text hover:border-primary"
+                              }`}>
+                              {val}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : isPhysical && variants.length > 0 ? (
               <div className="mt-6">
                 <span className="text-sm font-semibold text-text">Varian</span>
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -737,7 +870,7 @@ export default function ProductDetailPage() {
                   ))}
                 </div>
               </div>
-            )}
+            ) : null}
 
             <div className="mt-6 flex items-center gap-4">
               <span className="text-sm font-semibold text-text">Pesan</span>

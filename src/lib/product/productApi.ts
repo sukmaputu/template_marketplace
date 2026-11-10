@@ -294,6 +294,8 @@ export function usePaginatedProducts({
   minPrice,
   maxPrice,
   discountOnly = false,
+  specs,
+  options,
 }: UsePaginatedProductsOptions = {}): UsePaginatedProductsResult {
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
@@ -315,6 +317,9 @@ export function usePaginatedProducts({
       unsub();
     };
   }, []);
+
+  const specsSerialized = specs ? JSON.stringify(specs) : "";
+  const optionsSerialized = options ? JSON.stringify(options) : "";
 
   useEffect(() => {
     let cancelled = false;
@@ -340,6 +345,17 @@ export function usePaginatedProducts({
         }
         if (discountOnly) {
           params.discount_only = true;
+        }
+        if (specs && Object.keys(specs).length > 0) {
+          params.specs = JSON.stringify(specs);
+        }
+        if (options && Object.keys(options).length > 0) {
+          const parts = Object.entries(options)
+            .filter(([_, vals]) => vals && vals.length > 0)
+            .map(([key, vals]) => `${key}:${vals.join(",")}`);
+          if (parts.length > 0) {
+            params.options = parts.join(";");
+          }
         }
 
         const res = await api.get("/ecommerce/products", {
@@ -428,6 +444,8 @@ export function usePaginatedProducts({
     minPrice,
     maxPrice,
     discountOnly,
+    specsSerialized,
+    optionsSerialized,
     refreshKey,
   ]);
 

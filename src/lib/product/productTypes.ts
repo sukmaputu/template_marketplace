@@ -31,6 +31,32 @@ export interface ProductSpecRow {
   updated_at?: string;
 }
 
+export interface VariantOptionValue {
+  name?: string;
+  value?: string;
+  swatch_color?: string;
+  image_url?: string;
+  price_delta?: number;
+}
+
+export interface VariantOptionGroup {
+  name: string;
+  values: (string | VariantOptionValue)[];
+}
+
+export interface VariantGroupFilter {
+  name: string;
+  options?: Array<{
+    value: string;
+    count: number;
+  }>;
+  values?: Array<{
+    name?: string;
+    value?: string;
+    count: number;
+  }>;
+}
+
 export interface ProductVariantRow {
   id: string;
   product_id: string;
@@ -40,6 +66,7 @@ export interface ProductVariantRow {
   override_price?: number | null;
   stock?: number | null;
   is_active: boolean;
+  options?: Record<string, string>;
   created_at?: string;
   updated_at?: string;
 }
@@ -77,6 +104,7 @@ export interface ProductVariant {
   stock?: number;
   overridePrice?: number;
   priceDelta?: number;
+  options?: Record<string, string>;
 }
 
 export interface ProductSpec {
@@ -96,6 +124,7 @@ export interface Product {
   comparePrice?: number;
   stock?: number;
   variants?: ProductVariant[];
+  variantOptions?: VariantOptionGroup[];
   specs?: ProductSpec[];
   rating?: number;
   reviewCount?: number;
@@ -135,6 +164,8 @@ export interface UsePaginatedProductsOptions {
   minPrice?: number;
   maxPrice?: number;
   discountOnly?: boolean;
+  specs?: Record<string, string[]>;
+  options?: Record<string, string[]>;
 }
 
 export interface ProductFilterOptions {
@@ -156,13 +187,14 @@ export interface ProductFilterOptions {
   }>;
   specifications: Array<{
     name?: string;
-    values?: string[];
+    values?: Array<{ value: string; count?: number } | string>;
     [key: string]: unknown;
   }>;
   variants: Array<{
     name: string;
     count: number;
   }>;
+  variant_groups?: VariantGroupFilter[];
   summary: {
     total_products: number;
     in_stock_count: number;

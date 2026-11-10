@@ -1,11 +1,15 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ChevronDown, Loader2, RotateCcw, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, Loader2, RotateCcw, SlidersHorizontal, Tag } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
 import { MarketplaceFooter } from "@/components/MarketplaceFooter";
 import { ProductCard } from "@/components/ProductCard";
 import { Pagination } from "@/components/ui/pagination";
-import { useCategories, usePaginatedProducts } from "@/lib/products";
+import {
+  useCategories,
+  usePaginatedProducts,
+  useProductFilterOptions,
+} from "@/lib/products";
 
 const SORT_OPTIONS = [
   { value: "default", label: "Bawaan" },
@@ -29,6 +33,24 @@ export default function CategoryPage() {
   const [maxPrice, setMaxPrice] = useState<number>();
   const [discountOnly, setDiscountOnly] = useState(false);
   const [filterError, setFilterError] = useState("");
+
+  const [selectedSpecs, setSelectedSpecs] = useState<Record<string, string[]>>({});
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>({});
+
+  const [prevCategoryId, setPrevCategoryId] = useState(categoryId);
+  if (categoryId !== prevCategoryId) {
+    setPrevCategoryId(categoryId);
+    setSelectedSpecs({});
+    setSelectedOptions({});
+    setMinPriceInput("");
+    setMaxPriceInput("");
+    setDiscountInput(false);
+    setMinPrice(undefined);
+    setMaxPrice(undefined);
+    setDiscountOnly(false);
+    setFilterError("");
+  }
+
   const { categories } = useCategories();
   const filterCategory = categories.find(
     (item) =>
@@ -36,6 +58,12 @@ export default function CategoryPage() {
       item.id === categoryId ||
       item.uuid === categoryId,
   );
+
+  const { filterOptions } = useProductFilterOptions({
+    category: categoryId,
+    categoryUuid: filterCategory?.uuid,
+  });
+
   const {
     products: serverProducts,
     totalPages,
@@ -48,6 +76,8 @@ export default function CategoryPage() {
     minPrice,
     maxPrice,
     discountOnly,
+    specs: selectedSpecs,
+    options: selectedOptions,
     limit: 12,
   });
 
@@ -91,6 +121,38 @@ export default function CategoryPage() {
     setCurrentPage(1);
   }
 
+  const toggleSpec = (specName: string, value: string) => {
+    setSelectedSpecs((prev) => {
+      const current = prev[specName] || [];
+      const updated = current.includes(value)
+        ? current.filter((v) => v !== value)
+        : [...current, value];
+      if (updated.length === 0) {
+        const next = { ...prev };
+        delete next[specName];
+        return next;
+      }
+      return { ...prev, [specName]: updated };
+    });
+    setCurrentPage(1);
+  };
+
+  const toggleOption = (groupName: string, value: string) => {
+    setSelectedOptions((prev) => {
+      const current = prev[groupName] || [];
+      const updated = current.includes(value)
+        ? current.filter((v) => v !== value)
+        : [...current, value];
+      if (updated.length === 0) {
+        const next = { ...prev };
+        delete next[groupName];
+        return next;
+      }
+      return { ...prev, [groupName]: updated };
+    });
+    setCurrentPage(1);
+  };
+
   function resetFilters() {
     setMinPriceInput("");
     setMaxPriceInput("");
@@ -98,6 +160,8 @@ export default function CategoryPage() {
     setMinPrice(undefined);
     setMaxPrice(undefined);
     setDiscountOnly(false);
+    setSelectedSpecs({});
+    setSelectedOptions({});
     setFilterError("");
     setCurrentPage(1);
   }
@@ -208,6 +272,96 @@ export default function CategoryPage() {
             </p>
           )}
         </form>
+
+        {/* Dynamic Variant & Spec Filters */}
+        {((filterOptions?.variant_groups &&
+          filterOptions.variant_groups.length > 0) ||
+          (filterOptions?.specifications &&
+            filterOptions.specifications.length > 0)) && (
+          <div className="mt-4 flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-secondary">
+              <Tag className="h-3.5 w-3.5 text-primary" />
+              Filter Karakteristik & Varian
+            </div>
+
+            {/* Varian Multi-Dimensi */}
+            {filterOptions?.variant_groups?.map((group) => {
+              const opts = (group.options || group.values || []) as any[];
+              if (opts.length === 0) return null;
+              return (
+                <div
+                  key={group.name}
+                  className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="min-w-[70px] font-semibold text-text">
+                    {group.name}:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {opts.map((v) => {
+                      const val =
+                        typeof v === "string" ? v : v.value || v.name || "";
+                      const isSelected = selectedOptions[group.name]?.includes(val);
+                      return (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => toggleOption(group.name, val)}
+                          className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                            isSelected
+                              ? "border-primary bg-primary text-white"
+                              : "border-border bg-background text-text hover:border-primary"
+                          }`}>
+                          {val}
+                          {typeof v.count === "number" && (
+                            <span className="ml-1 opacity-60">({v.count})</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Spesifikasi Kategori */}
+            {filterOptions?.specifications?.map((spec) => {
+              const specName = spec.name;
+              if (!specName || !spec.values || spec.values.length === 0)
+                return null;
+              return (
+                <div
+                  key={specName}
+                  className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="min-w-[70px] font-semibold text-text">
+                    {specName}:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {spec.values.map((v: any) => {
+                      const val =
+                        typeof v === "string" ? v : v.value || v.name || "";
+                      const isSelected = selectedSpecs[specName]?.includes(val);
+                      return (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => toggleSpec(specName, val)}
+                          className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                            isSelected
+                              ? "border-primary bg-primary text-white"
+                              : "border-border bg-background text-text hover:border-primary"
+                          }`}>
+                          {val}
+                          {typeof v.count === "number" && (
+                            <span className="ml-1 opacity-60">({v.count})</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {loading ? (
           <div className="flex min-h-[30vh] items-center justify-center">

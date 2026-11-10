@@ -22,6 +22,19 @@ export interface BackendProductImage {
   sort_order?: number;
 }
 
+export interface VariantOptionValue {
+  name?: string;
+  value?: string;
+  swatch_color?: string;
+  image_url?: string;
+  price_delta?: number;
+}
+
+export interface VariantOptionGroup {
+  name: string;
+  values: (string | VariantOptionValue)[];
+}
+
 export interface BackendProductVariant {
   id?: string;
   uuid?: string;
@@ -32,6 +45,7 @@ export interface BackendProductVariant {
   price_delta?: number | null;
   override_price?: number | null;
   is_active?: boolean;
+  options?: Record<string, string>;
 }
 
 export interface BackendProduct {
@@ -49,6 +63,7 @@ export interface BackendProduct {
   cover_image_url?: string | null;
   images?: (BackendProductImage | string)[];
   variants?: BackendProductVariant[];
+  variant_options?: VariantOptionGroup[];
   category?: BackendCategory;
   category_id?: string;
   category_uuid?: string;

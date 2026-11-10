@@ -25,6 +25,7 @@ export function mapProductRow(row: ProductRow): Product {
         stock: variant.stock ?? undefined,
         overridePrice: variant.override_price ?? undefined,
         priceDelta: variant.price_delta ?? undefined,
+        options: variant.options,
       })),
     rating: row.average_rating,
     reviewCount: row.review_count,
@@ -71,6 +72,7 @@ export function toProductRow(product: Product): ProductRow {
       override_price: variant.overridePrice,
       stock: variant.stock,
       is_active: true,
+      options: variant.options,
     })),
   };
 }
@@ -85,6 +87,7 @@ interface BackendVariant {
   override_price?: number | null;
   stock?: number | null;
   is_active?: boolean;
+  options?: Record<string, string>;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -125,6 +128,10 @@ export function mapBackendToProduct(p: any): Product {
           stock: v.stock ?? undefined,
           overridePrice: v.override_price ?? undefined,
           priceDelta: v.price_delta ?? undefined,
+          options:
+            v.options && typeof v.options === "object"
+              ? v.options
+              : undefined,
         }))
     : undefined;
 
@@ -140,13 +147,35 @@ export function mapBackendToProduct(p: any): Product {
     comparePrice,
     stock: p.stock ?? 0,
     variants,
-    // BARU: kalau backend suatu saat mengirim `specs`, otomatis dipakai
-    specs: Array.isArray(p.specs)
-      ? p.specs.map((s: { spec_name: string; spec_value: string }) => ({
-          label: s.spec_name,
-          value: s.spec_value,
-        }))
+    variantOptions: Array.isArray(p.variant_options)
+      ? p.variant_options
       : undefined,
+    // Pemetaan spesifikasi ganda (mendukung GORM `specifications` dan flat `specs`)
+    specs: (() => {
+      if (Array.isArray(p.specifications) && p.specifications.length > 0) {
+        return p.specifications
+          .map((s: any) => {
+            const val =
+              Array.isArray(s.values) && s.values.length > 0
+                ? s.values[0].value || s.values[0].name || ""
+                : s.spec_value || s.value || "";
+            return {
+              label: s.name || s.spec_name || "",
+              value: String(val),
+            };
+          })
+          .filter((s: { label: string; value: string }) => s.label && s.value);
+      }
+      if (Array.isArray(p.specs) && p.specs.length > 0) {
+        return p.specs
+          .map((s: any) => ({
+            label: s.spec_name || s.name || "",
+            value: String(s.spec_value || s.value || ""),
+          }))
+          .filter((s: { label: string; value: string }) => s.label && s.value);
+      }
+      return undefined;
+    })(),
     rating: Number(p.average_rating || 0),
     reviewCount: Number(p.rating_count || p.review_count || 0),
     categoryId: p.category?.slug || p.category_uuid || "teknologi-informasi",
