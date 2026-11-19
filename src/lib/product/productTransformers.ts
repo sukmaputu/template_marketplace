@@ -154,30 +154,42 @@ export function mapBackendToProduct(p: any): Product {
       : undefined,
     // Pemetaan spesifikasi ganda (mendukung GORM `specifications` dan flat `specs`)
     specs: (() => {
+      const seenSpecs: Array<{ label: string; value: string }> = [];
+      const appendSpec = (rawName: unknown, rawVals: string[]) => {
+        const label = typeof rawName === "string" ? rawName.trim() : "";
+        const deduped: string[] = [];
+        for (const v of rawVals) {
+          const trimmed = v.trim();
+          if (trimmed && !deduped.includes(trimmed)) {
+            deduped.push(trimmed);
+          }
+        }
+        if (label && deduped.length > 0) {
+          seenSpecs.push({ label, value: deduped.join(", ") });
+        }
+      };
+
       if (Array.isArray(p.specifications) && p.specifications.length > 0) {
-        return p.specifications
-          .map((s: any) => {
-            const val =
-              Array.isArray(s.values) && s.values.length > 0
-                ? s.values
-                    .map((v: any) => v.value || v.name || "")
-                    .filter(Boolean)
-                    .join(", ")
-                : s.spec_value || s.value || "";
-            return {
-              label: s.name || s.spec_name || "",
-              value: String(val),
-            };
-          })
-          .filter((s: { label: string; value: string }) => s.label && s.value);
+        p.specifications.forEach((s: any) => {
+          const vals: string[] = Array.isArray(s.values)
+            ? s.values.map((v: any) =>
+                typeof v === "string" ? v : String(v?.value || v?.name || ""),
+              )
+            : [];
+          const fallback = String(s.spec_value || s.value || "");
+          appendSpec(
+            s.name || s.spec_name,
+            vals.length > 0 ? vals : fallback ? [fallback] : [],
+          );
+        });
+        return seenSpecs.length > 0 ? seenSpecs : undefined;
       }
       if (Array.isArray(p.specs) && p.specs.length > 0) {
-        return p.specs
-          .map((s: any) => ({
-            label: s.spec_name || s.name || "",
-            value: String(s.spec_value || s.value || ""),
-          }))
-          .filter((s: { label: string; value: string }) => s.label && s.value);
+        p.specs.forEach((s: any) => {
+          const val = String(s.spec_value || s.value || "");
+          appendSpec(s.spec_name || s.name, val ? [val] : []);
+        });
+        return seenSpecs.length > 0 ? seenSpecs : undefined;
       }
       return undefined;
     })(),

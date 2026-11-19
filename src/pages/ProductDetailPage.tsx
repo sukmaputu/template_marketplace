@@ -37,7 +37,6 @@ import {
   type ProductReview,
 } from "@/lib/products";
 import { useAuth } from "@/components/auth/AuthContext";
-import { getProductSpecs } from "@/lib/productSpecs";
 import { websocketService, type WSEvent } from "@/lib/websocket";
 
 // Khusus produk kelas (bukan barang fisik). Tetap dipertahankan, hanya
@@ -300,13 +299,7 @@ export default function ProductDetailPage() {
     setSelectedDimensions(initial);
   }, [product?.id, product?.variantOptions, product?.variants]);
 
-  // Spesifikasi: pakai data backend kalau suatu saat tersedia,
-  // kalau tidak pakai data hardcode di lib/productSpecs.ts
-  const specs = useMemo(
-    () =>
-      product?.specs?.length ? product.specs : getProductSpecs(product?.sku),
-    [product],
-  );
+  const specs = product?.specs ?? [];
   const selectedVariant = useMemo(() => {
     if (!variants.length) return null;
     if (
@@ -982,8 +975,8 @@ export default function ProductDetailPage() {
                   <dd className="text-text">{availableStock}</dd>
                 </div>
               ) : null}
-              {specs.map((spec) => (
-                <div key={spec.label} className="contents">
+              {specs.map((spec, idx) => (
+                <div key={`${spec.label}-${idx}`} className="contents">
                   <dt className="text-text-secondary">{spec.label}</dt>
                   <dd className="text-text">{spec.value}</dd>
                 </div>
