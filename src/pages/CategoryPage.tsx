@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ChevronDown, Loader2, RotateCcw, SlidersHorizontal, Tag } from "lucide-react";
 import { MarketplaceHeader } from "@/components/navbar/MarketplaceHeader";
@@ -48,6 +48,7 @@ export default function CategoryPage() {
     setMinPrice(undefined);
     setMaxPrice(undefined);
     setDiscountOnly(false);
+    setSortBy("default");
     setFilterError("");
   }
 
@@ -65,7 +66,7 @@ export default function CategoryPage() {
   });
 
   const {
-    products: serverProducts,
+    products,
     totalPages,
     currentPage: serverCurrentPage,
     loading,
@@ -78,17 +79,9 @@ export default function CategoryPage() {
     discountOnly,
     specs: selectedSpecs,
     options: selectedOptions,
+    sort: sortBy === "default" ? undefined : sortBy === "newest" ? "latest" : sortBy,
     limit: 12,
   });
-
-  const products = useMemo(() => {
-    const sorted = [...serverProducts];
-    if (sortBy === "price-asc")
-      sorted.sort((a, b) => a.basePrice - b.basePrice);
-    if (sortBy === "price-desc")
-      sorted.sort((a, b) => b.basePrice - a.basePrice);
-    return sorted;
-  }, [sortBy, serverProducts]);
 
   const category = filterCategory;
 
@@ -162,6 +155,7 @@ export default function CategoryPage() {
     setDiscountOnly(false);
     setSelectedSpecs({});
     setSelectedOptions({});
+    setSortBy("default");
     setFilterError("");
     setCurrentPage(1);
   }
@@ -198,7 +192,10 @@ export default function CategoryPage() {
             <div className="relative">
               <select
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
+                onChange={(e) => {
+                  setSortBy(e.target.value);
+                  setCurrentPage(1);
+                }}
                 className="appearance-none rounded-lg border border-border bg-surface py-2 pl-3 pr-9 text-sm text-text outline-none focus:border-primary">
                 {SORT_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>

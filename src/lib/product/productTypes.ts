@@ -167,6 +167,7 @@ export interface UsePaginatedProductsOptions {
   discountOnly?: boolean;
   specs?: Record<string, string[]>;
   options?: Record<string, string[]>;
+  sort?: string;
 }
 
 export interface ProductFilterOptions {

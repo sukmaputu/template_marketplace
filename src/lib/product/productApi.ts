@@ -296,6 +296,7 @@ export function usePaginatedProducts({
   discountOnly = false,
   specs,
   options,
+  sort,
 }: UsePaginatedProductsOptions = {}): UsePaginatedProductsResult {
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
@@ -347,6 +348,9 @@ export function usePaginatedProducts({
         }
         if (discountOnly) {
           params.discount_only = true;
+        }
+        if (sort && sort.trim() && sort !== "default") {
+          params.sort = sort.trim();
         }
         if (specs && Object.keys(specs).length > 0) {
           params.specs = JSON.stringify(specs);
@@ -418,6 +422,11 @@ export function usePaginatedProducts({
         if (typeof maxPrice === "number" && maxPrice >= 0) {
           filtered = filtered.filter((p) => p.basePrice <= maxPrice);
         }
+        if (sort === "price-asc") {
+          filtered = [...filtered].sort((a, b) => a.basePrice - b.basePrice);
+        } else if (sort === "price-desc") {
+          filtered = [...filtered].sort((a, b) => b.basePrice - a.basePrice);
+        }
 
         const fallbackTotal = filtered.length;
         const fallbackPages = Math.max(1, Math.ceil(fallbackTotal / limit));
@@ -448,6 +457,7 @@ export function usePaginatedProducts({
     discountOnly,
     specsSerialized,
     optionsSerialized,
+    sort,
     refreshKey,
   ]);
 
