@@ -342,6 +342,8 @@ export function usePaginatedProducts({
         }
         if (categoryUuid && categoryUuid.trim()) {
           params.category_uuid = categoryUuid.trim();
+        } else if (category && category.trim()) {
+          params.category = category.trim();
         }
         if (discountOnly) {
           params.discount_only = true;

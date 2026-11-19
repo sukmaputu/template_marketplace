@@ -710,7 +710,7 @@ export default function ProductDetailPage() {
               {product.comparePrice &&
               product.comparePrice > product.basePrice ? (
                 <span className="text-sm text-text-secondary line-through">
-                  {formatPrice(product.comparePrice)}
+                  {formatPrice(product.comparePrice + (selectedVariant?.priceDelta ?? 0))}
                 </span>
               ) : null}
               {discountPercent ? (
@@ -802,24 +802,13 @@ export default function ProductDetailPage() {
                           const isSelected =
                             selectedDimensions[group.name]?.toLowerCase() ===
                             val.toLowerCase();
-                          const testCombo = {
-                            ...selectedDimensions,
-                            [group.name]: val,
-                          };
-                          const candidateVariant = variants.find(
+                          const hasAnyInStock = variants.some(
                             (v) =>
+                              (v.stock === undefined || v.stock > 0) &&
                               v.options &&
-                              Object.entries(testCombo).every(
-                                ([dKey, dVal]) =>
-                                  !dVal ||
-                                  v.options?.[dKey]?.toLowerCase() ===
-                                    dVal.toLowerCase(),
-                              ),
+                              v.options[group.name]?.toLowerCase() === val.toLowerCase(),
                           );
-                          const isUnavailable =
-                            !candidateVariant ||
-                            (candidateVariant.stock !== undefined &&
-                              candidateVariant.stock <= 0);
+                          const isUnavailable = !hasAnyInStock;
 
                           return (
                             <button
@@ -827,11 +816,37 @@ export default function ProductDetailPage() {
                               type="button"
                               disabled={Boolean(isUnavailable)}
                               onClick={() => {
-                                setSelectedDimensions((prev) => ({
-                                  ...prev,
+                                const testCombo = {
+                                  ...selectedDimensions,
                                   [group.name]: val,
-                                }));
-                                setQuantity(1);
+                                };
+                                const exactMatch = variants.find(
+                                  (v) =>
+                                    v.options &&
+                                    Object.entries(testCombo).every(
+                                      ([dKey, dVal]) =>
+                                        !dVal ||
+                                        v.options?.[dKey]?.toLowerCase() ===
+                                          dVal.toLowerCase(),
+                                    ),
+                                );
+                                if (exactMatch && (exactMatch.stock === undefined || exactMatch.stock > 0)) {
+                                  setSelectedDimensions(testCombo);
+                                  setQuantity((q) => (exactMatch.stock !== undefined && q > exactMatch.stock ? Math.max(1, exactMatch.stock) : q));
+                                  return;
+                                }
+                                const alternative = variants.find(
+                                  (v) =>
+                                    (v.stock === undefined || v.stock > 0) &&
+                                    v.options &&
+                                    v.options[group.name]?.toLowerCase() === val.toLowerCase(),
+                                );
+                                if (alternative?.options) {
+                                  setSelectedDimensions(alternative.options);
+                                  setQuantity((q) => (alternative.stock !== undefined && q > alternative.stock ? Math.max(1, alternative.stock) : q));
+                                } else {
+                                  setSelectedDimensions(testCombo);
+                                }
                               }}
                               className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                                 isSelected
@@ -900,7 +915,7 @@ export default function ProductDetailPage() {
                 <span className="text-xs text-text-secondary">
                   {isOutOfStock
                     ? "Stok tidak tersedia"
-                    : `Tersisa ${availableStock} buah`}
+                    : `Tersisa ${availableStock} buah (${variantLabel})`}
                 </span>
               )}
             </div>

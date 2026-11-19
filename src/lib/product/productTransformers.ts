@@ -85,6 +85,7 @@ interface BackendVariant {
   variant_name: string;
   price_delta?: number | null;
   override_price?: number | null;
+  effective_price?: number | null;
   stock?: number | null;
   is_active?: boolean;
   options?: Record<string, string>;
@@ -126,8 +127,9 @@ export function mapBackendToProduct(p: any): Product {
           sku: v.variant_sku || undefined,
           variantName: v.variant_name,
           stock: v.stock ?? undefined,
-          overridePrice: v.override_price ?? undefined,
-          priceDelta: v.price_delta ?? undefined,
+          overridePrice: v.override_price !== undefined && v.override_price !== null ? Number(v.override_price) : undefined,
+          effectivePrice: v.effective_price !== undefined && v.effective_price !== null ? Number(v.effective_price) : undefined,
+          priceDelta: v.price_delta !== undefined && v.price_delta !== null ? Number(v.price_delta) : undefined,
           options:
             v.options && typeof v.options === "object"
               ? v.options
@@ -157,7 +159,10 @@ export function mapBackendToProduct(p: any): Product {
           .map((s: any) => {
             const val =
               Array.isArray(s.values) && s.values.length > 0
-                ? s.values[0].value || s.values[0].name || ""
+                ? s.values
+                    .map((v: any) => v.value || v.name || "")
+                    .filter(Boolean)
+                    .join(", ")
                 : s.spec_value || s.value || "";
             return {
               label: s.name || s.spec_name || "",

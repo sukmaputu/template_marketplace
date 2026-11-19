@@ -6,9 +6,12 @@ export function getVariantPrice(
   variant?: ProductVariant,
 ): number {
   if (!variant) return product.basePrice;
-  if (variant.overridePrice !== undefined) return variant.overridePrice;
+  if (variant.effectivePrice !== undefined && variant.effectivePrice > 0)
+    return variant.effectivePrice;
+  if (variant.overridePrice !== undefined && variant.overridePrice > 0)
+    return variant.overridePrice;
   if (variant.priceDelta !== undefined)
-    return product.basePrice + variant.priceDelta;
+    return Math.max(0, product.basePrice + variant.priceDelta);
   return product.basePrice;
 }
 

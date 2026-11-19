@@ -103,6 +103,7 @@ export interface ProductVariant {
   variantName: string;
   stock?: number;
   overridePrice?: number;
+  effectivePrice?: number;
   priceDelta?: number;
   options?: Record<string, string>;
 }

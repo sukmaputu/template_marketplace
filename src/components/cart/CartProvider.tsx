@@ -49,7 +49,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
           const remoteItems: unknown[] = Array.isArray(data)
             ? data
             : data && typeof data === "object"
-              ? ((data as { items?: unknown[]; cart_items?: unknown[] }).items ??
+              ? ((data as { cart?: { items?: unknown[] } }).cart?.items ??
+                (data as { items?: unknown[]; cart_items?: unknown[] }).items ??
                 (data as { cart_items?: unknown[] }).cart_items ??
                 [])
               : [];
